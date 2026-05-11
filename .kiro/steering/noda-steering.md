@@ -176,3 +176,87 @@ This steering document must be approved before implementation begins.
 **Document Version:** 1.0  
 **Last Updated:** 2026-05-12  
 **Status:** Pending Approval
+
+## Project-Specific Patterns
+
+### Pattern 1: `nonisolated` for Pure Value Types
+
+The project sets `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` globally. This causes all methods and static properties — even on pure value types like `struct` — to be implicitly `@MainActor` isolated.
+
+**Rule:** Any `struct` or `enum` that performs no UI work must explicitly opt out:
+- Instance methods: mark `nonisolated func`
+- Static stored properties: mark `nonisolated(unsafe) static let` (safe when the value is truly immutable)
+
+**Example:**
+```swift
+struct PathSanitizer: Sendable {
+    private nonisolated(unsafe) static let invalidCharacters = CharacterSet(...)
+    private nonisolated(unsafe) static let maxLength = 255
+
+    nonisolated func sanitize(_ filename: String) -> String { ... }
+    nonisolated func isValid(_ filename: String) -> Bool { ... }
+}
+```
+
+**Applies to:** All Core layer structs — `PathSanitizer`, `NoteReader`, `NoteWriter`, `FolderManager`, `DeltaCalculator`, `ConflictResolver`, `RemoteTreeBuilder`, etc.
+
+### Pattern 2: Explicit `nonisolated` Codable Conformance
+
+`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` causes synthesized `Codable` conformances (`init(from:)` and `encode(to:)`) to become `@MainActor` isolated. This prevents using `Codable` types from actors or non-isolated contexts.
+
+**Rule:** Any `Sendable` struct that needs `Codable` must implement it explicitly with `nonisolated`:
+
+```swift
+extension SyncManifest: Codable {
+    nonisolated init(from decoder: any Decoder) throws { ... }
+    nonisolated func encode(to encoder: any Encoder) throws { ... }
+}
+```
+
+**Applies to:** All model types that are encoded/decoded outside the main actor — `SyncManifest`, `RemoteState`, `RemoteFileState`, `TrashedNote`, etc.
+
+### Pattern 3: `@MainActor` on Test Suites Accessing Model Properties
+
+When a test suite accesses properties of a `@MainActor`-isolated struct (due to global isolation), the entire test suite must be annotated `@MainActor`:
+
+```swift
+@Suite("VaultManager")
+@MainActor
+struct VaultManagerTests { ... }
+```
+
+**Applies to:** Any test that directly reads/writes properties of model types (`Note`, `SyncManifest`, `Tag`, etc.).
+
+### Pattern 4: FSEvents C Callback Must Be a Literal Closure
+
+`FSEventStreamCreate` requires a C function pointer (`FSEventStreamCallback`). In Swift 6, only a literal closure or a global `func` can be converted to a C function pointer — a reference to an instance method or a stored closure cannot.
+
+**Rule:** Always define the FSEvents callback as an inline literal closure at the call site:
+
+```swift
+let callback: FSEventStreamCallback = { _, info, numEvents, eventPaths, eventFlags, _ in
+    guard let info else { return }
+    let watcher = Unmanaged<FileWatcher>.fromOpaque(info).takeUnretainedValue()
+    // ...
+}
+FSEventStreamCreate(nil, callback, &context, ...)
+```
+
+Pass `self` via `FSEventStreamContext.info` using `Unmanaged.passUnretained(self).toOpaque()`.
+
+### Pattern 5: Thread-Safe `final class` with `@unchecked Sendable` + `NSLock`
+
+When a `final class` needs to be `Sendable` but holds mutable state accessed from multiple threads (e.g., `FileWatcher` receiving FSEvents on the main run loop while being controlled from any context), use `@unchecked Sendable` with `NSLock`:
+
+```swift
+final class FileWatcher: @unchecked Sendable {
+    private let lock = NSLock()
+    private var mutableState: [URL: DispatchWorkItem] = [:]
+
+    func mutate() {
+        lock.withLock { mutableState[...] = ... }
+    }
+}
+```
+
+**Applies to:** Any class that bridges C callbacks or legacy APIs where actor isolation is not possible.
