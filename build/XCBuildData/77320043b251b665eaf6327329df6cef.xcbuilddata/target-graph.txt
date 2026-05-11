@@ -1,0 +1,18 @@
+Target dependency graph (8 targets)
+Target 'Noda' in project 'Noda'
+➜ Explicit dependency on target 'Yams' in project 'Yams'
+➜ Explicit dependency on target 'GRDB' in project 'GRDB'
+Target 'GRDB' in project 'GRDB'
+➜ Explicit dependency on target 'GRDB' in project 'GRDB'
+➜ Explicit dependency on target 'GRDB_GRDB' in project 'GRDB'
+Target 'GRDB' in project 'GRDB'
+➜ Explicit dependency on target 'GRDB_GRDB' in project 'GRDB'
+➜ Explicit dependency on target 'GRDBSQLite' in project 'GRDB'
+Target 'GRDBSQLite' in project 'GRDB' (no dependencies)
+Target 'GRDB_GRDB' in project 'GRDB' (no dependencies)
+Target 'Yams' in project 'Yams'
+➜ Explicit dependency on target 'Yams' in project 'Yams'
+➜ Explicit dependency on target 'CYaml' in project 'Yams'
+Target 'Yams' in project 'Yams'
+➜ Explicit dependency on target 'CYaml' in project 'Yams'
+Target 'CYaml' in project 'Yams' (no dependencies)

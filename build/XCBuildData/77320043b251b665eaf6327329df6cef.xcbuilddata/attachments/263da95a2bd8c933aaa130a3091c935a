@@ -1,0 +1,39 @@
+{
+  "" : {
+    "diagnostics" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/Noda-primary.dia",
+    "emit-module-dependencies" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/Noda-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/Noda-primary-emit-module.dia",
+    "pch" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/Noda-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/Noda-primary.swiftdeps"
+  },
+  "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/Noda/ContentView.swift" : {
+    "const-values" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/ContentView.d",
+    "diagnostics" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/ContentView.dia",
+    "index-unit-output-path" : "/Noda.build/Debug/Noda.build/Objects-normal/x86_64/ContentView.o",
+    "llvm-bc" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/ContentView.bc",
+    "object" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/ContentView.o",
+    "swift-dependencies" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/ContentView~partial.swiftmodule"
+  },
+  "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/Noda/NodaApp.swift" : {
+    "const-values" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/NodaApp.swiftconstvalues",
+    "dependencies" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/NodaApp.d",
+    "diagnostics" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/NodaApp.dia",
+    "index-unit-output-path" : "/Noda.build/Debug/Noda.build/Objects-normal/x86_64/NodaApp.o",
+    "llvm-bc" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/NodaApp.bc",
+    "object" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/NodaApp.o",
+    "swift-dependencies" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/NodaApp.swiftdeps",
+    "swiftmodule" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/NodaApp~partial.swiftmodule"
+  },
+  "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/Noda.build/Debug/Noda.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/burakbilgin/Documents/Kodlar/Xcode/Noda/build/Noda.build/Debug/Noda.build/Objects-normal/x86_64/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}
