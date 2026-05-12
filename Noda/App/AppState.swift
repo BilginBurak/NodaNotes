@@ -29,12 +29,15 @@ final class AppState: ObservableObject {
     let searchIndex = SearchIndex()
     let historyManager = HistoryManager()
     let trashManager = TrashManager()
+    lazy var syncEngine = SyncEngine(vaultManager: vaultManager)
 
     private lazy var noteWriter: NoteWriter = {
         var w = NoteWriter()
         w.snapshotter = historyManager
         return w
     }()
+
+    private var syncTimer: Timer?
 
     // MARK: - Filtered Notes
 
@@ -67,6 +70,34 @@ final class AppState: ObservableObject {
                 }
             }
             await scanVault(at: url)
+            // Listen for conflict notifications
+            NotificationCenter.default.addObserver(
+                forName: .conflictDetected,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                guard let meta = note.object as? ConflictMetadata else { return }
+                self?.conflicts.append(meta)
+            }
+            // Listen for sync status notifications
+            NotificationCenter.default.addObserver(
+                forName: .syncStatusChanged,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                guard let status = note.object as? SyncStatus else { return }
+                self?.syncStatus = status
+            }
+            // Listen for manual sync requests (⌘⇧S)
+            NotificationCenter.default.addObserver(
+                forName: .syncNowRequested,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.syncManually()
+            }
+            // Start interval timer if configured
+            startSyncTimerIfNeeded()
         } catch {
             NodaLogger.ui.error("Failed to open vault: \(error.localizedDescription)")
         }
@@ -172,6 +203,35 @@ final class AppState: ObservableObject {
                     remove(noteID: id)
                 }
             }
+        }
+    }
+
+    // MARK: - Sync
+
+    func syncManually() {
+        guard let serverURLString = UserDefaults.standard.string(forKey: "webdavServerURL"),
+              let serverURL = URL(string: serverURLString),
+              let host = serverURL.host,
+              let credential = try? KeychainManager().urlCredential(server: host)
+        else {
+            NodaLogger.sync.warning("Sync skipped — no WebDAV credentials configured")
+            return
+        }
+        Task {
+            let client = WebDAVClient(baseURL: serverURL, credential: credential)
+            let manifest = try? await vaultManager.loadManifest()
+            let deviceUUID = manifest?.deviceUUID ?? UUID()
+            try? await syncEngine.sync(client: client, deviceUUID: deviceUUID)
+        }
+    }
+
+    private func startSyncTimerIfNeeded() {
+        syncTimer?.invalidate()
+        let intervalMinutes = UserDefaults.standard.integer(forKey: "syncIntervalMinutes")
+        guard intervalMinutes > 0 else { return }
+        let interval = TimeInterval(intervalMinutes * 60)
+        syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.syncManually()
         }
     }
 

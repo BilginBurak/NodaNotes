@@ -15,12 +15,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let appState else { return .terminateNow }
 
         Task { @MainActor in
+            // Final sync if enabled
+            if UserDefaults.standard.bool(forKey: "syncOnQuit") {
+                appState.syncManually()
+                // Brief wait for sync to start
+                try? await Task.sleep(for: .seconds(1))
+            }
             await appState.closeVault()
             NodaLogger.ui.info("App terminating — vault closed")
             NSApplication.shared.reply(toApplicationShouldTerminate: true)
         }
 
-        // Defer termination until async cleanup completes
         return .terminateLater
     }
 

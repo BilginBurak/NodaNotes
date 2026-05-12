@@ -118,16 +118,34 @@ struct EditorContainerView: View {
 
     @ViewBuilder
     private var syncStatusIcon: some View {
+        Button {
+            appState.syncManually()
+        } label: {
+            switch appState.syncStatus {
+            case .idle:
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.secondary)
+            case .syncing:
+                ProgressView()
+                    .scaleEffect(0.7)
+            case .error:
+                Image(systemName: "exclamationmark.icloud")
+                    .foregroundStyle(.red)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(syncStatusHelp)
+        .disabled({
+            if case .syncing = appState.syncStatus { return true }
+            return false
+        }())
+    }
+
+    private var syncStatusHelp: String {
         switch appState.syncStatus {
-        case .idle:
-            Image(systemName: "checkmark.icloud")
-                .foregroundStyle(.secondary)
-        case .syncing:
-            ProgressView()
-                .scaleEffect(0.7)
-        case .error:
-            Image(systemName: "exclamationmark.icloud")
-                .foregroundStyle(.red)
+        case .idle:             return "Sync Now (⌘⇧S)"
+        case .syncing:          return "Syncing…"
+        case .error(let msg):   return "Sync error: \(msg)"
         }
     }
 

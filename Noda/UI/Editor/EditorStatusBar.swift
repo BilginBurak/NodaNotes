@@ -67,9 +67,11 @@ struct EditorStatusBar: View {
             EmptyView()
         case .syncing(let progress):
             HStack(spacing: 4) {
-                ProgressView(value: progress)
-                    .frame(width: 60)
-                Text("Syncing...")
+                if progress > 0 && progress < 1 {
+                    ProgressView(value: progress)
+                        .frame(width: 60)
+                }
+                Text("Syncing…")
             }
         case .error(let msg):
             Text("Sync error: \(msg)")

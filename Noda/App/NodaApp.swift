@@ -23,8 +23,8 @@ struct NodaApp: App {
         }
 
         Settings {
-            Text("Settings — coming soon")
-                .padding()
+            SettingsView()
+                .environmentObject(appState)
         }
     }
 }
