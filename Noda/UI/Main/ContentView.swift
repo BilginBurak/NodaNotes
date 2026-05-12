@@ -16,7 +16,14 @@ struct ContentView: View {
             NoteListView(selectedNote: $selectedNote)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
         } detail: {
-            EditorContainerView(note: $selectedNote)
+            switch sidebarSelection {
+            case .trash:
+                TrashView()
+            case .conflicts:
+                ConflictListView()
+            default:
+                EditorContainerView(note: $selectedNote)
+            }
         }
     }
 }
@@ -40,7 +47,7 @@ struct NoteListView: View {
                 NoteRowView(
                     note: note,
                     isSelected: selectedNote?.id == note.id,
-                    onMoveToTrash: { appState.remove(noteID: $0.id) }
+                    onMoveToTrash: { appState.moveToTrash($0) }
                 )
                 .tag(note)
             }

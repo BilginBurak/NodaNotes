@@ -18,12 +18,23 @@ final class AppState: ObservableObject {
     @Published var syncStatus: SyncStatus = .idle
     @Published var searchQuery: String = ""
     @Published var sortOrder: SortOrder = .lastModified
+    @Published var conflicts: [ConflictMetadata] = [] {
+        didSet { conflictCount = conflicts.count }
+    }
 
     // MARK: - Dependencies
 
     let vaultManager = VaultManager()
     let fileWatcher = FileWatcher()
     let searchIndex = SearchIndex()
+    let historyManager = HistoryManager()
+    let trashManager = TrashManager()
+
+    private lazy var noteWriter: NoteWriter = {
+        var w = NoteWriter()
+        w.snapshotter = historyManager
+        return w
+    }()
 
     // MARK: - Filtered Notes
 
@@ -88,6 +99,18 @@ final class AppState: ObservableObject {
         if selectedNote?.id == noteID { selectedNote = nil }
         searchIndex.removeNote(id: noteID)
         rebuildTags()
+    }
+
+    func moveToTrash(_ note: Note) {
+        guard let vaultURL else { return }
+        Task {
+            try? await trashManager.moveToTrash(note: note, vaultURL: vaultURL)
+            remove(noteID: note.id)
+        }
+    }
+
+    func removeConflict(id: UUID) {
+        conflicts.removeAll { $0.id == id }
     }
 
     // MARK: - Tag Filtering

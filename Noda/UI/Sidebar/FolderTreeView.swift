@@ -65,6 +65,11 @@ struct FolderTreeView: View {
         folderLabel(folder)
             .tag(SidebarSelection.folder(folder.url))
             .contextMenu { contextMenu(for: folder) }
+            .draggable(folder.url.path)
+            .dropDestination(for: String.self) { paths, _ in
+                moveItems(paths: paths, to: folder.url)
+                return true
+            }
     }
 
     @ViewBuilder
@@ -78,6 +83,11 @@ struct FolderTreeView: View {
             Label(folder.name, systemImage: "folder")
                 .tag(SidebarSelection.folder(folder.url))
                 .onTapGesture { selection = .folder(folder.url) }
+                .draggable(folder.url.path)
+                .dropDestination(for: String.self) { paths, _ in
+                    moveItems(paths: paths, to: folder.url)
+                    return true
+                }
         }
     }
 
@@ -91,7 +101,7 @@ struct FolderTreeView: View {
         Button("Delete", role: .destructive) { deleteFolder(folder) }
         Divider()
         Button("Show in Finder") {
-            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: folder.url.path)
+            NSWorkspace.shared.activateFileViewerSelecting([folder.url])
         }
     }
 
@@ -133,6 +143,16 @@ struct FolderTreeView: View {
                 // Show confirmation — recursive delete
                 try? await manager.deleteFolderRecursively(at: folder.url)
             } catch {}
+        }
+    }
+
+    private func moveItems(paths: [String], to destinationFolder: URL) {
+        for path in paths {
+            let source = URL(fileURLWithPath: path)
+            let destination = destinationFolder.appendingPathComponent(source.lastPathComponent)
+            guard source != destination,
+                  !destination.path.hasPrefix(source.path) else { continue } // prevent moving into self
+            Task { try? FileManager.default.moveItem(at: source, to: destination) }
         }
     }
 

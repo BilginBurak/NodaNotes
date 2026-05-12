@@ -57,9 +57,12 @@ struct SidebarView: View {
 
             // MARK: Bottom section
             Section {
-                Label("Conflicts", systemImage: "exclamationmark.triangle")
-                    .tag(SidebarSelection.conflicts)
-                    .badge(appState.conflictCount > 0 ? appState.conflictCount : 0)
+                HStack {
+                    Label("Conflicts", systemImage: "exclamationmark.triangle")
+                    Spacer()
+                    ConflictBadge(count: appState.conflictCount)
+                }
+                .tag(SidebarSelection.conflicts)
 
                 Label("Trash", systemImage: "trash")
                     .tag(SidebarSelection.trash)

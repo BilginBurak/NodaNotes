@@ -31,6 +31,7 @@ struct NoteRowView: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .contextMenu { contextMenu }
+        .draggable(note.filePath.path)
     }
 
     // MARK: - Context Menu
@@ -41,7 +42,7 @@ struct NoteRowView: View {
         Button("Move to Trash", role: .destructive) { onMoveToTrash?(note) }
         Divider()
         Button("Show in Finder") {
-            NSWorkspace.shared.selectFile(note.filePath.path, inFileViewerRootedAtPath: "")
+            NSWorkspace.shared.activateFileViewerSelecting([note.filePath])
         }
     }
 }

@@ -20,6 +20,7 @@ struct EditorContainerView: View {
     @State private var titleText: String = ""
     @State private var titleWarning: String? = nil
     @State private var saveTask: Task<Void, Never>? = nil
+    @State private var showHistory: Bool = false
 
     private let writer = NoteWriter()
 
@@ -34,6 +35,16 @@ struct EditorContainerView: View {
         }
         .onChange(of: note?.id) { syncTitleFromNote() }
         .onAppear { syncTitleFromNote() }
+        .sheet(isPresented: $showHistory) {
+            if let note {
+                NavigationStack {
+                    HistoryListView(note: note) {
+                        // Reload note after restore — FSEvents will pick it up
+                    }
+                }
+                .frame(minWidth: 600, minHeight: 400)
+            }
+        }
     }
 
     // MARK: - Tag Picker
@@ -88,6 +99,15 @@ struct EditorContainerView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 160)
+
+            // History button
+            Button {
+                showHistory = true
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+            }
+            .help("View History")
+            .disabled(note == nil)
 
             // Sync status icon
             syncStatusIcon
