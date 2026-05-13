@@ -117,63 +117,51 @@ enum MarkdownHighlighter {
     nonisolated(unsafe) static let blockquotePattern = try! NSRegularExpression(pattern: #"^> .+"#, options: .anchorsMatchLines)
 
     static func highlight(_ storage: NSTextStorage, font: NSFont) {
-        let fullRange = NSRange(location: 0, length: storage.length)
         let text = storage.string
+        guard !text.isEmpty else { return }
+        
+        let fullRange = NSRange(location: 0, length: storage.length)
 
         storage.beginEditing()
 
         // Reset to default
-        storage.addAttribute(.font, value: font, range: fullRange)
-        storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+        storage.setAttributes([
+            .font: font,
+            .foregroundColor: NSColor.labelColor
+        ], range: fullRange)
         storage.removeAttribute(.backgroundColor, range: fullRange)
 
-        // Headings — larger bold
-        apply(headingPattern, to: storage, text: text) { range in
-            let size = font.pointSize + 2
-            storage.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: size), range: range)
-        }
+        let patterns: [(NSRegularExpression, (NSRange) -> Void)] = [
+            (headingPattern, { range in
+                let size = font.pointSize + 2
+                storage.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: size), range: range)
+            }),
+            (boldPattern, { range in
+                storage.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: font.pointSize), range: range)
+            }),
+            (italicPattern, { range in
+                let italic = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+                storage.addAttribute(.font, value: italic, range: range)
+            }),
+            (codePattern, { range in
+                storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor, range: range)
+            }),
+            (linkPattern, { range in
+                storage.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+            }),
+            (blockquotePattern, { range in
+                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
+                let italic = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+                storage.addAttribute(.font, value: italic, range: range)
+            })
+        ]
 
-        // Bold
-        apply(boldPattern, to: storage, text: text) { range in
-            storage.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: font.pointSize), range: range)
-        }
-
-        // Italic
-        apply(italicPattern, to: storage, text: text) { range in
-            let italic = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
-            storage.addAttribute(.font, value: italic, range: range)
-        }
-
-        // Inline code — monospace + subtle background
-        apply(codePattern, to: storage, text: text) { range in
-            storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor, range: range)
-        }
-
-        // Links — blue
-        apply(linkPattern, to: storage, text: text) { range in
-            storage.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
-        }
-
-        // Blockquotes — gray italic
-        apply(blockquotePattern, to: storage, text: text) { range in
-            storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
-            let italic = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
-            storage.addAttribute(.font, value: italic, range: range)
+        for (pattern, apply) in patterns {
+            pattern.enumerateMatches(in: text, range: fullRange) { match, _, _ in
+                if let match { apply(match.range) }
+            }
         }
 
         storage.endEditing()
-    }
-
-    private static func apply(
-        _ pattern: NSRegularExpression,
-        to storage: NSTextStorage,
-        text: String,
-        attributes: (NSRange) -> Void
-    ) {
-        let range = NSRange(text.startIndex..., in: text)
-        pattern.enumerateMatches(in: text, range: range) { match, _, _ in
-            guard let match else { return }
-            attributes(match.range)
-        }
     }
 }

@@ -8,4 +8,5 @@ enum NodaLogger {
     nonisolated(unsafe) static let editor    = Logger(subsystem: "com.noda.app", category: "editor")
     nonisolated(unsafe) static let ui        = Logger(subsystem: "com.noda.app", category: "ui")
     nonisolated(unsafe) static let security  = Logger(subsystem: "com.noda.app", category: "security")
+    nonisolated(unsafe) static let search    = Logger(subsystem: "com.noda.app", category: "search")
 }

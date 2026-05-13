@@ -8,10 +8,10 @@ actor SyncQueue {
     private var operations: [SyncOperation] = []
     private let fileCoordinator = FileCoordinatorWrapper()
 
-    private nonisolated(unsafe) static let decoder: JSONDecoder = {
+    private static let decoder: JSONDecoder = {
         let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d
     }()
-    private nonisolated(unsafe) static let encoder: JSONEncoder = {
+    private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         e.outputFormatting = .prettyPrinted

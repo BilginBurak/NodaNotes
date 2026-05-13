@@ -34,9 +34,9 @@ final class FileWatcher: @unchecked Sendable {
 
     // MARK: - Config
 
-    private nonisolated(unsafe) static let latency: CFTimeInterval = 0.3
-    private nonisolated(unsafe) static let debounceInterval: TimeInterval = 0.5
-    private nonisolated(unsafe) static let ignoredPathComponents: Set<String> = [
+    private static let latency: CFTimeInterval = 0.3
+    private static let debounceInterval: TimeInterval = 0.5
+    private static let ignoredPathComponents: Set<String> = [
         ".noda/sync", ".noda/index.db"
     ]
 

@@ -17,7 +17,7 @@ actor WebDAVClient {
 
     private let baseURL: URL
     private let session: URLSession
-    private nonisolated(unsafe) static let maxRetries = 3
+    private static let maxRetries = 3
 
     init(baseURL: URL, credential: URLCredential) {
         self.baseURL = baseURL

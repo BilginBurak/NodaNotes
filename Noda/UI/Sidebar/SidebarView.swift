@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 
 // MARK: - SidebarSelection
@@ -18,6 +19,7 @@ struct SidebarView: View {
     @EnvironmentObject private var appState: AppState
     @Binding var selection: SidebarSelection?
     @State private var searchText = ""
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         List(selection: $selection) {
@@ -38,8 +40,9 @@ struct SidebarView: View {
                         .foregroundStyle(.secondary)
                     TextField("Search", text: $searchText)
                         .textFieldStyle(.plain)
+                        .focused($searchFocused)
                         .onSubmit { appState.searchQuery = searchText }
-                        .onChange(of: searchText) { appState.searchQuery = $1 }
+                        .onChange(of: searchText) { _, newValue in appState.searchQuery = newValue }
                 }
             }
 
@@ -76,15 +79,27 @@ struct SidebarView: View {
         .navigationTitle("Noda")
         .toolbar {
             SidebarToolbar(
-                onNewNote: { /* handled in ContentView */ },
+                onNewNote: {
+                    NotificationCenter.default.post(name: .createNoteRequest, object: nil)
+                },
                 onNewFolder: {
                     guard let folder = appState.vaultURL else { return }
                     Task {
-                        let manager = FolderManager()
-                        _ = try? await manager.createFolder(at: folder, name: "New Folder")
+                        do {
+                            let manager = FolderManager()
+                            try await manager.createFolder(at: folder, name: "New Folder")
+                        } catch {
+                            NodaLogger.ui.error("Folder creation failed: \(error.localizedDescription)")
+                            if let localizedError = error as? LocalizedError {
+                                appState.postError(localizedError)
+                            }
+                        }
                     }
                 }
             )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in
+            searchFocused = true
         }
     }
 }

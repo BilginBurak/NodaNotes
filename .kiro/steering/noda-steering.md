@@ -260,3 +260,47 @@ final class FileWatcher: @unchecked Sendable {
 ```
 
 **Applies to:** Any class that bridges C callbacks or legacy APIs where actor isolation is not possible.
+
+### Pattern 6: `import Combine` Required for `@Published` with `InferIsolatedConformances`
+
+The project enables `-enable-upcoming-feature InferIsolatedConformances`. This causes `@MainActor` class conformances to protocol (including `ObservableObject`) to become `@MainActor`-isolated. As a side effect, `@Published` property wrappers require an explicit `import Combine` — `import SwiftUI` alone is no longer sufficient to resolve `@Published` in this configuration.
+
+**Rule:** Any `@MainActor` class that uses `@Published` must explicitly import Combine:
+
+```swift
+import Combine
+import SwiftUI
+
+@MainActor
+final class AppState: ObservableObject {
+    @Published var notes: [Note] = []
+    // ...
+}
+```
+
+**Applies to:** All `ObservableObject` classes — `AppState`, any future view models.
+
+**Note:** `@preconcurrency ObservableObject` does NOT fix this; the correct fix is `import Combine`.
+284: 
+285: ### Pattern 7: Safe Notification Handling in MainActor Context
+286: 
+287: `NotificationCenter` observer closures are often non-isolated or `@Sendable`. Since `Notification` itself and its `object` property are not guaranteed to be `Sendable`, capturing them directly inside a `Task { @MainActor in ... }` block triggers Swift 6 data race warnings.
+288: 
+289: **Rule:** Always extract `Sendable` data (models, UUIDs, Enums) from the notification *before* entering the asynchronous `Task` block.
+290: 
+291: **Example:**
+292: ```swift
+293: NotificationCenter.default.addObserver(forName: .someEvent, object: nil, queue: .main) { notification in
+294:     // 1. Extract Sendable data outside the Task
+295:     let meta = notification.object as? ConflictMetadata 
+296:     
+297:     Task { @MainActor in
+298:         // 2. Use the captured Sendable value
+299:         if let meta {
+300:             self.conflicts.append(meta)
+301:         }
+302:     }
+303: }
+304: ```
+305: 
+306: **Applies to:** All `NotificationCenter` observers in `AppState`, `AppDelegate`, or View Models.

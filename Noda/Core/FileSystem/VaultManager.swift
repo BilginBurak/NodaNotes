@@ -8,7 +8,7 @@ actor VaultManager {
 
     // MARK: - Constants
 
-    private nonisolated(unsafe) static let bookmarkKey = "vaultBookmark"
+    private static let bookmarkKey = "vaultBookmark"
 
     // MARK: - State
 
@@ -142,15 +142,44 @@ actor VaultManager {
         vaultURL.appendingPathComponent(".noda/manifest.json")
     }
 
+    /// Performs a parallel scan of the vault for Markdown notes.
+    func scan(at url: URL) async throws -> [Note] {
+        let fm = FileManager.default
+        let reader = NoteReader()
+
+        // 1. Fast sequential URL collection
+        guard let enumerator = fm.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        let mdURLs = enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "md" }
+
+        // 2. Parallel note reading
+        return await withTaskGroup(of: Note?.self) { group in
+            for fileURL in mdURLs {
+                group.addTask {
+                    try? await reader.read(from: fileURL)
+                }
+            }
+            var results: [Note] = []
+            for await note in group {
+                if let note { results.append(note) }
+            }
+            return results
+        }
+    }
+
     // MARK: - JSON helpers
 
-    private nonisolated(unsafe) static let decoder: JSONDecoder = {
+    private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
     }()
 
-    private nonisolated(unsafe) static let encoder: JSONEncoder = {
+    private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         e.outputFormatting = .prettyPrinted

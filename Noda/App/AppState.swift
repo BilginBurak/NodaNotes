@@ -9,18 +9,30 @@ final class AppState: ObservableObject {
 
     // MARK: - Published
 
-    @Published var notes: [Note] = []
-    @Published var tags: [Tag] = []
-    @Published var selectedNote: Note?
-    @Published var selectedFolder: URL?
-    @Published var activeTagFilters: [String] = []
-    @Published var conflictCount: Int = 0
-    @Published var syncStatus: SyncStatus = .idle
-    @Published var searchQuery: String = ""
-    @Published var sortOrder: SortOrder = .lastModified
+    @Published var sortOrder: SortOrder = .lastModified {
+        didSet { updateFilteredNotes() }
+    }
+    @Published var searchQuery: String = "" {
+        didSet { updateFilteredNotes() }
+    }
+    @Published var selectedFolder: URL? {
+        didSet { updateFilteredNotes() }
+    }
+    @Published var activeTagFilters: [String] = [] {
+        didSet { updateFilteredNotes() }
+    }
+    @Published var notes: [Note] = [] {
+        didSet { updateFilteredNotes() }
+    }
     @Published var conflicts: [ConflictMetadata] = [] {
         didSet { conflictCount = conflicts.count }
     }
+    @Published var errorQueue: [PresentedError] = []
+    @Published var filteredNotes: [Note] = []
+    @Published var tags: [Tag] = []
+    @Published var selectedNote: Note?
+    @Published var conflictCount: Int = 0
+    @Published var syncStatus: SyncStatus = .idle
 
     // MARK: - Dependencies
 
@@ -39,13 +51,37 @@ final class AppState: ObservableObject {
 
     private var syncTimer: Timer?
 
-    // MARK: - Filtered Notes
+    // MARK: - Filtered Notes Update
 
-    var filteredNotes: [Note] {
-        if searchQuery.isEmpty && activeTagFilters.isEmpty {
-            return sortedNotes(notes)
+    private var filterTask: Task<Void, Never>?
+
+    func updateFilteredNotes() {
+        filterTask?.cancel()
+        filterTask = Task {
+            // Debounce
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            if Task.isCancelled { return }
+
+            var base = notes
+
+            // Filter by selected folder
+            if let folder = selectedFolder {
+                base = base.filter { $0.folderURL == folder }
+            }
+
+            let results: [Note]
+            if searchQuery.isEmpty && activeTagFilters.isEmpty {
+                results = sortedNotes(base)
+            } else {
+                let searched = await searchIndex.search(query: searchQuery, tagFilters: activeTagFilters)
+                let searchedIDs = Set(searched.map(\.id))
+                results = sortedNotes(base.filter { searchedIDs.contains($0.id) })
+            }
+
+            if !Task.isCancelled {
+                self.filteredNotes = results
+            }
         }
-        return sortedNotes(searchIndex.search(query: searchQuery, tagFilters: activeTagFilters))
     }
 
     private func sortedNotes(_ input: [Note]) -> [Note] {
@@ -64,6 +100,7 @@ final class AppState: ObservableObject {
         do {
             let url = try await vaultManager.openVault()
             vaultURL = url
+            searchIndex.connect(vaultURL: url)
             fileWatcher.start(vaultURL: url) { [weak self] events in
                 Task { @MainActor [weak self] in
                     self?.handleFileEvents(events)
@@ -75,18 +112,26 @@ final class AppState: ObservableObject {
                 forName: .conflictDetected,
                 object: nil,
                 queue: .main
-            ) { [weak self] note in
-                guard let meta = note.object as? ConflictMetadata else { return }
-                self?.conflicts.append(meta)
+            ) { [weak self] notification in
+                let meta = notification.object as? ConflictMetadata
+                Task { @MainActor in
+                    if let meta {
+                        self?.conflicts.append(meta)
+                    }
+                }
             }
             // Listen for sync status notifications
             NotificationCenter.default.addObserver(
                 forName: .syncStatusChanged,
                 object: nil,
                 queue: .main
-            ) { [weak self] note in
-                guard let status = note.object as? SyncStatus else { return }
-                self?.syncStatus = status
+            ) { [weak self] notification in
+                let status = notification.object as? SyncStatus
+                Task { @MainActor in
+                    if let status {
+                        self?.syncStatus = status
+                    }
+                }
             }
             // Listen for manual sync requests (⌘⇧S)
             NotificationCenter.default.addObserver(
@@ -94,12 +139,19 @@ final class AppState: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.syncManually()
+                Task { @MainActor in
+                    self?.syncManually()
+                }
             }
             // Start interval timer if configured
             startSyncTimerIfNeeded()
         } catch {
             NodaLogger.ui.error("Failed to open vault: \(error.localizedDescription)")
+            if let localizedError = error as? LocalizedError {
+                postError(localizedError) { [weak self] in
+                    Task { await self?.openVault() }
+                }
+            }
         }
     }
 
@@ -135,13 +187,74 @@ final class AppState: ObservableObject {
     func moveToTrash(_ note: Note) {
         guard let vaultURL else { return }
         Task {
-            try? await trashManager.moveToTrash(note: note, vaultURL: vaultURL)
-            remove(noteID: note.id)
+            do {
+                try await trashManager.moveToTrash(note: note, vaultURL: vaultURL)
+                remove(noteID: note.id)
+            } catch {
+                NodaLogger.ui.error("Move to trash failed: \(error.localizedDescription)")
+                if let localizedError = error as? LocalizedError {
+                    postError(localizedError)
+                }
+            }
+        }
+    }
+
+    // MARK: - Create Note
+
+    func createNote() {
+        guard let vaultURL else { return }
+        let folder = selectedFolder ?? vaultURL
+        let dateStr = ISO8601DateFormatter().string(from: Date()).prefix(10)
+        let baseName = "Untitled_\(dateStr)"
+        // Find a unique filename
+        var name = baseName
+        var counter = 1
+        while FileManager.default.fileExists(atPath: folder.appendingPathComponent("\(name).md").path) {
+            name = "\(baseName)_\(counter)"
+            counter += 1
+        }
+        let fileURL = folder.appendingPathComponent("\(name).md")
+        let note = Note(
+            id: UUID(),
+            title: name,
+            content: "",
+            tags: [],
+            status: .active,
+            created: Date(),
+            updated: Date(),
+            filePath: fileURL
+        )
+        Task {
+            do {
+                try await noteWriter.write(note)
+                addOrUpdate(note)
+                selectedNote = note
+            } catch {
+                NodaLogger.ui.error("Create note failed: \(error.localizedDescription)")
+                if let localizedError = error as? LocalizedError {
+                    postError(localizedError)
+                }
+            }
         }
     }
 
     func removeConflict(id: UUID) {
         conflicts.removeAll { $0.id == id }
+    }
+
+    func postError(_ error: any LocalizedError, retry: (@MainActor () -> Void)? = nil) {
+        let newError = PresentedError(
+            message: error.errorDescription ?? error.localizedDescription,
+            suggestion: error.recoverySuggestion,
+            retry: retry
+        )
+        errorQueue.append(newError)
+    }
+
+    func dismissCurrentError() {
+        if !errorQueue.isEmpty {
+            errorQueue.removeFirst()
+        }
     }
 
     // MARK: - Tag Filtering
@@ -163,28 +276,15 @@ final class AppState: ObservableObject {
     // MARK: - Private
 
     private func scanVault(at url: URL) async {
-        let reader = NoteReader()
-        // Collect URLs synchronously, then read async
-        let mdURLs: [URL] = {
-            let fm = FileManager.default
-            guard let enumerator = fm.enumerator(
-                at: url,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            ) else { return [] }
-            return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "md" }
-        }()
-
-        var scanned: [Note] = []
-        for fileURL in mdURLs {
-            if let note = try? await reader.read(from: fileURL) {
-                scanned.append(note)
-            }
+        do {
+            let scanned = try await vaultManager.scan(at: url)
+            notes = scanned
+            searchIndex.rebuild(from: scanned)
+            rebuildTags()
+            NodaLogger.ui.info("Vault scanned: \(scanned.count) notes")
+        } catch {
+            NodaLogger.ui.error("Vault scan failed: \(error.localizedDescription)")
         }
-        notes = scanned
-        searchIndex.rebuild(from: scanned)
-        rebuildTags()
-        NodaLogger.ui.info("Vault scanned: \(scanned.count) notes")
     }
 
     private func handleFileEvents(_ events: [FileEvent]) {
@@ -194,8 +294,13 @@ final class AppState: ObservableObject {
             switch event.type {
             case .created, .modified, .renamed:
                 Task {
-                    if let note = try? await reader.read(from: event.url) {
-                        addOrUpdate(note)
+                    do {
+                        let note = try await reader.read(from: event.url)
+                        await MainActor.run {
+                            addOrUpdate(note)
+                        }
+                    } catch {
+                        NodaLogger.fileSystem.error("File event handling failed: \(error.localizedDescription)")
                     }
                 }
             case .removed:
@@ -218,10 +323,19 @@ final class AppState: ObservableObject {
             return
         }
         Task {
-            let client = WebDAVClient(baseURL: serverURL, credential: credential)
-            let manifest = try? await vaultManager.loadManifest()
-            let deviceUUID = manifest?.deviceUUID ?? UUID()
-            try? await syncEngine.sync(client: client, deviceUUID: deviceUUID)
+            do {
+                let client = WebDAVClient(baseURL: serverURL, credential: credential)
+                let manifest = try await vaultManager.loadManifest()
+                let deviceUUID = manifest.deviceUUID
+                try await syncEngine.sync(client: client, deviceUUID: deviceUUID)
+            } catch {
+                NodaLogger.sync.error("Manual sync failed: \(error.localizedDescription)")
+                if let localizedError = error as? LocalizedError {
+                    postError(localizedError) { [weak self] in
+                        self?.syncManually()
+                    }
+                }
+            }
         }
     }
 
@@ -231,7 +345,9 @@ final class AppState: ObservableObject {
         guard intervalMinutes > 0 else { return }
         let interval = TimeInterval(intervalMinutes * 60)
         syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.syncManually()
+            Task { @MainActor in
+                self?.syncManually()
+            }
         }
     }
 
@@ -251,4 +367,21 @@ enum SyncStatus: Sendable {
     case idle
     case syncing(progress: Double)
     case error(String)
+}
+
+// MARK: - PresentedError
+
+struct PresentedError: Identifiable {
+    let id = UUID()
+    let message: String
+    let suggestion: String?
+    let retry: (@MainActor () -> Void)?
+}
+
+// MARK: - Notification.Name
+
+extension Notification.Name {
+    static let createNoteRequest = Notification.Name("com.noda.createNoteRequest")
+    static let focusSearch       = Notification.Name("com.noda.focusSearch")
+    static let saveNoteRequest   = Notification.Name("com.noda.saveNoteRequest")
 }

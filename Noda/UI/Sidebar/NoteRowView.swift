@@ -2,12 +2,20 @@ import SwiftUI
 
 // MARK: - NoteRowView
 
-struct NoteRowView: View {
+struct NoteRowView: View, Equatable {
 
     let note: Note
     let isSelected: Bool
     var onRename: ((Note) -> Void)? = nil
     var onMoveToTrash: ((Note) -> Void)? = nil
+
+    static func == (lhs: NoteRowView, rhs: NoteRowView) -> Bool {
+        lhs.isSelected == rhs.isSelected &&
+        lhs.note.id == rhs.note.id &&
+        lhs.note.updated == rhs.note.updated &&
+        lhs.note.title == rhs.note.title &&
+        lhs.note.tags == rhs.note.tags
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -16,13 +24,12 @@ struct NoteRowView: View {
                 .lineLimit(1)
 
             HStack(spacing: 4) {
-                Text(note.updated, style: .relative)
+                Text(note.updated, formatter: Self.dateFormatter)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
-                // Max 3 tag badges
                 ForEach(note.tags.prefix(3), id: \.self) { tag in
                     TagBadge(tagName: tag)
                 }
@@ -33,6 +40,14 @@ struct NoteRowView: View {
         .contextMenu { contextMenu }
         .draggable(note.filePath.path)
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        f.doesRelativeDateFormatting = true
+        return f
+    }()
 
     // MARK: - Context Menu
 

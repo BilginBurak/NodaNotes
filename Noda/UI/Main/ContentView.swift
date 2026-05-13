@@ -6,14 +6,13 @@ struct ContentView: View {
 
     @EnvironmentObject private var appState: AppState
     @State private var sidebarSelection: SidebarSelection? = .allNotes
-    @State private var selectedNote: Note? = nil
 
     var body: some View {
         NavigationSplitView {
             SidebarView(selection: $sidebarSelection)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } content: {
-            NoteListView(selectedNote: $selectedNote)
+            NoteListView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
         } detail: {
             switch sidebarSelection {
@@ -22,9 +21,23 @@ struct ContentView: View {
             case .conflicts:
                 ConflictListView()
             default:
-                EditorContainerView(note: $selectedNote)
+                EditorContainerView()
             }
         }
+        .onChange(of: sidebarSelection) { _, newSelection in
+            // Update selectedFolder in appState when sidebar folder changes
+            if case .folder(let url) = newSelection {
+                appState.selectedFolder = url
+            } else if case .allNotes = newSelection {
+                appState.selectedFolder = nil
+            } else if case .recent = newSelection {
+                appState.selectedFolder = nil
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .createNoteRequest)) { _ in
+            appState.createNote()
+        }
+        .errorAlertOverlay()
     }
 }
 
@@ -33,7 +46,6 @@ struct ContentView: View {
 struct NoteListView: View {
 
     @EnvironmentObject private var appState: AppState
-    @Binding var selectedNote: Note?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,12 +55,13 @@ struct NoteListView: View {
                 Divider()
             }
 
-            List(appState.filteredNotes, selection: $selectedNote) { note in
+            List(appState.filteredNotes, selection: $appState.selectedNote) { note in
                 NoteRowView(
                     note: note,
-                    isSelected: selectedNote?.id == note.id,
+                    isSelected: appState.selectedNote?.id == note.id,
                     onMoveToTrash: { appState.moveToTrash($0) }
                 )
+                .equatable()
                 .tag(note)
             }
         }
