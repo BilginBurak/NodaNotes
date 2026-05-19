@@ -22,7 +22,31 @@ final class AppState: ObservableObject {
         didSet { updateFilteredNotes() }
     }
     @Published var notes: [Note] = [] {
-        didSet { updateFilteredNotes() }
+        didSet {
+            // Defer to avoid "Publishing changes from within view updates" warnings
+            Task { @MainActor [weak self] in
+                self?.updateFilteredNotes()
+                self?.refreshSelectedNote()
+            }
+        }
+    }
+    @Published var fsVersion: Int = 0
+    @Published var isNavigationLocked: Bool = false
+    @Published var lastSyncSummary: String? = nil
+    @Published var lastSyncOperations: [SyncOperation] = []
+
+    private func refreshSelectedNote() {
+        guard let current = selectedNote,
+              let updated = notes.first(where: { $0.id == current.id }) else { return }
+        // Only update if something changed to avoid redundant refreshes
+        if updated.updated != current.updated || 
+           updated.content != current.content || 
+           updated.title != current.title ||
+           updated.filePath != current.filePath {
+            Task { @MainActor in
+                self.selectedNote = updated
+            }
+        }
     }
     @Published var conflicts: [ConflictMetadata] = [] {
         didSet { conflictCount = conflicts.count }
@@ -126,10 +150,16 @@ final class AppState: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                let status = notification.object as? SyncStatus
+                let status  = notification.object as? SyncStatus
+                let summary = notification.userInfo?["summary"] as? String
+                let operations = notification.userInfo?["operations"] as? [SyncOperation]
                 Task { @MainActor in
                     if let status {
                         self?.syncStatus = status
+                        if case .idle = status {
+                            if let s = summary { self?.lastSyncSummary = s }
+                            if let ops = operations { self?.lastSyncOperations = ops }
+                        }
                     }
                 }
             }
@@ -173,6 +203,10 @@ final class AppState: ObservableObject {
         } else {
             notes.append(note)
         }
+        // Update selectedNote if it's the one being modified
+        if selectedNote?.id == note.id {
+            selectedNote = note
+        }
         searchIndex.indexNote(note)
         rebuildTags()
     }
@@ -186,10 +220,12 @@ final class AppState: ObservableObject {
 
     func moveToTrash(_ note: Note) {
         guard let vaultURL else { return }
+        // Immediate UI update
+        remove(noteID: note.id)
+
         Task {
             do {
                 try await trashManager.moveToTrash(note: note, vaultURL: vaultURL)
-                remove(noteID: note.id)
             } catch {
                 NodaLogger.ui.error("Move to trash failed: \(error.localizedDescription)")
                 if let localizedError = error as? LocalizedError {
@@ -289,18 +325,33 @@ final class AppState: ObservableObject {
 
     private func handleFileEvents(_ events: [FileEvent]) {
         let reader = NoteReader()
+        var needsRefresh = false
+        
         for event in events {
-            guard event.url.pathExtension == "md" else { continue }
+            // Folders or .md files trigger fsVersion increment
+            let isMD = event.url.pathExtension == "md"
+            let isDir = (try? event.url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            
+            if isMD || isDir {
+                needsRefresh = true
+            }
+
+            guard isMD else { continue }
+            
             switch event.type {
             case .created, .modified, .renamed:
                 Task {
+                    guard FileManager.default.fileExists(atPath: event.url.path) else { return }
                     do {
                         let note = try await reader.read(from: event.url)
                         await MainActor.run {
                             addOrUpdate(note)
                         }
                     } catch {
-                        NodaLogger.fileSystem.error("File event handling failed: \(error.localizedDescription)")
+                        // Only log if it's not a race condition where file was deleted/moved again
+                        if FileManager.default.fileExists(atPath: event.url.path) {
+                            NodaLogger.fileSystem.error("File event handling failed: \(error.localizedDescription)")
+                        }
                     }
                 }
             case .removed:
@@ -308,6 +359,10 @@ final class AppState: ObservableObject {
                     remove(noteID: id)
                 }
             }
+        }
+        
+        if needsRefresh {
+            fsVersion += 1
         }
     }
 
@@ -363,9 +418,9 @@ final class AppState: ObservableObject {
 
 // MARK: - SyncStatus
 
-enum SyncStatus: Sendable {
+enum SyncStatus: Sendable, Equatable {
     case idle
-    case syncing(progress: Double)
+    case syncing(progress: Double, detail: String)
     case error(String)
 }
 

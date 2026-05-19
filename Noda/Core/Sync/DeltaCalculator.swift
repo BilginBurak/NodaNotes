@@ -13,7 +13,8 @@ struct LocalItem: Sendable {
 enum SyncOperation: Sendable, Equatable {
     case upload(path: String)
     case download(path: String)
-    case delete(path: String)
+    case deleteRemote(path: String)
+    case deleteLocal(path: String)
     case makeDirectory(path: String)
     case conflict(localPath: String, remotePath: String)
 }
@@ -97,19 +98,29 @@ struct DeltaCalculator: Sendable {
 
             switch (loc, rem) {
             case (let l?, nil):
-                // Only local — upload
-                ops.append(.upload(path: path))
-                _ = l
+                if known != nil {
+                    // Exists locally and in state, but NOT on remote -> Remote deleted it
+                    ops.append(.deleteLocal(path: path))
+                } else {
+                    // Exists locally, but not on remote or in state -> New local file
+                    ops.append(.upload(path: path))
+                }
 
-            case (nil, _):
-                // Only remote — download
-                ops.append(.download(path: path))
+            case (nil, let r?):
+                if known != nil {
+                    // Exists on remote and in state, but NOT locally -> Local deleted it
+                    ops.append(.deleteRemote(path: path))
+                } else {
+                    // Exists on remote, but not locally or in state -> New remote file
+                    ops.append(.download(path: path))
+                }
 
             case (let l?, let r?):
                 // Both exist — compare
                 if let known {
-                    let localChanged  = l.lastModified > known.lastModified || l.size != known.size
-                    let remoteChanged = r.lastModified > known.lastModified || r.size != known.size
+                    let localChanged  = abs(l.lastModified.timeIntervalSince(known.lastModified)) > 1.0 || l.size != known.size
+                    let remoteChanged = abs(r.lastModified.timeIntervalSince(known.lastModified)) > 1.0 || r.size != known.size
+                    
                     switch (localChanged, remoteChanged) {
                     case (true, true):   ops.append(.conflict(localPath: path, remotePath: path))
                     case (true, false):  ops.append(.upload(path: path))
@@ -118,15 +129,18 @@ struct DeltaCalculator: Sendable {
                     }
                 } else {
                     // No prior state — use timestamps
-                    if l.lastModified > r.lastModified {
+                    let diff = l.lastModified.timeIntervalSince(r.lastModified)
+                    if diff > 1.0 {
                         ops.append(.upload(path: path))
-                    } else if r.lastModified > l.lastModified {
+                    } else if diff < -1.0 {
                         ops.append(.download(path: path))
                     } else if l.size != r.size {
                         ops.append(.upload(path: path))
                     }
-                    // Equal lastModified + equal size → skip
+                    // Equal within 1s tolerance + equal size → skip
                 }
+            case (nil, nil):
+                break // Should not happen
             }
         }
 
@@ -145,9 +159,10 @@ struct DeltaCalculator: Sendable {
             switch $0 {
             case .upload:        return 0
             case .download:      return 1
-            case .delete:        return 2
-            case .makeDirectory: return 3
-            case .conflict:      return 4
+            case .deleteRemote:  return 2
+            case .deleteLocal:   return 3
+            case .makeDirectory: return 4
+            case .conflict:      return 5
             }
         }
         return ops.sorted { order($0) < order($1) }

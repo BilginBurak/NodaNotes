@@ -18,12 +18,15 @@ struct NoteWriter: Sendable {
 
     // MARK: - Public
 
-    nonisolated func write(_ note: Note) async throws {
+    nonisolated func write(_ note: Note) async throws -> Note {
         // 1. Snapshot before write
         try await snapshotter?.snapshot(note: note)
 
         // 2. Build file content
-        let content = try buildFileContent(for: note)
+        var updated = note
+        updated.updated = Date()
+        
+        let content = try buildFileContent(for: updated)
         guard let data = content.data(using: .utf8) else {
             throw NoteWriterError.encodingFailed(note.filePath)
         }
@@ -31,25 +34,24 @@ struct NoteWriter: Sendable {
         // 3. Atomic write via temp file
         try await atomicWrite(data: data, to: note.filePath)
         NodaLogger.fileSystem.info("Note written: \(note.filePath.lastPathComponent, privacy: .private)")
+        
+        return updated
     }
 
     // MARK: - Private
 
     private nonisolated func buildFileContent(for note: Note) throws -> String {
-        var updated = note
-        updated.updated = Date()
-
         let frontmatter: [String: Any] = [
-            "id":      updated.id.uuidString,
-            "title":   updated.title,
-            "created": ISO8601DateFormatter().string(from: updated.created),
-            "updated": ISO8601DateFormatter().string(from: updated.updated),
-            "tags":    updated.tags,
-            "status":  updated.status.rawValue
+            "id":      note.id.uuidString,
+            "title":   note.title,
+            "created": ISO8601DateFormatter().string(from: note.created),
+            "updated": ISO8601DateFormatter().string(from: note.updated),
+            "tags":    note.tags,
+            "status":  note.status.rawValue
         ]
 
         let yaml = try Yams.dump(object: frontmatter)
-        return "---\n\(yaml)---\n\(updated.content)"
+        return "---\n\(yaml)---\n\(note.content)"
     }
 
     private nonisolated func atomicWrite(data: Data, to url: URL) async throws {

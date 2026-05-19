@@ -80,9 +80,10 @@ actor SyncQueue {
         switch op {
         case .upload:        return 0
         case .download:      return 1
-        case .delete:        return 2
-        case .makeDirectory: return 3
-        case .conflict:      return 4
+        case .deleteRemote:  return 2
+        case .deleteLocal:   return 3
+        case .makeDirectory: return 4
+        case .conflict:      return 5
         }
     }
 
@@ -104,7 +105,8 @@ private nonisolated func makeCodable(_ op: SyncOperation) -> CodableSyncOperatio
     switch op {
     case .upload(let p):            return .init(type: "upload",        path: p,  remotePath: nil)
     case .download(let p):          return .init(type: "download",      path: p,  remotePath: nil)
-    case .delete(let p):            return .init(type: "delete",        path: p,  remotePath: nil)
+    case .deleteRemote(let p):      return .init(type: "deleteRemote",  path: p,  remotePath: nil)
+    case .deleteLocal(let p):       return .init(type: "deleteLocal",   path: p,  remotePath: nil)
     case .makeDirectory(let p):     return .init(type: "makeDirectory", path: p,  remotePath: nil)
     case .conflict(let lp, let rp): return .init(type: "conflict",      path: lp, remotePath: rp)
     }
@@ -114,7 +116,8 @@ private nonisolated func fromCodable(_ c: CodableSyncOperation) -> SyncOperation
     switch c.type {
     case "upload":        return .upload(path: c.path)
     case "download":      return .download(path: c.path)
-    case "delete":        return .delete(path: c.path)
+    case "deleteRemote":  return .deleteRemote(path: c.path)
+    case "deleteLocal":   return .deleteLocal(path: c.path)
     case "makeDirectory": return .makeDirectory(path: c.path)
     case "conflict":      return c.remotePath.map { .conflict(localPath: c.path, remotePath: $0) }
     default:              return nil

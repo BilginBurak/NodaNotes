@@ -41,17 +41,17 @@ actor SyncEngine {
             throw SyncError.noVault
         }
 
-        await notifyUI(.syncing(progress: 0))
+        await notifyUI(.syncing(progress: 0, detail: "Bağlanıyor..."))
         NodaLogger.sync.info("Sync started")
 
         do {
             // 1. Build remote tree
             let remoteItems = try await treeBuilder.buildTree(rootPath: "", client: client)
-            await notifyUI(.syncing(progress: 0.2))
+            await notifyUI(.syncing(progress: 0.2, detail: "Uzak sunucu taranıyor..."))
 
             // 2. Scan local vault
             let localItems = scanLocal(vaultURL: vaultURL)
-            await notifyUI(.syncing(progress: 0.4))
+            await notifyUI(.syncing(progress: 0.4, detail: "Yerel dosyalar taranıyor..."))
 
             // 3. Load remote state
             let remoteState = try await statePersistence.load(vaultURL: vaultURL)
@@ -62,7 +62,19 @@ actor SyncEngine {
                 remote: remoteItems,
                 remoteState: remoteState
             )
-            await notifyUI(.syncing(progress: 0.5))
+            await notifyUI(.syncing(progress: 0.5, detail: "Değişiklikler hesaplanıyor..."))
+
+            // Count operation types for summary
+            var uploadCount = 0, downloadCount = 0, deleteCount = 0, conflictCount = 0
+            for op in operations {
+                switch op {
+                case .upload:        uploadCount   += 1
+                case .download:      downloadCount += 1
+                case .deleteRemote, .deleteLocal: deleteCount += 1
+                case .conflict:      conflictCount += 1
+                default: break
+                }
+            }
 
             // 5. Resolve conflicts
             let conflicts = operations.filter { if case .conflict = $0 { return true }; return false }
@@ -78,7 +90,7 @@ actor SyncEngine {
             // 6. Enqueue non-conflict operations
             let pending = operations.filter { if case .conflict = $0 { return false }; return true }
             await queue.enqueue(pending)
-            await notifyUI(.syncing(progress: 0.6))
+            await notifyUI(.syncing(progress: 0.6, detail: "İşlemler sıraya alınıyor..."))
 
             // 7. Execute queue (max 3 concurrent)
             var updatedState = remoteState
@@ -94,11 +106,19 @@ actor SyncEngine {
             try await statePersistence.save(updatedState, vaultURL: vaultURL)
             try await queue.clear(vaultURL: vaultURL)
 
-            await notifyUI(.idle)
+            // Build human-readable summary
+            var parts: [String] = []
+            if uploadCount   > 0 { parts.append("↑ \(uploadCount) yüklendi") }
+            if downloadCount > 0 { parts.append("↓ \(downloadCount) indirildi") }
+            if deleteCount   > 0 { parts.append("✕ \(deleteCount) silindi") }
+            if conflictCount > 0 { parts.append("⚠ \(conflictCount) çakışma") }
+            let summary = parts.isEmpty ? "Değişiklik yok — her şey güncel." : parts.joined(separator: "  ·  ")
+
+            await notifyUI(.idle, summary: summary, operations: operations)
             NodaLogger.sync.info("Sync completed: \(operations.count) operations")
 
         } catch {
-            await notifyUI(.error(error.localizedDescription))
+            await notifyUI(.error(error.localizedDescription), summary: nil)
             NodaLogger.sync.error("Sync failed: \(error.localizedDescription)")
             throw error
         }
@@ -177,8 +197,13 @@ actor SyncEngine {
                         }
                         return (path, remoteMap[path])
 
-                    case .delete(let path):
+                    case .deleteRemote(let path):
                         try await client.delete(path: path)
+                        return (path, nil)
+
+                    case .deleteLocal(let path):
+                        let localURL = vaultURL.appendingPathComponent(path)
+                        try? FileManager.default.removeItem(at: localURL)
                         return (path, nil)
 
                     case .makeDirectory(let path):
@@ -198,7 +223,8 @@ actor SyncEngine {
                 completed += 1
                 if let item { statePersistence.update(&state, with: item) }
                 let progress = 0.6 + (Double(completed) / Double(max(total, 1))) * 0.4
-                await notifyUI(.syncing(progress: progress))
+                let fileName = URL(fileURLWithPath: path).lastPathComponent
+                await notifyUI(.syncing(progress: progress, detail: "İşlendi: \(fileName)"))
                 addNext()
             }
         }
@@ -208,30 +234,73 @@ actor SyncEngine {
 
     private func scanLocal(vaultURL: URL) -> [LocalItem] {
         let fm = FileManager.default
+        let ud = UserDefaults.standard
+        
+        let syncNotes = ud.bool(forKey: "syncNotes")
+        let syncHistory = ud.bool(forKey: "syncHistory")
+        let syncTrash = ud.bool(forKey: "syncTrash")
+        let syncConflicts = ud.bool(forKey: "syncConflicts")
+        let syncAttachments = ud.bool(forKey: "syncAttachments")
+
         guard let enumerator = fm.enumerator(
             at: vaultURL,
-            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey],
+            options: [] // Don't skip hidden files because we need .noda/
         ) else { return [] }
 
         return enumerator.compactMap { element -> LocalItem? in
             guard let url = element as? URL,
-                  url.pathExtension == "md",
-                  let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+                  let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey]),
                   let modified = values.contentModificationDate,
-                  let size = values.fileSize else { return nil }
-            let relative = url.path.replacingOccurrences(of: vaultURL.path + "/", with: "")
-            return LocalItem(path: relative, lastModified: modified, size: Int64(size))
+                  let size = values.fileSize,
+                  let isDir = values.isDirectory else { return nil }
+            
+            let path = url.path
+            let relative = path.replacingOccurrences(of: vaultURL.path + "/", with: "")
+            
+            // Exclusions
+            if relative.contains(".noda/sync") || relative.contains(".noda/index.db") { return nil }
+            if url.lastPathComponent.hasPrefix("._") { return nil } // macOS metadata
+            if isDir { return nil } // Only sync files
+
+            // Sync Scope Filtering
+            if relative == ".noda/manifest.json" {
+                return LocalItem(path: relative, lastModified: modified, size: Int64(size))
+            }
+            
+            if relative.hasPrefix(".noda/history/") {
+                return syncHistory ? LocalItem(path: relative, lastModified: modified, size: Int64(size)) : nil
+            }
+            if relative.hasPrefix(".noda/trash/") {
+                return syncTrash ? LocalItem(path: relative, lastModified: modified, size: Int64(size)) : nil
+            }
+            if relative.hasPrefix(".noda/conflicts/") {
+                return syncConflicts ? LocalItem(path: relative, lastModified: modified, size: Int64(size)) : nil
+            }
+            if relative.hasPrefix(".noda/attachments/") {
+                return syncAttachments ? LocalItem(path: relative, lastModified: modified, size: Int64(size)) : nil
+            }
+            
+            // Default: Notes (Markdown files)
+            if url.pathExtension == "md" {
+                return syncNotes ? LocalItem(path: relative, lastModified: modified, size: Int64(size)) : nil
+            }
+            
+            return nil
         }
     }
 
     // MARK: - UI Notification
 
-    private func notifyUI(_ status: SyncStatus) async {
+    private func notifyUI(_ status: SyncStatus, summary: String? = nil, operations: [SyncOperation]? = nil) async {
         await MainActor.run {
+            var userInfo: [AnyHashable: Any] = [:]
+            if let summary { userInfo["summary"] = summary }
+            if let operations { userInfo["operations"] = operations }
             NotificationCenter.default.post(
                 name: .syncStatusChanged,
-                object: status
+                object: status,
+                userInfo: userInfo.isEmpty ? nil : userInfo
             )
         }
     }

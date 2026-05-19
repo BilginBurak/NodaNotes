@@ -35,10 +35,10 @@ struct NoteRowView: View, Equatable {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .contextMenu { contextMenu }
-        .draggable(note.filePath.path)
     }
 
     private static let dateFormatter: DateFormatter = {

@@ -20,6 +20,9 @@ struct SidebarToolbar: ToolbarContent {
             }
             .help("New Folder")
 
+            // Sync button
+            syncButton
+
             Menu {
                 Button("Last Modified") { appState.sortOrder = .lastModified }
                 Button("Title") { appState.sortOrder = .title }
@@ -28,6 +31,32 @@ struct SidebarToolbar: ToolbarContent {
                 Label("Sort", systemImage: "arrow.up.arrow.down")
             }
             .help("Sort Notes")
+        }
+    }
+
+    @ViewBuilder
+    private var syncButton: some View {
+        Button {
+            appState.syncManually()
+        } label: {
+            switch appState.syncStatus {
+            case .idle:
+                Image(systemName: "arrow.triangle.2.circlepath")
+            case .syncing:
+                ProgressView().scaleEffect(0.7).frame(width: 16, height: 16)
+            case .error:
+                Image(systemName: "exclamationmark.icloud").foregroundStyle(.red)
+            }
+        }
+        .help(syncHelp)
+        .disabled({ if case .syncing = appState.syncStatus { return true }; return false }())
+    }
+
+    private var syncHelp: String {
+        switch appState.syncStatus {
+        case .idle:           return "Sync Now (⌘⇧S)"
+        case .syncing:        return "Syncing…"
+        case .error(let m):   return "Sync error: \(m)"
         }
     }
 }

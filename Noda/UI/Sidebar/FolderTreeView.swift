@@ -3,13 +3,13 @@ import SwiftUI
 // MARK: - FolderItem
 
 struct FolderItem: Identifiable, Hashable {
-    let id: URL
+    let id: String
     let url: URL
     let name: String
     var children: [FolderItem]
 
-    static func == (lhs: FolderItem, rhs: FolderItem) -> Bool { lhs.url == rhs.url }
-    func hash(into hasher: inout Hasher) { hasher.combine(url) }
+    static func == (lhs: FolderItem, rhs: FolderItem) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
 // MARK: - FolderTreeView
@@ -19,7 +19,7 @@ struct FolderTreeView: View {
     @Binding var selection: SidebarSelection?
     @EnvironmentObject private var appState: AppState
     @State private var expandedFolders: Set<URL> = []
-    @State private var renamingFolder: URL? = nil
+    @State private var renamingFolder: String? = nil
     @State private var renameText: String = ""
 
     private var rootFolders: [FolderItem] {
@@ -28,8 +28,15 @@ struct FolderTreeView: View {
     }
 
     var body: some View {
-        ForEach(rootFolders) { folder in
-            folderRow(folder)
+        let _ = appState.fsVersion // Dependency trigger for re-scan
+        if let vaultURL = appState.vaultURL {
+            let vaultItem = FolderItem(
+                id: vaultURL.path,
+                url: vaultURL,
+                name: vaultURL.lastPathComponent,
+                children: rootFolders
+            )
+            folderRow(vaultItem)
         }
     }
 
@@ -55,8 +62,8 @@ struct FolderTreeView: View {
                     }
                 } label: {
                     folderLabel(folder)
+                        .contextMenu { contextMenu(for: folder) }
                 }
-                .contextMenu { contextMenu(for: folder) }
             )
         }
     }
@@ -74,13 +81,15 @@ struct FolderTreeView: View {
 
     @ViewBuilder
     private func folderLabel(_ folder: FolderItem) -> some View {
-        if renamingFolder == folder.url {
+        if renamingFolder == folder.id {
             TextField("Folder name", text: $renameText)
                 .textFieldStyle(.plain)
                 .onSubmit { commitRename(folder: folder) }
                 .onExitCommand { renamingFolder = nil }
         } else {
-            Label(folder.name, systemImage: "folder")
+            Label(folder.name, systemImage: folder.url == appState.vaultURL ? "archivebox" : "folder")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .tag(SidebarSelection.folder(folder.url))
                 .onTapGesture { selection = .folder(folder.url) }
                 .draggable(folder.url.path)
@@ -118,7 +127,7 @@ struct FolderTreeView: View {
 
     private func beginRename(folder: FolderItem) {
         renameText = folder.name
-        renamingFolder = folder.url
+        renamingFolder = folder.id
     }
 
     private func commitRename(folder: FolderItem) {
@@ -171,7 +180,7 @@ struct FolderTreeView: View {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .map { dir in
                 FolderItem(
-                    id: dir,
+                    id: dir.path,
                     url: dir,
                     name: dir.lastPathComponent,
                     children: loadFolders(at: dir)

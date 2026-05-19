@@ -8,14 +8,15 @@ struct EditorStatusBar: View {
     let updatedDate: Date?
     let syncStatus: SyncStatus
     var content: String = ""
+    var onShowHistory: (() -> Void)? = nil
+    var noteExists: Bool = false
 
     // MARK: - Computed
 
     private var wordCount: Int {
         guard !content.isEmpty else { return 0 }
         return content.components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .count
+            .filter { !$0.isEmpty }.count
     }
 
     private var characterCount: Int { content.count }
@@ -23,25 +24,35 @@ struct EditorStatusBar: View {
     // MARK: - Body
 
     var body: some View {
-        HStack {
-            // Left: word count | character count
+        HStack(spacing: 0) {
+            // Left: word count
             Text("\(wordCount) words  |  \(characterCount) characters")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Spacer()
 
-            // Center: save status
-            saveStatusLabel
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // Center: sync status
+            syncStatusLabel
 
             Spacer()
 
-            // Right: sync status
-            syncStatusLabel
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // Right: save status + history button
+            HStack(spacing: 8) {
+                saveStatusLabel
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if noteExists, let onHistory = onShowHistory {
+                    Button(action: onHistory) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("View History")
+                }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -65,16 +76,18 @@ struct EditorStatusBar: View {
         switch syncStatus {
         case .idle:
             EmptyView()
-        case .syncing(let progress):
+        case .syncing(let progress, _):
             HStack(spacing: 4) {
                 if progress > 0 && progress < 1 {
-                    ProgressView(value: progress)
-                        .frame(width: 60)
+                    ProgressView(value: progress).frame(width: 60)
                 }
                 Text("Syncing…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         case .error(let msg):
             Text("Sync error: \(msg)")
+                .font(.caption)
                 .foregroundStyle(.red)
         }
     }

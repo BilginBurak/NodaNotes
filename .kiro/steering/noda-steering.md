@@ -304,3 +304,15 @@ final class AppState: ObservableObject {
 304: ```
 305: 
 306: **Applies to:** All `NotificationCenter` observers in `AppState`, `AppDelegate`, or View Models.
+307: 
+308: ### Pattern 8: Optimistic UI Updates and ID-Based Editor Refresh
+309: 
+310: To ensure a responsive UX in a file-system-heavy app, the UI should not wait for disk/network confirmation for simple operations.
+311: 
+312: **1. Optimistic Updates:** In `AppState`, remove or update items in the `notes` array *immediately* before starting the `async` disk operation (e.g., `moveToTrash`). If the operation fails, the next scan or sync will naturally correct the state.
+313: 
+314: **2. ID-Based Editor Refresh:** When using `NSViewRepresentable` for editors, the `updateNSView` method must check `note.id` change explicitly. If the ID changes, the editor must force-reload content and reset internal state (like `isEditing`), even if the text appears the same, to prevent stale content from being displayed.
+315: 
+316: **3. State Propagation:** When a note is modified, always refresh the `selectedNote` object in `AppState` if it matches the modified note's ID. This ensures the Editor and Sidebar remain in sync.
+317: 
+318: **Applies to:** `AppState` note operations and `RawMarkdownEditor` updates.

@@ -11,55 +11,38 @@ final class SearchIndex {
     // MARK: - State
 
     private var index: [UUID: Note] = [:]
-    private var db: SearchDatabase?
 
     // MARK: - Initialization
 
     func connect(vaultURL: URL) {
-        do {
-            db = try SearchDatabase(vaultURL: vaultURL)
-        } catch {
-            NodaLogger.search.error("Failed to initialize SearchDatabase: \(error.localizedDescription)")
-        }
+        // No-op for memory search
     }
 
     // MARK: - Index Management
 
     func indexNote(_ note: Note) {
         index[note.id] = note
-        Task.detached(priority: .background) { [weak db] in
-            try? await db?.update(note: note)
-        }
     }
 
     func removeNote(id: UUID) {
         index.removeValue(forKey: id)
-        Task.detached(priority: .background) { [weak db] in
-            try? await db?.remove(id: id)
-        }
     }
 
     func rebuild(from notes: [Note]) {
         index = Dictionary(uniqueKeysWithValues: notes.map { ($0.id, $0) })
-        Task.detached(priority: .background) { [weak db] in
-            try? await db?.index(notes: notes)
-        }
     }
 
     // MARK: - Search
 
-    /// Searches notes by text and/or tags.
+    /// Searches notes by text and/or tags in-memory.
     func search(query: String, tagFilters: [String] = []) async -> [Note] {
-        guard let db, (!query.isEmpty || !tagFilters.isEmpty) else {
-            return index.values.sorted { $0.updated > $1.updated }
+        let results = index.values.filter { note in
+            let matchTags = tagFilters.isEmpty || tagFilters.allSatisfy { note.tags.contains($0) }
+            let matchQuery = query.isEmpty || 
+                            note.title.localizedCaseInsensitiveContains(query) || 
+                            note.content.localizedCaseInsensitiveContains(query)
+            return matchTags && matchQuery
         }
-
-        do {
-            let ids = try await db.search(query: query, tagFilters: tagFilters)
-            return ids.compactMap { index[$0] }
-        } catch {
-            NodaLogger.search.error("Search failed: \(error.localizedDescription)")
-            return []
-        }
+        return results.sorted { $0.updated > $1.updated }
     }
 }
