@@ -1,75 +1,165 @@
-//! Note and frontmatter domain models.
+//! Domain model for Note
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use ulid::Ulid;
 
-/// YAML frontmatter fields that every note MUST contain.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Frontmatter {
-    /// UUID v4 identifier — stable across renames.
-    pub id: String,
-    /// Note title — also used as the filename (minus `.md`).
-    pub title: String,
-    /// Creation timestamp.
-    pub created: DateTime<Utc>,
-    /// Last-updated timestamp; refreshed on every save.
-    pub updated: DateTime<Utc>,
-    /// Free-form tags.
-    pub tags: Vec<String>,
-    /// Lifecycle status (e.g. `"active"`, `"archived"`).
-    pub status: String,
+/// Unique identifier for a Note, based on ULID for sortability and uniqueness
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct NoteId(pub Ulid);
+
+impl Default for NoteId {
+    fn default() -> Self {
+        NoteId::new()
+    }
 }
 
-/// Full note including body content and on-disk location.
-#[derive(Debug, Clone)]
+impl NoteId {
+    /// Generates a new NoteId
+    pub fn new() -> Self {
+        NoteId(Ulid::new())
+    }
+}
+
+/// The core domain entity representing a single Markdown note
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Note {
-    /// Parsed YAML frontmatter.
-    pub frontmatter: Frontmatter,
-    /// Raw Markdown body (everything after the frontmatter delimiter).
+    pub id: NoteId,
+    pub parent_id: Option<NoteId>,
+    pub title: String,
     pub body: String,
-    /// Absolute path to the `.md` file.
-    pub file_path: PathBuf,
-    /// Path relative to the vault root (for display and database storage).
-    pub relative_path: String,
+    pub color: Option<String>,
+    pub pinned: bool,
+    pub tags: Vec<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl Default for Note {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Note {
-    /// Convenience accessor for the note UUID.
-    pub fn id(&self) -> &str {
-        &self.frontmatter.id
+    /// Creates a new Note with current UTC timestamps and empty title/body
+    pub fn new() -> Self {
+        let now = Utc::now();
+        Self {
+            id: NoteId::new(),
+            parent_id: None,
+            title: String::new(),
+            body: String::new(),
+            color: None,
+            pinned: false,
+            tags: Vec::new(),
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        }
     }
 
-    /// Convenience accessor for the note title.
-    pub fn title(&self) -> &str {
-        &self.frontmatter.title
+    /// Serializes the note to a complete Markdown string with YAML frontmatter
+    pub fn to_markdown(&self) -> Result<String, serde_yaml::Error> {
+        let frontmatter = Frontmatter::from(self);
+        let yaml = serde_yaml::to_string(&frontmatter)?;
+        Ok(format!("---\n{}---\n{}", yaml, self.body))
     }
 }
 
-/// Lightweight note metadata — used in list views where the body is not needed.
-#[derive(Debug, Clone)]
-pub struct NoteMeta {
-    pub id: String,
+/// YAML frontmatter representation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Frontmatter {
+    pub id: NoteId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<NoteId>,
     pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    pub pinned: bool,
     pub tags: Vec<String>,
-    pub created: DateTime<Utc>,
-    pub updated: DateTime<Utc>,
     pub status: String,
-    pub relative_path: String,
-    pub file_path: PathBuf,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<&Note> for Frontmatter {
+    fn from(note: &Note) -> Self {
+        Self {
+            id: note.id,
+            parent_id: note.parent_id,
+            title: note.title.clone(),
+            color: note.color.clone(),
+            pinned: note.pinned,
+            tags: note.tags.clone(),
+            status: note.status.clone(),
+            created_at: note.created_at,
+            updated_at: note.updated_at,
+        }
+    }
+}
+
+/// Lightweight note metadata (no body)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NoteMeta {
+    pub id: NoteId,
+    pub parent_id: Option<NoteId>,
+    pub title: String,
+    pub color: Option<String>,
+    pub pinned: bool,
+    pub tags: Vec<String>,
+    pub status: String,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl From<&Note> for NoteMeta {
     fn from(note: &Note) -> Self {
         Self {
-            id: note.frontmatter.id.clone(),
-            title: note.frontmatter.title.clone(),
-            tags: note.frontmatter.tags.clone(),
-            created: note.frontmatter.created,
-            updated: note.frontmatter.updated,
-            status: note.frontmatter.status.clone(),
-            relative_path: note.relative_path.clone(),
-            file_path: note.file_path.clone(),
+            id: note.id,
+            parent_id: note.parent_id,
+            title: note.title.clone(),
+            color: note.color.clone(),
+            pinned: note.pinned,
+            tags: note.tags.clone(),
+            status: note.status.clone(),
+            updated_at: note.updated_at,
         }
+    }
+}
+
+/// Represents a hit from the FTS5 search engine
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SearchResult {
+    pub id: NoteId,
+    pub title: String,
+    pub snippet: String,
+    pub score: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_note_id_generation() {
+        let id1 = NoteId::new();
+        let id2 = NoteId::new();
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_note_instantiation() {
+        let note = Note::new();
+        assert!(!note.id.0.is_nil());
+        assert_eq!(note.title, "");
+        assert_eq!(note.body, "");
+        assert_eq!(note.pinned, false);
+        assert_eq!(note.parent_id, None);
+        assert_eq!(note.color, None);
+        
+        let serialized = serde_json::to_string(&note).expect("Failed to serialize");
+        let deserialized: Note = serde_json::from_str(&serialized).expect("Failed to deserialize");
+        assert_eq!(note, deserialized);
     }
 }

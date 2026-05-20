@@ -1,133 +1,158 @@
-//! Trash file I/O — move to trash, restore, list, permanent delete.
-//!
-//! Each trashed note has a companion `.json` sidecar that stores metadata
-//! needed for restoration (original path, delete timestamp, etc.).
+//! Trash storage operations
 
 use crate::errors::NodaError;
-use crate::models::{Note, TrashEntry, Vault};
-use crate::vault::io::read_note_relative;
-use chrono::Utc;
-use serde_json;
-use std::path::PathBuf;
-use tokio::fs;
-use tracing::instrument;
+use crate::models::note::NoteId;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+use tracing::info;
 
-/// Move a note to `.noda/trash/`, writing a sidecar JSON for metadata.
-#[instrument(skip(vault, note), fields(note_id = %note.frontmatter.id))]
-pub async fn move_to_trash(vault: &Vault, note: &Note) -> Result<TrashEntry, NodaError> {
-    let trash_dir = vault.trash_dir();
-    fs::create_dir_all(&trash_dir).await?;
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrashEntry {
+    pub note_id: NoteId,
+    pub original_path: String,
+    pub deleted_at: DateTime<Utc>,
+    pub filename: String,
+}
 
-    let now = Utc::now();
-    let timestamp_str = now.format("%Y%m%d_%H%M%S_%3f").to_string();
-
-    // Use <UUID>_<timestamp>.md to avoid collisions if the same note is
-    // trashed multiple times (e.g. restored and re-deleted).
-    let trash_filename = format!("{}_{}.md", note.frontmatter.id, timestamp_str);
-    let trash_file_path = trash_dir.join(&trash_filename);
-    let sidecar_path = trash_dir.join(format!("{}_{}.json", note.frontmatter.id, timestamp_str));
-
-    // Move the note file.
-    fs::rename(&note.file_path, &trash_file_path).await?;
-
-    let entry = TrashEntry {
-        note_id: note.frontmatter.id.clone(),
-        title: note.frontmatter.title.clone(),
-        original_relative_path: note.relative_path.clone(),
-        deleted_at: now,
-        trash_file_path: trash_file_path.clone(),
-        sidecar_path: sidecar_path.clone(),
+pub async fn move_to_trash<P: AsRef<Path>, P2: AsRef<Path>>(
+    vault_path: P,
+    note_path: P2,
+) -> Result<TrashEntry, NodaError> {
+    let vault_root = vault_path.as_ref();
+    let relative_note_path = note_path.as_ref(); 
+    
+    let absolute_note_path = if relative_note_path.is_absolute() {
+        relative_note_path.to_path_buf()
+    } else {
+        vault_root.join(relative_note_path)
     };
 
-    // Serialize and write the sidecar.
-    let sidecar_json = serde_json::to_string_pretty(&entry)?;
-    fs::write(&sidecar_path, sidecar_json.as_bytes()).await?;
+    if !absolute_note_path.exists() {
+        return Err(NodaError::NotFound("Note to delete not found".into()));
+    }
 
-    tracing::info!(
-        note_id = %note.frontmatter.id,
-        trash_path = %trash_file_path.display(),
-        "note moved to trash"
-    );
+    let content = tokio::fs::read_to_string(&absolute_note_path)
+        .await
+        .map_err(NodaError::Io)?;
+        
+    use gray_matter::Matter;
+    use gray_matter::engine::YAML;
+    use crate::models::note::Frontmatter;
+    
+    let matter = Matter::<YAML>::new();
+    let parsed = matter.parse(&content);
+    
+    let frontmatter: Frontmatter = parsed
+        .data
+        .as_ref()
+        .ok_or_else(|| NodaError::Frontmatter("No frontmatter found in file".to_string()))?
+        .deserialize()
+        .map_err(|e| NodaError::Frontmatter(format!("Failed to parse YAML: {}", e)))?;
+        
+    let note_id = frontmatter.id;
+    
+    let trash_dir = vault_root.join(".noda").join("trash");
+    tokio::fs::create_dir_all(&trash_dir).await.map_err(NodaError::Io)?;
+    
+    let md_filename = format!("{}.md", note_id.0.to_string());
+    let json_filename = format!("{}.json", note_id.0.to_string());
+    let trash_md_path = trash_dir.join(&md_filename);
+    let trash_json_path = trash_dir.join(&json_filename);
+
+    let original_path_str = if relative_note_path.is_absolute() {
+        relative_note_path.strip_prefix(vault_root).unwrap_or(relative_note_path).to_string_lossy().to_string()
+    } else {
+        relative_note_path.to_string_lossy().to_string()
+    };
+
+    let entry = TrashEntry {
+        note_id,
+        original_path: original_path_str,
+        deleted_at: Utc::now(),
+        filename: md_filename,
+    };
+
+    // Write sidecar
+    let json_content = serde_json::to_string_pretty(&entry).unwrap();
+    tokio::fs::write(&trash_json_path, json_content).await.map_err(NodaError::Io)?;
+    
+    // Move the markdown file
+    tokio::fs::rename(&absolute_note_path, &trash_md_path).await.map_err(NodaError::Io)?;
+
+    info!("Moved {} to trash", absolute_note_path.display());
 
     Ok(entry)
 }
 
-/// List all trash entries by reading sidecar JSON files.
-#[instrument(skip(vault))]
-pub async fn list_trash_entries(vault: &Vault) -> Result<Vec<TrashEntry>, NodaError> {
-    let trash_dir = vault.trash_dir();
-
-    if !trash_dir.exists() {
-        return Ok(vec![]);
+pub async fn restore_from_trash<P: AsRef<Path>>(
+    vault_path: P,
+    trash_entry: &TrashEntry,
+) -> Result<(), NodaError> {
+    let vault_root = vault_path.as_ref();
+    let trash_dir = vault_root.join(".noda").join("trash");
+    
+    let trash_md_path = trash_dir.join(&trash_entry.filename);
+    let trash_json_path = trash_dir.join(format!("{}.json", trash_entry.note_id.0.to_string()));
+    
+    if !trash_md_path.exists() {
+        return Err(NodaError::NotFound("Trashed note missing".into()));
     }
-
-    let mut entries = fs::read_dir(&trash_dir).await?;
-    let mut results: Vec<TrashEntry> = Vec::new();
-
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
-        }
-
-        let content = fs::read_to_string(&path).await.unwrap_or_default();
-        if let Ok(trash_entry) = serde_json::from_str::<TrashEntry>(&content) {
-            results.push(trash_entry);
-        }
+    
+    let target_path = vault_root.join(&trash_entry.original_path);
+    
+    if let Some(parent) = target_path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(NodaError::Io)?;
     }
-
-    results.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
-    Ok(results)
-}
-
-/// Find a specific trash entry by note UUID.
-#[instrument(skip(vault), fields(note_id = %note_id))]
-pub async fn find_trash_entry(vault: &Vault, note_id: &str) -> Result<TrashEntry, NodaError> {
-    list_trash_entries(vault)
-        .await?
-        .into_iter()
-        .find(|e| e.note_id == note_id)
-        .ok_or_else(|| NodaError::TrashEntryNotFound {
-            id: note_id.to_string(),
-        })
-}
-
-/// Restore a note from the trash to its original vault location.
-#[instrument(skip(vault, entry), fields(note_id = %entry.note_id))]
-pub async fn restore_from_trash(vault: &Vault, entry: &TrashEntry) -> Result<Note, NodaError> {
-    let restore_path = vault.root.join(&entry.original_relative_path);
-
-    // Create parent directory if needed.
-    if let Some(parent) = restore_path.parent() {
-        fs::create_dir_all(parent).await?;
+    
+    if target_path.exists() {
+        return Err(NodaError::Io(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "Target file already exists")));
     }
-
-    // Check for collision at the restore path.
-    if restore_path.exists() {
-        return Err(NodaError::DuplicateFilename {
-            title: entry.title.clone(),
-        });
-    }
-
-    fs::rename(&entry.trash_file_path, &restore_path).await?;
-    fs::remove_file(&entry.sidecar_path).await.ok(); // Best-effort sidecar cleanup.
-
-    tracing::info!(
-        note_id = %entry.note_id,
-        restore_path = %restore_path.display(),
-        "note restored from trash"
-    );
-
-    read_note_relative(&vault.root, &restore_path).await
-}
-
-/// Permanently delete a note and its sidecar from the trash.
-#[instrument(skip(vault, entry), fields(note_id = %entry.note_id))]
-pub async fn permanent_delete(vault: &Vault, entry: &TrashEntry) -> Result<(), NodaError> {
-    let _ = vault; // future use
-    fs::remove_file(&entry.trash_file_path).await?;
-    fs::remove_file(&entry.sidecar_path).await.ok();
-
-    tracing::warn!(note_id = %entry.note_id, "note permanently deleted");
+    
+    tokio::fs::rename(&trash_md_path, &target_path).await.map_err(NodaError::Io)?;
+    
+    let _ = tokio::fs::remove_file(&trash_json_path).await;
+    
     Ok(())
+}
+
+pub async fn permanent_delete<P: AsRef<Path>>(
+    vault_path: P,
+    trash_entry: &TrashEntry,
+) -> Result<(), NodaError> {
+    let vault_root = vault_path.as_ref();
+    let trash_dir = vault_root.join(".noda").join("trash");
+    
+    let trash_md_path = trash_dir.join(&trash_entry.filename);
+    let trash_json_path = trash_dir.join(format!("{}.json", trash_entry.note_id.0.to_string()));
+    
+    let _ = tokio::fs::remove_file(&trash_md_path).await;
+    let _ = tokio::fs::remove_file(&trash_json_path).await;
+    
+    Ok(())
+}
+
+pub async fn list_trash<P: AsRef<Path>>(vault_path: P) -> Result<Vec<TrashEntry>, NodaError> {
+    let vault_root = vault_path.as_ref();
+    let trash_dir = vault_root.join(".noda").join("trash");
+    
+    if !trash_dir.exists() {
+        return Ok(Vec::new());
+    }
+    
+    let mut entries = Vec::new();
+    let mut dir = tokio::fs::read_dir(&trash_dir).await.map_err(NodaError::Io)?;
+    
+    while let Some(file) = dir.next_entry().await.map_err(NodaError::Io)? {
+        let path = file.path();
+        if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
+            let content = tokio::fs::read_to_string(&path).await.map_err(NodaError::Io)?;
+            if let Ok(entry) = serde_json::from_str::<TrashEntry>(&content) {
+                entries.push(entry);
+            }
+        }
+    }
+    
+    entries.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
+    Ok(entries)
 }

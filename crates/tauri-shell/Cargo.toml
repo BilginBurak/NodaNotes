@@ -1,0 +1,22 @@
+[package]
+name = "tauri-shell"
+version = "0.1.0"
+edition = "2021"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "2.0.0-rc", features = [] }
+
+[dependencies]
+noda_core = { package = "core", path = "../core" }
+shared = { path = "../shared" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { version = "2.11.2", features = ["macos-private-api"] }
+tauri-plugin-dialog = "2.0.0-rc"
+tauri-plugin-fs = "2.0.0-rc"
+parking_lot = "0.12"
+chrono = { version = "0.4", features = ["serde"] }
+ulid = { version = "1.2.1", features = ["serde"] }
+tracing = "0.1"

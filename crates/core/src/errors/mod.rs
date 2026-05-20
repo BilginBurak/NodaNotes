@@ -1,91 +1,58 @@
-//! # NodaError
-//!
-//! The central error type for the `core` crate.
-//!
-//! All fallible operations in `crates/core` return `Result<T, NodaError>`.
-//! `NodaError` is converted to `shared::AppError` by `crates/tauri-shell`
-//! before crossing the IPC boundary — internal details are never exposed to
-//! the frontend.
+// Defines core error types for the application.
 
+use shared::AppError;
 use thiserror::Error;
 
-/// All errors that can occur within the Noda core engine.
+/// The central error type for the core domain.
 #[derive(Debug, Error)]
 pub enum NodaError {
-    // ─── I/O ──────────────────────────────────────────────────────────────
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    // ─── Vault ────────────────────────────────────────────────────────────
-    #[error("Vault not found at path: {path}")]
-    VaultNotFound { path: String },
-
-    #[error("Invalid vault structure: {reason}")]
-    VaultInvalid { reason: String },
-
-    #[error("A note with the title '{title}' already exists in this vault")]
-    DuplicateFilename { title: String },
-
-    #[error("Note not found: {id}")]
-    NoteNotFound { id: String },
-
-    // ─── Frontmatter ──────────────────────────────────────────────────────
-    #[error("Failed to parse YAML frontmatter in '{file}': {reason}")]
-    FrontmatterParse { file: String, reason: String },
-
-    #[error("Missing required frontmatter field '{field}' in '{file}'")]
-    FrontmatterMissingField { field: String, file: String },
-
-    // ─── Database ─────────────────────────────────────────────────────────
     #[error("Database error: {0}")]
-    Database(#[from] rusqlite::Error),
+    Database(String),
 
-    #[error("Database schema migration failed: {reason}")]
-    Migration { reason: String },
+    #[error("Vault error: {0}")]
+    Vault(String),
 
-    // ─── Search ───────────────────────────────────────────────────────────
-    #[error("Search index error: {reason}")]
-    SearchIndex { reason: String },
+    #[error("Sync error: {0}")]
+    Sync(String),
 
-    // ─── Watcher ──────────────────────────────────────────────────────────
-    #[error("File watcher error: {reason}")]
-    Watcher { reason: String },
+    #[error("Frontmatter error: {0}")]
+    Frontmatter(String),
 
-    // ─── Sync ─────────────────────────────────────────────────────────────
-    #[error("WebDAV request failed: {reason}")]
-    WebDav { reason: String },
+    #[error("Search error: {0}")]
+    Search(String),
 
-    #[error("HTTP error {status}: {reason}")]
-    Http { status: u16, reason: String },
+    #[error("Watch error: {0}")]
+    Watch(String),
 
-    #[error("Sync queue error: {reason}")]
-    SyncQueue { reason: String },
+    #[error("Path traversal detected: {0}")]
+    PathTraversal(String),
 
-    #[error("Sync conflict detected for note '{title}'")]
-    SyncConflict { title: String },
+    #[error("Duplicate filename: {0}")]
+    DuplicateFilename(String),
 
-    #[error("Network error: {reason}")]
-    Network { reason: String },
+    #[error("Resource not found: {0}")]
+    NotFound(String),
+}
 
-    // ─── Protocol / Security ──────────────────────────────────────────────
-    #[error("Path traversal attempt rejected: '{path}'")]
-    PathTraversal { path: String },
-
-    #[error("Attachment not found: '{name}'")]
-    AttachmentNotFound { name: String },
-
-    // ─── History ──────────────────────────────────────────────────────────
-    #[error("Snapshot not found: '{path}'")]
-    SnapshotNotFound { path: String },
-
-    // ─── Trash ────────────────────────────────────────────────────────────
-    #[error("Trash entry not found: '{id}'")]
-    TrashEntryNotFound { id: String },
-
-    // ─── Generic ──────────────────────────────────────────────────────────
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
-
-    #[error("Request error: {0}")]
-    Reqwest(#[from] reqwest::Error),
+impl From<NodaError> for AppError {
+    fn from(error: NodaError) -> Self {
+        AppError {
+            code: match &error {
+                NodaError::Io(_) => "IO_ERROR".to_string(),
+                NodaError::Database(_) => "DATABASE_ERROR".to_string(),
+                NodaError::Vault(_) => "VAULT_ERROR".to_string(),
+                NodaError::Sync(_) => "SYNC_ERROR".to_string(),
+                NodaError::Frontmatter(_) => "FRONTMATTER_ERROR".to_string(),
+                NodaError::Search(_) => "SEARCH_ERROR".to_string(),
+                NodaError::Watch(_) => "WATCH_ERROR".to_string(),
+                NodaError::PathTraversal(_) => "PATH_TRAVERSAL".to_string(),
+                NodaError::DuplicateFilename(_) => "DUPLICATE_FILENAME".to_string(),
+                NodaError::NotFound(_) => "NOT_FOUND".to_string(),
+            },
+            message: error.to_string(),
+        }
+    }
 }

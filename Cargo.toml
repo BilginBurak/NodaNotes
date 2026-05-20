@@ -1,71 +1,13 @@
 [workspace]
-resolver = "2"
 members = [
     "crates/core",
-    "crates/tauri-shell",
     "crates/shared",
+    "crates/tauri-shell"
 ]
-
-[workspace.package]
-version = "0.1.0"
-edition = "2021"
-authors = ["Noda Contributors"]
-license = "MIT"
-
-# ─── Shared workspace dependencies ───────────────────────────────────────────
-# All crates reference these via `workspace = true` to ensure version alignment.
+resolver = "2"
 
 [workspace.dependencies]
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-
-# Serialization
-serde       = { version = "1", features = ["derive"] }
-serde_json  = "1"
-
-# Error handling
-thiserror = "2"
-anyhow    = "1"
-
-# Logging
-tracing            = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Utilities
-uuid    = { version = "1", features = ["v4", "serde"] }
-chrono  = { version = "0.4", features = ["serde"] }
-
-# Filesystem
-walkdir = "2"
-notify  = { version = "7", features = ["serde"] }
-
-# Markdown parsing
-pulldown-cmark = "0.12"
-gray_matter    = "0.2"
-
-# Database
-rusqlite = { version = "0.32", features = ["bundled", "vtab", "fts5"] }
-
-# HTTP client (for WebDAV sync)
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-
-# Concurrency
-parking_lot = "0.12"
-
-# Tauri (referenced only by tauri-shell)
-tauri              = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
-tauri-plugin-fs     = "2"
-
-# Internal crates
-shared = { path = "crates/shared" }
-core   = { path = "crates/core" }
-
-[profile.dev]
-incremental = true
-
-[profile.release]
-lto           = true
-codegen-units = 1
-opt-level     = "s"
-strip         = true
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.37", features = ["full"] }
+thiserror = "1.0"

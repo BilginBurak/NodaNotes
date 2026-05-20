@@ -1,58 +1,45 @@
-//! Database schema migrations.
-//!
-//! Tracks the current schema version and runs incremental migrations.
-//! Migrations are append-only — never edit an existing migration.
+//! Database migrations
 
 use crate::errors::NodaError;
 use rusqlite::Connection;
-use tracing::instrument;
+use super::schema::INIT_SCHEMA;
+use tracing::info;
 
-/// Current target schema version.
-const CURRENT_VERSION: i64 = 1;
+const CURRENT_SCHEMA_VERSION: i32 = 1;
 
-/// Run all pending migrations up to `CURRENT_VERSION`.
-#[instrument(skip(conn))]
-pub fn run(conn: &Connection) -> Result<(), NodaError> {
-    let version = get_version(conn)?;
-    tracing::debug!(current = version, target = CURRENT_VERSION, "checking migrations");
+pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
+    // Check if schema_version table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='schema_version'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map_err(|e| NodaError::Database(format!("Failed to check schema version: {}", e)))? > 0;
 
-    if version < 1 {
-        migrate_v1(conn)?;
-        set_version(conn, 1)?;
-        tracing::info!("migrated database to version 1");
-    }
+    let current_version = if table_exists {
+        conn.query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get::<_, i32>(0)
+        })
+        .unwrap_or(0)
+    } else {
+        // First run, apply initial schema
+        info!("Applying initial database schema (v1)");
+        conn.execute_batch(INIT_SCHEMA)
+            .map_err(|e| NodaError::Database(format!("Failed to apply initial schema: {}", e)))?;
+        
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (?1)",
+            [CURRENT_SCHEMA_VERSION],
+        )
+        .map_err(|e| NodaError::Database(format!("Failed to insert schema version: {}", e)))?;
+        
+        CURRENT_SCHEMA_VERSION
+    };
 
-    // Future migrations follow the same pattern:
-    // if version < 2 { migrate_v2(conn)?; set_version(conn, 2)?; }
+    // Future migrations would go here
+    // if current_version < 2 { ... }
 
-    Ok(())
-}
-
-fn get_version(conn: &Connection) -> Result<i64, NodaError> {
-    // The schema_version table may not exist on first open before create_tables runs.
-    let result: rusqlite::Result<i64> = conn.query_row(
-        "SELECT version FROM schema_version LIMIT 1",
-        [],
-        |row| row.get(0),
-    );
-
-    match result {
-        Ok(v) => Ok(v),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(0),
-        // Table doesn't exist yet — treat as version 0.
-        Err(rusqlite::Error::SqliteFailure(_, _)) => Ok(0),
-        Err(e) => Err(NodaError::Database(e)),
-    }
-}
-
-fn set_version(conn: &Connection, version: i64) -> Result<(), NodaError> {
-    conn.execute("DELETE FROM schema_version", [])?;
-    conn.execute("INSERT INTO schema_version (version) VALUES (?1)", [version])?;
-    Ok(())
-}
-
-fn migrate_v1(_conn: &Connection) -> Result<(), NodaError> {
-    // Version 1 is the initial schema — no additional DDL needed beyond what
-    // schema::create_tables() already applies.
+    info!("Database is up to date (version {})", current_version);
     Ok(())
 }

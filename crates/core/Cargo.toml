@@ -1,46 +1,32 @@
 [package]
-name    = "core"
-version.workspace = true
-edition.workspace = true
+name = "core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+doctest = false
 
 [dependencies]
-# Internal
-shared = { workspace = true }
-
-# Async
+shared = { path = "../shared" }
 tokio = { workspace = true }
-
-# Serialization
-serde      = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
-
-# Error handling
 thiserror = { workspace = true }
-
-# Logging
-tracing = { workspace = true }
-
-# Utilities
-uuid   = { workspace = true }
-chrono = { workspace = true }
-
-# Filesystem
-walkdir = { workspace = true }
-notify  = { workspace = true }
-
-# Markdown
-pulldown-cmark = { workspace = true }
-gray_matter    = { workspace = true }
-
-# Database
-rusqlite = { workspace = true }
-
-# HTTP (WebDAV sync)
-reqwest = { workspace = true }
-
-# Concurrency
-parking_lot = { workspace = true }
+uuid = { version = "1.8", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2.5"
+notify = "6.1"
+reqwest = { version = "0.12", features = ["json"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+pulldown-cmark = "0.10"
+gray_matter = "0.2"
+parking_lot = "0.12"
+tracing = "0.1"
+ulid = { version = "1.2.1", features = ["serde"] }
+serde_yaml = "0.9.34"
+dirs = "6.0.0"
+mime_guess = "2.0"
+quick-xml = { version = "0.36", features = ["serialize"] }
 
 [dev-dependencies]
-tokio = { workspace = true }
-tempfile = "3"
+tempfile = "3.27.0"

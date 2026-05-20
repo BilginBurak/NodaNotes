@@ -1,128 +1,81 @@
-//! # Vault Module
-//!
-//! Vault lifecycle management: initialization, opening, validation, note CRUD.
-//!
-//! The vault directory is the source of truth. All note operations first
-//! write to disk, then update the SQLite cache.
-
 pub mod init;
-pub mod io;
+pub mod persistence;
 pub mod scan;
+pub mod service;
+
+pub use init::*;
+pub use persistence::*;
+pub use scan::*;
+pub use service::*;
 
 use crate::errors::NodaError;
-use crate::models::{Note, NoteMeta, Vault};
-use std::path::{Path, PathBuf};
+use crate::models::note::Note;
+use crate::models::vault::Vault;
+use std::path::Path;
 
-/// Open an existing vault at the given path.
-///
-/// - Validates the `.noda/` directory structure (creates missing pieces).
-/// - Returns a `Vault` handle with basic metadata.
-pub async fn open_vault(path: impl AsRef<Path>) -> Result<Vault, NodaError> {
-    let path = path.as_ref().to_path_buf();
-
+/// Initializes a new vault at the given path
+pub async fn create_vault<P: AsRef<Path>>(path: P) -> Result<Vault, NodaError> {
+    let path = path.as_ref();
     if !path.exists() {
-        return Err(NodaError::VaultNotFound {
-            path: path.display().to_string(),
-        });
+        tokio::fs::create_dir_all(path).await.map_err(NodaError::Io)?;
     }
 
-    init::ensure_noda_dir(&path).await?;
+    init::create_noda_dir(path).await?;
+    init::create_manifest(path).await?;
+    init::create_sync_files(path).await?;
 
-    // Quick scan to count notes (not full parse — just count .md files).
-    let note_count = scan::count_notes(&path).await?;
+    // Persist path so app remembers next time
+    persistence::save_last_vault_path(path.to_path_buf()).await?;
 
-    Ok(Vault {
-        root: path,
-        is_healthy: true,
-        note_count,
-    })
+    Ok(Vault::new(path.to_path_buf()))
 }
 
-/// Create a new vault at the given path.
-///
-/// Creates the directory if it does not exist, then initializes `.noda/`.
-pub async fn create_vault(path: impl AsRef<Path>) -> Result<Vault, NodaError> {
-    let path = path.as_ref().to_path_buf();
-    tokio::fs::create_dir_all(&path).await?;
-    init::ensure_noda_dir(&path).await?;
-
-    Ok(Vault {
-        root: path,
-        is_healthy: true,
-        note_count: 0,
-    })
+/// Opens an existing vault, validates it, and returns the handle alongside its notes
+pub async fn open_vault<P: AsRef<Path>>(path: P) -> Result<(Vault, Vec<Note>), NodaError> {
+    let path = path.as_ref();
+    
+    // Validate or repair structure
+    validate_vault(path).await?;
+    
+    // Scan for existing notes
+    let notes = scan::scan_vault(path).await?;
+    
+    // Persist path so app remembers next time
+    persistence::save_last_vault_path(path.to_path_buf()).await?;
+    
+    Ok((Vault::new(path.to_path_buf()), notes))
 }
 
-/// Validate a vault's `.noda/` structure and repair missing directories.
-pub async fn validate_vault(vault: &Vault) -> Result<(), NodaError> {
-    init::ensure_noda_dir(&vault.root).await
-}
-
-/// Scan the full vault and return all notes (with body content).
-pub async fn scan_all_notes(vault: &Vault) -> Result<Vec<Note>, NodaError> {
-    scan::scan_vault(&vault.root).await
-}
-
-/// Return lightweight metadata for all notes (without body content).
-pub async fn list_notes(vault: &Vault) -> Result<Vec<NoteMeta>, NodaError> {
-    let notes = scan::scan_vault(&vault.root).await?;
-    Ok(notes.iter().map(NoteMeta::from).collect())
-}
-
-/// Read a single note by its file path.
-pub async fn get_note(file_path: impl AsRef<Path>) -> Result<Note, NodaError> {
-    io::read_note(file_path).await
-}
-
-/// Create a new note in the vault.
-///
-/// Returns the created `Note`. Errors if a file with the same title already exists.
-pub async fn create_note(
-    vault: &Vault,
-    title: impl Into<String>,
-    tags: Vec<String>,
-    body: impl Into<String>,
-) -> Result<Note, NodaError> {
-    let title = title.into();
-    let body = body.into();
-
-    // Check for duplicate filename.
-    let filename = format!("{}.md", title);
-    let target_path = vault.root.join(&filename);
-    if target_path.exists() {
-        return Err(NodaError::DuplicateFilename { title });
+/// Validates and repairs the vault structure
+pub async fn validate_vault<P: AsRef<Path>>(path: P) -> Result<(), NodaError> {
+    let path = path.as_ref();
+    if !path.exists() {
+        return Err(NodaError::Vault("Vault path does not exist".to_string()));
     }
 
-    io::write_new_note(&vault.root, title, tags, body).await
+    // Repair mode: re-create missing directories/files
+    init::create_noda_dir(path).await?;
+    init::create_manifest(path).await?;
+    init::create_sync_files(path).await?;
+
+    Ok(())
 }
 
-/// Update a note's body and refresh its `updated` timestamp.
-pub async fn update_note(
-    note: &Note,
-    new_body: impl Into<String>,
-) -> Result<Note, NodaError> {
-    io::update_note_body(note, new_body.into()).await
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
 
-/// Atomically rename a note: renames the file, updates frontmatter.
-pub async fn rename_note(
-    vault: &Vault,
-    note: &Note,
-    new_title: impl Into<String>,
-) -> Result<Note, NodaError> {
-    let new_title = new_title.into();
+    #[tokio::test]
+    async fn test_create_and_validate_vault() {
+        let dir = tempdir().unwrap();
+        
+        let vault = create_vault(dir.path()).await.expect("Failed to create vault");
+        assert!(vault.path.join(".noda").exists());
+        assert!(vault.path.join(".noda").join("manifest.json").exists());
+        assert!(vault.path.join(".noda").join("sync").join("queue.json").exists());
 
-    // Guard against duplicates.
-    let new_filename = format!("{}.md", new_title);
-    let new_path = note.file_path.parent().unwrap_or(&vault.root).join(&new_filename);
-    if new_path.exists() && new_path != note.file_path {
-        return Err(NodaError::DuplicateFilename { title: new_title });
+        // Should not fail on validation (which also repairs)
+        validate_vault(dir.path()).await.expect("Failed to validate vault");
     }
-
-    io::rename_note(&note.file_path, new_path, new_title).await
-}
-
-/// Resolve a relative note path against the vault root.
-pub fn resolve_note_path(vault: &Vault, relative_path: &str) -> PathBuf {
-    vault.root.join(relative_path)
 }

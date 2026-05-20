@@ -1,69 +1,67 @@
-//! `.noda/` directory initialization and repair.
-//!
-//! Ensures that all required metadata directories and files exist.
-//! Called on every `open_vault()` and `create_vault()` to self-heal.
+//! Vault initialization and validation routines
 
 use crate::errors::NodaError;
-use serde_json::json;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::fs;
-use tracing::instrument;
 
-/// Create or repair the full `.noda/` directory structure.
-///
-/// This function is idempotent — safe to call on an already-initialized vault.
-#[instrument(skip(vault_root), fields(vault = %vault_root.display()))]
-pub async fn ensure_noda_dir(vault_root: &Path) -> Result<(), NodaError> {
-    let noda = vault_root.join(".noda");
+#[derive(Serialize, Deserialize)]
+pub struct VaultManifest {
+    pub version: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
 
-    // Top-level subdirectories.
-    let dirs = [
-        noda.join("history"),
-        noda.join("trash"),
-        noda.join("conflicts"),
-        noda.join("attachments"),
-        noda.join("sync"),
+/// Creates the base `.noda/` directory structure
+pub async fn create_noda_dir(vault_path: &Path) -> Result<(), NodaError> {
+    let noda_path = vault_path.join(".noda");
+    
+    // Create base directories
+    let dirs_to_create = vec![
+        noda_path.clone(),
+        noda_path.join("history"),
+        noda_path.join("trash"),
+        noda_path.join("sync"),
+        noda_path.join("attachments"),
     ];
 
-    for dir in &dirs {
-        fs::create_dir_all(dir).await?;
-        tracing::trace!("ensured directory: {}", dir.display());
+    for dir in dirs_to_create {
+        if !dir.exists() {
+            fs::create_dir_all(&dir).await.map_err(NodaError::Io)?;
+        }
     }
 
-    // Initialize queue.json if absent.
-    let queue_path = noda.join("sync").join("queue.json");
-    if !queue_path.exists() {
-        write_json_file(&queue_path, &json!([])).await?;
-        tracing::debug!("created empty sync queue");
-    }
-
-    // Initialize remote_state.json if absent.
-    let remote_state_path = noda.join("sync").join("remote_state.json");
-    if !remote_state_path.exists() {
-        write_json_file(&remote_state_path, &json!({})).await?;
-        tracing::debug!("created empty remote state");
-    }
-
-    // Initialize manifest.json if absent.
-    let manifest_path = noda.join("manifest.json");
-    if !manifest_path.exists() {
-        let manifest = json!({
-            "version": 1,
-            "created_at": chrono::Utc::now().to_rfc3339(),
-        });
-        write_json_file(&manifest_path, &manifest).await?;
-        tracing::debug!("created vault manifest");
-    }
-
-    tracing::info!("vault metadata directory is ready");
     Ok(())
 }
 
-/// Atomically write a JSON value to a file using a temp-file + rename pattern.
-async fn write_json_file(path: &Path, value: &serde_json::Value) -> Result<(), NodaError> {
-    let content = serde_json::to_string_pretty(value)?;
-    let tmp_path = path.with_extension("tmp");
-    fs::write(&tmp_path, content.as_bytes()).await?;
-    fs::rename(&tmp_path, path).await?;
+/// Creates the manifest.json file
+pub async fn create_manifest(vault_path: &Path) -> Result<(), NodaError> {
+    let manifest_path = vault_path.join(".noda").join("manifest.json");
+    if !manifest_path.exists() {
+        let manifest = VaultManifest {
+            version: "1.0.0".to_string(),
+            created_at: Utc::now(),
+        };
+        let content = serde_json::to_string_pretty(&manifest)
+            .map_err(|e| NodaError::Vault(format!("Failed to serialize manifest: {}", e)))?;
+        fs::write(&manifest_path, content).await.map_err(NodaError::Io)?;
+    }
+    Ok(())
+}
+
+/// Creates empty sync state files
+pub async fn create_sync_files(vault_path: &Path) -> Result<(), NodaError> {
+    let sync_dir = vault_path.join(".noda").join("sync");
+    
+    let queue_path = sync_dir.join("queue.json");
+    if !queue_path.exists() {
+        fs::write(&queue_path, "[]").await.map_err(NodaError::Io)?;
+    }
+
+    let remote_state_path = sync_dir.join("remote_state.json");
+    if !remote_state_path.exists() {
+        fs::write(&remote_state_path, "{}").await.map_err(NodaError::Io)?;
+    }
+
     Ok(())
 }

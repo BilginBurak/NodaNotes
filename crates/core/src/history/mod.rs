@@ -1,68 +1,96 @@
-//! # History Module
-//!
-//! Per-note snapshot system. Creates timestamped copies of note content
-//! before each overwrite. Supports listing and restoring snapshots.
+//! History & Snapshot System
 
-pub mod retention;
 pub mod storage;
+pub mod retention;
+
+pub use storage::{Snapshot, save_snapshot, list_snapshots};
+pub use retention::{enforce_retention, RetentionPolicy};
 
 use crate::errors::NodaError;
-use crate::models::{Note, Snapshot, Vault};
-use shared::dto::SnapshotDto;
-use tracing::instrument;
+use crate::models::note::Note;
+use std::path::Path;
+use gray_matter::Matter;
+use gray_matter::engine::YAML;
+use crate::models::note::Frontmatter;
 
-/// Configuration for snapshot retention.
-#[derive(Debug, Clone)]
-pub struct RetentionPolicy {
-    /// Maximum number of snapshots to keep per note.
-    /// Set to `None` for unlimited (not recommended for large vaults).
-    pub max_count: Option<usize>,
-    /// Maximum age of snapshots in days.
-    pub max_age_days: Option<u64>,
-}
-
-impl Default for RetentionPolicy {
-    fn default() -> Self {
-        Self {
-            max_count: Some(50),
-            max_age_days: Some(90),
-        }
-    }
-}
-
-/// Create a snapshot of `note` before it is overwritten.
-///
-/// Always call this before any write that changes the note body or title.
-#[instrument(skip(vault, note), fields(note_id = %note.frontmatter.id))]
-pub async fn snapshot(vault: &Vault, note: &Note) -> Result<Snapshot, NodaError> {
-    let snap = storage::save_snapshot(vault, note).await?;
-    retention::enforce(vault, &note.frontmatter.id, &RetentionPolicy::default()).await?;
-    tracing::debug!(
-        note_id = %note.frontmatter.id,
-        path = %snap.file_path.display(),
-        "snapshot created"
-    );
+/// High-level function to create a snapshot and instantly enforce retention policies
+pub async fn snapshot<P: AsRef<Path>>(
+    vault_path: P,
+    note: &Note,
+) -> Result<Snapshot, NodaError> {
+    let snap = save_snapshot(&vault_path, note).await?;
+    enforce_retention(&vault_path, note.id, &RetentionPolicy::default()).await?;
     Ok(snap)
 }
 
-/// List all snapshots for a given note UUID, newest first.
-#[instrument(skip(vault), fields(note_id = %note_id))]
-pub async fn list_snapshots(vault: &Vault, note_id: &str) -> Result<Vec<SnapshotDto>, NodaError> {
-    let snaps = storage::list_snapshots(vault, note_id).await?;
-    Ok(snaps
-        .into_iter()
-        .map(|s| SnapshotDto {
-            note_id: s.note_id,
-            timestamp: s.timestamp.to_rfc3339(),
-            file_path: s.file_path.display().to_string(),
-        })
-        .collect())
+/// Reads a snapshot and parses it back into a Note object
+pub async fn restore<P: AsRef<Path>>(
+    _vault_path: P, // Not used but kept for consistent API and possible future validations
+    snapshot: &Snapshot,
+) -> Result<Note, NodaError> {
+    let content = tokio::fs::read_to_string(&snapshot.absolute_path)
+        .await
+        .map_err(NodaError::Io)?;
+        
+    let matter = Matter::<YAML>::new();
+    let parsed = matter.parse(&content);
+    
+    let frontmatter: Frontmatter = parsed
+        .data
+        .as_ref()
+        .ok_or_else(|| NodaError::Frontmatter("No frontmatter found in snapshot".to_string()))?
+        .deserialize()
+        .map_err(|e| NodaError::Frontmatter(format!("Failed to parse YAML from snapshot: {}", e)))?;
+        
+    Ok(Note {
+        id: frontmatter.id,
+        parent_id: frontmatter.parent_id,
+        title: frontmatter.title,
+        body: parsed.content,
+        color: frontmatter.color,
+        pinned: frontmatter.pinned,
+        tags: frontmatter.tags,
+        status: frontmatter.status,
+        created_at: frontmatter.created_at,
+        updated_at: frontmatter.updated_at,
+    })
 }
 
-/// Restore a note to the content of a specific snapshot.
-///
-/// Returns the restored `Note` with updated timestamps.
-#[instrument(skip(vault), fields(note_id = %note_id))]
-pub async fn restore(vault: &Vault, note_id: &str, snapshot_path: &str) -> Result<Note, NodaError> {
-    storage::restore_snapshot(vault, note_id, snapshot_path).await
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    
+    #[tokio::test]
+    async fn test_history_flow() {
+        let dir = tempdir().unwrap();
+        let mut note = Note::new();
+        note.title = "V1".to_string();
+        note.body = "Hello".to_string();
+        
+        // Take snapshot 1
+        let snap1 = snapshot(dir.path(), &note).await.unwrap();
+        
+        // Wait 50ms to ensure the second file gets a different %3f timestamp
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        
+        note.title = "V2".to_string();
+        note.body = "World".to_string();
+        
+        // Take snapshot 2
+        let snap2 = snapshot(dir.path(), &note).await.unwrap();
+        
+        // List snapshots
+        let list = list_snapshots(dir.path(), note.id).await.unwrap();
+        assert_eq!(list.len(), 2);
+        
+        // Newest should be first
+        assert_eq!(list[0].absolute_path, snap2.absolute_path);
+        assert_eq!(list[1].absolute_path, snap1.absolute_path);
+        
+        // Restore from snapshot 1
+        let restored = restore(dir.path(), &snap1).await.unwrap();
+        assert_eq!(restored.title, "V1");
+        assert_eq!(restored.body, "Hello");
+    }
 }

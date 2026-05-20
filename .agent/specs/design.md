@@ -724,9 +724,9 @@ Permissions are scoped to the minimum necessary for each window.
 ```json
 {
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "bun run build",
     "frontendDist": "../frontend/build"
   },
   "app": {

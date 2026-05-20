@@ -1,73 +1,34 @@
-//! Snapshot retention policy enforcement.
-//!
-//! Prunes old snapshots according to configured max count and max age.
+//! Retention policies for history snapshots
 
-use super::RetentionPolicy;
 use crate::errors::NodaError;
-use crate::models::Vault;
-use chrono::Utc;
-use tokio::fs;
-use tracing::instrument;
+use crate::models::note::NoteId;
+use std::path::Path;
+use super::storage::list_snapshots;
 
-/// Enforce the retention policy for `note_id`'s snapshots.
-///
-/// Called automatically after each new snapshot is created.
-#[instrument(skip(vault, policy), fields(note_id = %note_id))]
-pub async fn enforce(vault: &Vault, note_id: &str, policy: &RetentionPolicy) -> Result<(), NodaError> {
-    let snapshot_dir = vault.history_dir().join(note_id);
+pub struct RetentionPolicy {
+    pub max_count: usize,
+}
 
-    if !snapshot_dir.exists() {
-        return Ok(());
+impl Default for RetentionPolicy {
+    fn default() -> Self {
+        Self { max_count: 50 } // Keep last 50 edits
     }
+}
 
-    // Collect all snapshot files with their timestamps.
-    let mut snapshots = super::storage::list_snapshots(vault, note_id).await?;
-    // list_snapshots returns newest-first; we want oldest-first for pruning.
-    snapshots.reverse();
-
-    let now = Utc::now();
-    let mut pruned = 0usize;
-
-    // Prune by age first.
-    if let Some(max_age_days) = policy.max_age_days {
-        let cutoff = now - chrono::Duration::days(max_age_days as i64);
-        for snap in snapshots.iter().filter(|s| s.timestamp < cutoff) {
-            if let Err(e) = fs::remove_file(&snap.file_path).await {
-                tracing::warn!(
-                    path = %snap.file_path.display(),
-                    error = %e,
-                    "failed to prune old snapshot"
-                );
-            } else {
-                pruned += 1;
-            }
-        }
-        // Refresh list after age pruning.
-        snapshots = super::storage::list_snapshots(vault, note_id).await?;
-        snapshots.reverse(); // back to oldest-first
-    }
-
-    // Prune by count (keep newest N).
-    if let Some(max_count) = policy.max_count {
-        if snapshots.len() > max_count {
-            let excess = &snapshots[..snapshots.len() - max_count];
-            for snap in excess {
-                if let Err(e) = fs::remove_file(&snap.file_path).await {
-                    tracing::warn!(
-                        path = %snap.file_path.display(),
-                        error = %e,
-                        "failed to prune snapshot by count"
-                    );
-                } else {
-                    pruned += 1;
-                }
-            }
+/// Enforces the retention policy by deleting oldest snapshots if max_count is exceeded
+pub async fn enforce_retention<P: AsRef<Path>>(
+    vault_path: P,
+    note_id: NoteId,
+    policy: &RetentionPolicy,
+) -> Result<(), NodaError> {
+    let mut snapshots = list_snapshots(vault_path, note_id).await?;
+    
+    if snapshots.len() > policy.max_count {
+        let excess = snapshots.split_off(policy.max_count);
+        for old_snap in excess {
+            let _ = tokio::fs::remove_file(&old_snap.absolute_path).await;
         }
     }
-
-    if pruned > 0 {
-        tracing::debug!(note_id = %note_id, pruned = pruned, "pruned old snapshots");
-    }
-
+    
     Ok(())
 }

@@ -1,0 +1,31 @@
+{
+  "productName": "Noda",
+  "version": "0.1.0",
+  "identifier": "com.noda.app",
+  "build": {
+    "beforeDevCommand": "bun run --cwd ../frontend dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "bun run --cwd ../frontend build",
+    "frontendDist": "../../frontend/build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Noda",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "transparent": true,
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: noda: data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "icon": []
+  }
+}

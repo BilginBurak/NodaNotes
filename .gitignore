@@ -9,3 +9,10 @@ Icon
 
 # Thumbnails
 ._*
+
+/frontend/build
+/frontend/node_modules
+/frontend/.svelte-kit
+/target
+
+

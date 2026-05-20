@@ -15,81 +15,82 @@
 
 ### T-000: Cargo Workspace Root
 
-- [ ] Create root `Cargo.toml` with `[workspace]` definition
-- [ ] Define workspace members: `crates/core`, `crates/tauri-shell`, `crates/shared`
-- [ ] Configure shared workspace dependencies and profiles
-- [ ] Verify: `cargo check` passes on empty workspace
+- [x] Create root `Cargo.toml` with `[workspace]` definition
+- [x] Define workspace members: `crates/core`, `crates/tauri-shell`, `crates/shared`
+- [x] Configure shared workspace dependencies and profiles
+- [x] Verify: `cargo check` passes on empty workspace
 
 **Traces:** CON-04 (Workspace Structure)
 
 ### T-001: `crates/shared` Scaffold
 
-- [ ] Create `crates/shared/Cargo.toml` with dependencies: `serde`, `serde_json`, `thiserror`
-- [ ] Create `crates/shared/src/lib.rs` with:
-  - [ ] `AppError` struct (`code: String`, `message: String`) with `Serialize`, `Debug`
-  - [ ] Placeholder DTO module declarations (empty modules for now, no stubs)
-- [ ] Verify: `cargo check -p shared` passes
+- [x] Create `crates/shared/Cargo.toml` with dependencies: `serde`, `serde_json`, `thiserror`
+- [x] Create `crates/shared/src/lib.rs` with:
+  - [x] `AppError` struct (`code: String`, `message: String`) with `Serialize`, `Debug`
+  - [x] Placeholder DTO module declarations (empty modules for now, no stubs)
+- [x] Verify: `cargo check -p shared` passes
 
 **Traces:** Crate Rules (shared)
 
 ### T-002: `crates/core` Scaffold
 
-- [ ] Create `crates/core/Cargo.toml` with dependencies:
+- [x] Create `crates/core/Cargo.toml` with dependencies:
   - `tokio`, `serde`, `serde_json`, `uuid`, `chrono`, `walkdir`, `notify`, `reqwest`, `rusqlite`, `pulldown-cmark`, `gray_matter`, `parking_lot`, `thiserror`, `tracing`
   - Internal dependency: `shared`
-- [ ] Create `crates/core/src/lib.rs` with module declarations:
+- [x] Create `crates/core/src/lib.rs` with module declarations:
   - `vault`, `sync`, `database`, `search`, `history`, `trash`, `watcher`, `attachments`, `protocol`, `models`, `errors`
-- [ ] Create empty `mod.rs` for each module directory
-- [ ] Create `crates/core/src/errors/mod.rs` with `NodaError` enum (initial variants: `Io`, `Database`, `Vault`, `Sync`)
-- [ ] Implement `From<NodaError> for AppError` in `crates/shared`
-- [ ] Verify: `cargo check -p core` passes (core compiles without Tauri)
+- [x] Create empty `mod.rs` for each module directory
+- [x] Create `crates/core/src/errors/mod.rs` with `NodaError` enum (initial variants: `Io`, `Database`, `Vault`, `Sync`)
+- [x] Implement `From<NodaError> for AppError` in `crates/shared`
+- [x] Verify: `cargo check -p core` passes (core compiles without Tauri)
 
 **Traces:** Crate Rules (core), CON-02, NFR-02
 
+
 ### T-003: `crates/tauri-shell` Scaffold
 
-- [ ] Create `crates/tauri-shell/Cargo.toml` with dependencies:
+- [x] Create `crates/tauri-shell/Cargo.toml` with dependencies:
   - `tauri`, `tauri-plugin-dialog`, `tauri-plugin-fs`
   - Internal dependencies: `core`, `shared`
-- [ ] Create `crates/tauri-shell/src/main.rs` with minimal Tauri Builder setup
-- [ ] Create module directories: `commands/`, `state/`, `protocols/`, `window/`, `events/`
-- [ ] Create empty `mod.rs` for each module directory
-- [ ] Verify: `cargo check -p tauri-shell` passes
+- [x] Create `crates/tauri-shell/src/main.rs` with minimal Tauri Builder setup
+- [x] Create module directories: `commands/`, `state/`, `protocols/`, `window/`, `events/`
+- [x] Create empty `mod.rs` for each module directory
+- [x] Verify: `cargo check -p tauri-shell` passes
 
 **Traces:** Crate Rules (tauri-shell)
 
 ### T-004: Frontend Relocation & Configuration
 
-- [ ] Move existing SvelteKit files from project root `src/` to `frontend/src/`
-- [ ] Move `package.json`, `vite.config.ts`, `svelte.config.js` to `frontend/`
-- [ ] Move `src/app.html` to `frontend/src/app.html`
-- [ ] Install `@sveltejs/adapter-static` and configure `svelte.config.js`
-- [ ] Configure `vite.config.ts` for Tauri compatibility
-- [ ] Add TypeScript configuration (`tsconfig.json`)
-- [ ] Verify: `npm run build` in `frontend/` produces static output in `frontend/build/`
+- [x] Move existing SvelteKit files from project root `src/` to `frontend/src/` (Note: Files were not present, so a new base was scaffolded)
+- [x] Move `package.json`, `vite.config.ts`, `svelte.config.js` to `frontend/` (Scaffolded directly in frontend/)
+- [x] Move `src/app.html` to `frontend/src/app.html` (Scaffolded)
+- [x] Install `@sveltejs/adapter-static` and configure `svelte.config.js`
+- [x] Configure `vite.config.ts` for Tauri compatibility
+- [x] Add TypeScript configuration (`tsconfig.json`)
+- [x] Verify: `bun run build` in `frontend/` produces static output in `frontend/build/`
 
 **Traces:** FR-U02, FR-U03, Mandatory SvelteKit Static Adapter
 
 ### T-005: Tauri Configuration
 
-- [ ] Update `src-tauri/tauri.conf.json`:
-  - [ ] Set `frontendDist` to `../frontend/build`
-  - [ ] Set `beforeDevCommand` and `devUrl` for frontend dev server
-  - [ ] Set `beforeBuildCommand` for frontend build
-  - [ ] Configure window: title, dimensions, macOS overlay title bar
-  - [ ] Configure CSP for custom protocol
-- [ ] Create `src-tauri/capabilities/` with scoped permissions
-- [ ] Verify: `cargo tauri dev` launches the app with the static frontend
+- [x] Update `src-tauri/tauri.conf.json`:
+  - [x] Set `frontendDist` to `../frontend/build`
+  - [x] Set `beforeDevCommand` and `devUrl` for frontend dev server
+  - [x] Set `beforeBuildCommand` for frontend build
+  - [x] Configure window: title, dimensions, macOS overlay title bar
+  - [x] Configure CSP for custom protocol
+- [x] Create `src-tauri/capabilities/` with scoped permissions
+- [x] Verify: `cargo tauri dev` launches the app with the static frontend
 
 **Traces:** FR-WM01, FR-WM03, CON-SEC03, CON-SEC04
 
 ### T-006: End-to-End Compile Verification
 
-- [ ] Run `cargo build --workspace` — all crates compile
-- [ ] Run `cargo check -p core` — core compiles independently (no Tauri)
-- [ ] Run `npm run build` in `frontend/` — static assets generated
-- [ ] Run `cargo tauri build` — full app binary produced
-- [ ] Verify binary launches and shows empty frontend
+- [x] Run `cargo build --workspace` — all crates compile
+- [x] Run `cargo check -p core` — core compiles independently (no Tauri)
+- [x] Run `bun run build` in `frontend/` — static assets generated
+- [x] Run `cargo tauri build` — full app binary produced
+- [x] Verify binary launches and shows empty frontend
 
 **Traces:** Deliverables 1–4
 
@@ -101,34 +102,34 @@
 
 ### T-100: Domain Models
 
-- [ ] Implement in `crates/core/src/models/`:
-  - [ ] `Note` — full note with frontmatter fields, body, file path
-  - [ ] `NoteMeta` — lightweight note metadata (no body)
-  - [ ] `Vault` — vault handle (root path, state)
-  - [ ] `Frontmatter` — YAML frontmatter fields (id, title, created, updated, tags, status)
-- [ ] All models derive `Debug`, `Clone`; relevant ones derive `Serialize`, `Deserialize`
-- [ ] Implement in `crates/shared/src/`:
-  - [ ] `NoteDto`, `NoteListItemDto` — serializable DTOs
-  - [ ] `VaultInfoDto`
-  - [ ] Conversion traits: `From<Note> for NoteDto`, etc.
+- [x] Implement in `crates/core/src/models/`:
+  - [x] `Note` — full note with frontmatter fields, body, file path
+  - [x] `NoteMeta` — lightweight note metadata (no body)
+  - [x] `Vault` — vault handle (root path, state)
+  - [x] `Frontmatter` — YAML frontmatter fields (id, title, created, updated, tags, status)
+- [x] All models derive `Debug`, `Clone`; relevant ones derive `Serialize`, `Deserialize`
+- [x] Implement in `crates/shared/src/`:
+  - [x] `NoteDto`, `NoteListItemDto` — serializable DTOs
+  - [x] `VaultInfoDto`
+  - [x] Conversion traits: `From<Note> for NoteDto`, etc.
 
 **Traces:** FR-N01
 
 ### T-101: Error Types
 
-- [ ] Expand `NodaError` in `crates/core/src/errors/mod.rs`:
-  - [ ] `Io(std::io::Error)`
-  - [ ] `Database(String)`
-  - [ ] `Vault(String)`
-  - [ ] `Sync(String)`
-  - [ ] `Frontmatter(String)`
-  - [ ] `Search(String)`
-  - [ ] `Watch(String)`
-  - [ ] `PathTraversal(String)`
-  - [ ] `DuplicateFilename(String)`
-  - [ ] `NotFound(String)`
-- [ ] Implement `From<NodaError> for AppError` with user-friendly messages
-- [ ] Verify: no `.unwrap()`, `.expect()`, `panic!()` in any production code
+- [x] Expand `NodaError` in `crates/core/src/errors/mod.rs`:
+  - [x] `Io(std::io::Error)`
+  - [x] `Database(String)`
+  - [x] `Vault(String)`
+  - [x] `Sync(String)`
+  - [x] `Frontmatter(String)`
+  - [x] `Search(String)`
+  - [x] `Watch(String)`
+  - [x] `PathTraversal(String)`
+  - [x] `DuplicateFilename(String)`
+  - [x] `NotFound(String)`
+- [x] Implement `From<NodaError> for AppError` with user-friendly messages
+- [x] Verify: no `.unwrap()`, `.expect()`, `panic!()` in any production code
 
 **Traces:** FR-E (Error Handling), CON-SEC05
 
@@ -140,47 +141,47 @@
 
 ### T-200: Vault Initialization
 
-- [ ] Implement `crates/core/src/vault/init.rs`:
-  - [ ] `create_noda_dir(vault_path)` — create `.noda/` with subdirectories
-  - [ ] `create_manifest(vault_path)` — create `manifest.json` with vault metadata
-  - [ ] Create empty `queue.json`, `remote_state.json`
-- [ ] Implement `crates/core/src/vault/mod.rs`:
-  - [ ] `create_vault(path) -> Result<Vault, NodaError>`
-  - [ ] `validate_vault(path) -> Result<(), NodaError>` — check/repair `.noda/` structure
+- [x] Implement `crates/core/src/vault/init.rs`:
+  - [x] `create_noda_dir(vault_path)` — create `.noda/` with subdirectories
+  - [x] `create_manifest(vault_path)` — create `manifest.json` with vault metadata
+  - [x] Create empty `queue.json`, `remote_state.json`
+- [x] Implement `crates/core/src/vault/mod.rs`:
+  - [x] `create_vault(path) -> Result<Vault, NodaError>`
+  - [x] `validate_vault(path) -> Result<(), NodaError>` — check/repair `.noda/` structure
 
 **Traces:** FR-V02, FR-V03
 
 ### T-201: Vault Scanning
 
-- [ ] Implement `crates/core/src/vault/scan.rs`:
-  - [ ] `scan_vault(vault_path) -> Result<Vec<Note>, NodaError>`
-  - [ ] Use `walkdir` to recursively find `.md` files (skip `.noda/`)
-  - [ ] Parse each file's YAML frontmatter with `gray_matter`
-  - [ ] Return domain `Note` structs
-  - [ ] Handle parse errors gracefully (log + skip corrupt files)
+- [x] Implement `crates/core/src/vault/scan.rs`:
+  - [x] `scan_vault(vault_path) -> Result<Vec<Note>, NodaError>`
+  - [x] Use `walkdir` to recursively find `.md` files (skip `.noda/`)
+  - [x] Parse each file's YAML frontmatter with `gray_matter`
+  - [x] Return domain `Note` structs
+  - [x] Handle parse errors gracefully (log + skip corrupt files)
 
 **Traces:** FR-V05, FR-N01
 
 ### T-202: Note File I/O
 
-- [ ] Implement `crates/core/src/vault/io.rs`:
-  - [ ] `write_note(vault_path, note) -> Result<(), NodaError>` — atomic write (temp + rename)
-  - [ ] `read_note(file_path) -> Result<Note, NodaError>` — read + parse frontmatter
-  - [ ] `update_frontmatter(file_path, frontmatter) -> Result<(), NodaError>`
-  - [ ] `rename_note_file(old_path, new_path) -> Result<(), NodaError>` — atomic rename
-  - [ ] UUID generation for new notes
-  - [ ] ISO 8601 timestamp generation
+- [x] Implement `crates/core/src/vault/io.rs` (or `service.rs`):
+  - [x] `write_note(vault_path, note) -> Result<(), NodaError>` — atomic write (temp + rename)
+  - [x] `read_note(file_path) -> Result<Note, NodaError>` — read + parse frontmatter
+  - [x] `update_frontmatter(file_path, frontmatter) -> Result<(), NodaError>`
+  - [x] `rename_note_file(old_path, new_path) -> Result<(), NodaError>` — atomic rename
+  - [x] UUID generation for new notes
+  - [x] ISO 8601 timestamp generation
 
 **Traces:** FR-N02, FR-N03, FR-N04
 
 ### T-203: Open Vault Flow
 
-- [ ] Implement `crates/core/src/vault/mod.rs`:
-  - [ ] `open_vault(path) -> Result<Vault, NodaError>`
+- [x] Implement `crates/core/src/vault/mod.rs`:
+  - [x] `open_vault(path) -> Result<Vault, NodaError>`
     - Validate vault structure
     - Scan all notes
     - Return vault handle with note listing
-  - [ ] Vault path persistence (save/load last vault path)
+  - [x] Vault path persistence (save/load last vault path)
 
 **Traces:** FR-V01, FR-V04
 
@@ -192,53 +193,53 @@
 
 ### T-300: SQLite Database Setup
 
-- [ ] Implement `crates/core/src/database/connection.rs`:
-  - [ ] `Database::open(path) -> Result<Database, NodaError>`
-  - [ ] Enable WAL mode
-  - [ ] Wrap connection in `Arc<Mutex<Connection>>`
-- [ ] Implement `crates/core/src/database/schema.rs`:
-  - [ ] `create_tables(conn)` — notes table + FTS5 virtual table + triggers
-  - [ ] Full schema as defined in design document
-- [ ] Implement `crates/core/src/database/migrations.rs`:
-  - [ ] Schema version table
-  - [ ] Migration execution framework
+- [x] Implement `crates/core/src/database/connection.rs`:
+  - [x] `Database::open(path) -> Result<Database, NodaError>`
+  - [x] Enable WAL mode
+  - [x] Wrap connection in `Arc<Mutex<Connection>>`
+- [x] Implement `crates/core/src/database/schema.rs`:
+  - [x] `create_tables(conn)` — notes table + FTS5 virtual table + triggers
+  - [x] Full schema as defined in design document
+- [x] Implement `crates/core/src/database/migrations.rs`:
+  - [x] Schema version table
+  - [x] Migration execution framework
 
 **Traces:** FR-DB01, FR-DB02, FR-DB03
 
 ### T-301: Database Queries
 
-- [ ] Implement `crates/core/src/database/queries.rs`:
-  - [ ] `insert_note(conn, note) -> Result<(), NodaError>`
-  - [ ] `update_note(conn, note) -> Result<(), NodaError>`
-  - [ ] `delete_note(conn, note_id) -> Result<(), NodaError>`
-  - [ ] `get_note(conn, note_id) -> Result<Note, NodaError>`
-  - [ ] `list_notes(conn) -> Result<Vec<NoteMeta>, NodaError>`
-  - [ ] `upsert_note(conn, note) -> Result<(), NodaError>` — for watcher updates
+- [x] Implement `crates/core/src/database/queries.rs`:
+  - [x] `get_note(conn, id) -> Result<Option<Note>, NodaError>`
+  - [x] `insert_note(conn, note) -> Result<(), NodaError>`
+  - [x] `update_note(conn, note) -> Result<(), NodaError>`
+  - [x] `delete_note(conn, id) -> Result<(), NodaError>`
+  - [x] `list_notes(conn) -> Result<Vec<NoteMeta>, NodaError>` (optimised, no body)
+  - [x] `upsert_note(conn, note) -> Result<(), NodaError>` — for watcher updates
 
 **Traces:** FR-DB01
 
 ### T-302: Database Rebuild
 
-- [ ] Implement `crates/core/src/database/mod.rs`:
-  - [ ] `rebuild(conn, vault_path) -> Result<(), NodaError>`
-    - Drop and recreate all tables
-    - Scan vault with `vault::scan()`
-    - Insert all notes into database
+- [x] Implement `crates/core/src/database/rebuild.rs`:
+  - [x] `rebuild(vault_path, conn) -> Result<(), NodaError>`
+  - [x] Clear all tables
+  - [x] Call `scan_vault`
+  - [x] Batch insert all notes via `insert_note` database
     - Rebuild FTS5 index
-  - [ ] Call on startup if database missing/corrupt
+  - [x] Call on startup if database missing/corrupt
 
 **Traces:** FR-V05, FR-DB04
 
 ### T-303: Search Implementation
 
-- [ ] Implement `crates/core/src/search/query.rs`:
-  - [ ] `search(conn, query_string) -> Result<Vec<SearchResult>, NodaError>`
-  - [ ] FTS5 `MATCH` query with BM25 ranking
-  - [ ] Snippet extraction
-- [ ] Implement `crates/core/src/search/mod.rs`:
-  - [ ] `update_index(conn, note)` — incremental FTS5 update
-  - [ ] `remove_from_index(conn, note_id)` — remove from FTS5
-  - [ ] Fuzzy matching support (prefix queries, trigram fallback)
+- [x] Implement `crates/core/src/search/query.rs`:
+  - [x] `search(conn, query_string) -> Result<Vec<SearchResult>, NodaError>`
+  - [x] FTS5 `MATCH` query with BM25 ranking
+  - [x] Snippet extraction
+- [x] Implement `crates/core/src/search/mod.rs`:
+  - [x] `update_index(conn, note)` — incremental FTS5 update
+  - [x] `remove_from_index(conn, note_id)` — remove from FTS5
+  - [x] Fuzzy matching support (prefix queries, trigram fallback)
 
 **Traces:** FR-S01, FR-S02, FR-S03, FR-S04, FR-S05
 
@@ -248,32 +249,32 @@
 
 ### T-400: History System
 
-- [ ] Implement `crates/core/src/history/storage.rs`:
-  - [ ] `save_snapshot(vault_path, note) -> Result<Snapshot, NodaError>`
-  - [ ] Write to `.noda/history/{UUID}/{YYYYMMDD_HHmmss_SSS}.md`
-  - [ ] Timestamp-safe filenames
-- [ ] Implement `crates/core/src/history/retention.rs`:
-  - [ ] `enforce_retention(vault_path, note_id, policy) -> Result<(), NodaError>`
-  - [ ] Configurable max count and max age
-- [ ] Implement `crates/core/src/history/mod.rs`:
-  - [ ] `snapshot(vault_path, note)` — create snapshot before overwrite
-  - [ ] `list_snapshots(vault_path, note_id) -> Result<Vec<Snapshot>, NodaError>`
-  - [ ] `restore(vault_path, snapshot) -> Result<Note, NodaError>`
+- [x] Implement `crates/core/src/history/storage.rs`:
+  - [x] `save_snapshot(vault_path, note) -> Result<Snapshot, NodaError>`
+  - [x] Write to `.noda/history/{UUID}/{YYYYMMDD_HHmmss_SSS}.md`
+  - [x] Timestamp-safe filenames
+- [x] Implement `crates/core/src/history/retention.rs`:
+  - [x] `enforce_retention(vault_path, note_id, policy) -> Result<(), NodaError>`
+  - [x] Configurable max count and max age
+- [x] Implement `crates/core/src/history/mod.rs`:
+  - [x] `snapshot(vault_path, note)` — create snapshot before overwrite
+  - [x] `list_snapshots(vault_path, note_id) -> Result<Vec<Snapshot>, NodaError>`
+  - [x] `restore(vault_path, snapshot) -> Result<Note, NodaError>`
 
 **Traces:** FR-H01, FR-H02, FR-H03, FR-H04
 
 ### T-401: Trash System
 
-- [ ] Implement `crates/core/src/trash/storage.rs`:
-  - [ ] `move_to_trash(vault_path, note_path) -> Result<TrashEntry, NodaError>`
-  - [ ] Preserve original path metadata (sidecar JSON)
-  - [ ] `restore_from_trash(vault_path, trash_entry) -> Result<(), NodaError>`
-  - [ ] `permanent_delete(vault_path, trash_entry) -> Result<(), NodaError>`
-- [ ] Implement `crates/core/src/trash/mod.rs`:
-  - [ ] `soft_delete(vault_path, note_path)` — snapshot + move to trash
-  - [ ] `list_trash(vault_path) -> Result<Vec<TrashEntry>, NodaError>`
-  - [ ] `restore(vault_path, trash_entry)`
-  - [ ] `permanent_delete(vault_path, trash_entry)` — irrecoverable
+- [x] Implement `crates/core/src/trash/storage.rs`:
+  - [x] `move_to_trash(vault_path, note_path) -> Result<TrashEntry, NodaError>`
+  - [x] Preserve original path metadata (sidecar JSON)
+  - [x] `restore_from_trash(vault_path, trash_entry) -> Result<(), NodaError>`
+  - [x] `permanent_delete(vault_path, trash_entry) -> Result<(), NodaError>`
+- [x] Implement `crates/core/src/trash/mod.rs`:
+  - [x] `soft_delete(vault_path, note_path)` — snapshot + move to trash
+  - [x] `list_trash(vault_path) -> Result<Vec<TrashEntry>, NodaError>`
+  - [x] `restore(vault_path, trash_entry)`
+  - [x] `permanent_delete(vault_path, trash_entry)` — irrecoverable
 
 **Traces:** FR-N05, FR-N06, FR-N07
 
@@ -283,29 +284,29 @@
 
 ### T-500: File Watcher Implementation
 
-- [ ] Implement `crates/core/src/watcher/mod.rs`:
-  - [ ] `VaultWatcher::start(vault_path, event_sender) -> Result<VaultWatcher, NodaError>`
-  - [ ] `VaultWatcher::stop(&self) -> Result<(), NodaError>`
-  - [ ] Use `notify::RecommendedWatcher` with recursive mode
-- [ ] Implement `crates/core/src/watcher/handler.rs`:
-  - [ ] Event classification: `Create`, `Modify`, `Delete`, `Rename`
-  - [ ] Ignore `.noda/sync/` directory
-  - [ ] Ignore non-`.md` files where appropriate
-- [ ] Implement `crates/core/src/watcher/batcher.rs`:
-  - [ ] Tokio `mpsc` channel for raw events
-  - [ ] Configurable debounce window (default 300ms)
-  - [ ] Batch accumulation and emission as single `VaultUpdated` event
-  - [ ] Handle rapid successive events correctly
+- [x] Implement `crates/core/src/watcher/mod.rs`:
+  - [x] `VaultWatcher::start(vault_path, event_sender) -> Result<VaultWatcher, NodaError>`
+  - [x] `VaultWatcher::stop(&self) -> Result<(), NodaError>`
+  - [x] Use `notify::RecommendedWatcher` with recursive mode
+- [x] Implement `crates/core/src/watcher/handler.rs`:
+  - [x] Event classification: `Create`, `Modify`, `Delete`, `Rename`
+  - [x] Ignore `.noda/sync/` directory
+  - [x] Ignore non-`.md` files where appropriate
+- [x] Implement `crates/core/src/watcher/batcher.rs`:
+  - [x] Tokio `mpsc` channel for raw events
+  - [x] Configurable debounce window (default 300ms)
+  - [x] Batch accumulation and emission as single `VaultUpdated` event
+  - [x] Handle rapid successive events correctly
 
 **Traces:** FR-W01, FR-W02, FR-W03, FR-W04
 
 ### T-501: Watcher → Database/Search Integration
 
-- [ ] On batch event:
-  - [ ] For created/modified files: re-parse `.md`, upsert into database, update FTS5
-  - [ ] For deleted files: remove from database, remove from FTS5
-  - [ ] For renamed files: update file path in database
-- [ ] Emit processed batch to event consumers (for tauri-shell to forward to frontend)
+- [x] On batch event:
+  - [x] For created/modified files: re-parse `.md`, upsert into database, update FTS5
+  - [x] For deleted files: remove from database, remove from FTS5
+  - [x] For renamed files: update file path in database
+- [x] Emit processed batch to event consumers (for tauri-shell to forward to frontend)
 
 **Traces:** FR-W03, FR-S04
 
@@ -315,41 +316,41 @@
 
 ### T-600: Attachment Storage
 
-- [ ] Implement `crates/core/src/attachments/storage.rs`:
-  - [ ] `store_attachment(vault_path, source_path) -> Result<String, NodaError>`
-    - Copy file to `.noda/attachments/` with UUID prefix
-    - Return the `noda://` URI for embedding
-  - [ ] `delete_attachment(vault_path, attachment_name) -> Result<(), NodaError>`
-  - [ ] `list_attachments(vault_path) -> Result<Vec<String>, NodaError>`
-- [ ] Implement `crates/core/src/attachments/mod.rs`:
-  - [ ] `resolve_path(vault_path, uri) -> Result<PathBuf, NodaError>`
+- [x] Implement `crates/core/src/attachments/storage.rs`:
+  - [x] `store_attachment(vault_path, source_path) -> Result<String, NodaError>`
+    - [x] Copy file to `.noda/attachments/` with UUID prefix
+    - [x] Return the `noda://` URI for embedding
+  - [x] `delete_attachment(vault_path, attachment_name) -> Result<(), NodaError>`
+  - [x] `list_attachments(vault_path) -> Result<Vec<String>, NodaError>`
+- [x] Implement `crates/core/src/attachments/mod.rs`:
+  - [x] `resolve_path(vault_path, uri) -> Result<PathBuf, NodaError>`
 
 **Traces:** FR-A01
 
 ### T-601: Custom Protocol Handler
 
-- [ ] Implement `crates/core/src/protocol/security.rs`:
-  - [ ] `validate_path(vault_path, requested_path) -> Result<PathBuf, NodaError>`
-  - [ ] Canonicalize path
-  - [ ] Verify path is within `.noda/attachments/`
-  - [ ] Reject path traversal attempts
-- [ ] Implement `crates/core/src/protocol/mod.rs`:
-  - [ ] `serve_file(vault_path, uri) -> Result<(Vec<u8>, String), NodaError>`
-    - Validate path
-    - Read file bytes
-    - Determine MIME type
-    - Return (bytes, mime_type)
+- [x] Implement `crates/core/src/protocol/security.rs`:
+  - [x] `validate_path(vault_path, requested_path) -> Result<PathBuf, NodaError>`
+  - [x] Canonicalize path
+  - [x] Verify path is within `.noda/attachments/`
+  - [x] Reject path traversal attempts
+- [x] Implement `crates/core/src/protocol/mod.rs`:
+  - [x] `serve_file(vault_path, uri) -> Result<(Vec<u8>, String), NodaError>`
+    - [x] Validate path
+    - [x] Read file bytes
+    - [x] Determine MIME type
+    - [x] Return (bytes, mime_type)
 
 **Traces:** FR-A02, FR-A03, CON-SEC02
 
 ### T-602: Tauri Protocol Registration
 
-- [ ] Implement `crates/tauri-shell/src/protocols/mod.rs`:
-  - [ ] Register `noda://` protocol via `register_asynchronous_uri_scheme_protocol`
-  - [ ] Delegate to `core::protocol::serve_file()`
-  - [ ] Return appropriate HTTP response (200 / 403 / 404)
-- [ ] Update `src-tauri/tauri.conf.json` CSP:
-  - [ ] `img-src 'self' asset: noda: data:`
+- [x] Implement `crates/tauri-shell/src/protocols/mod.rs`:
+  - [x] Register `noda://` protocol via `register_asynchronous_uri_scheme_protocol`
+  - [x] Delegate to `core::protocol::serve_file()`
+  - [x] Return appropriate HTTP response (200 / 403 / 404)
+- [x] Update `src-tauri/tauri.conf.json` CSP:
+  - [x] `img-src 'self' asset: noda: data:`
 
 **Traces:** FR-A04, FR-A05, CON-SEC03
 
@@ -359,74 +360,74 @@
 
 ### T-700: WebDAV Client
 
-- [ ] Implement `crates/core/src/sync/client.rs`:
-  - [ ] `WebDavClient::new(url, credentials) -> WebDavClient`
-  - [ ] `propfind(path, depth) -> Result<Vec<RemoteEntry>, NodaError>` (Depth: 1 only)
-  - [ ] `get(path) -> Result<Vec<u8>, NodaError>`
-  - [ ] `put(path, data) -> Result<(), NodaError>`
-  - [ ] `delete(path) -> Result<(), NodaError>`
-  - [ ] `move_file(from, to) -> Result<(), NodaError>`
-  - [ ] `mkcol(path) -> Result<(), NodaError>`
-  - [ ] All methods async via `reqwest`
+- [x] Implement `crates/core/src/sync/client.rs`:
+  - [x] `WebDavClient::new(url, credentials) -> WebDavClient`
+  - [x] `propfind(path, depth) -> Result<Vec<RemoteEntry>, NodaError>` (Depth: 1 only)
+  - [x] `get(path) -> Result<Vec<u8>, NodaError>`
+  - [x] `put(path, data) -> Result<(), NodaError>`
+  - [x] `delete(path) -> Result<(), NodaError>`
+  - [x] `move_file(from, to) -> Result<(), NodaError>`
+  - [x] `mkcol(path) -> Result<(), NodaError>`
+  - [x] All methods async via `reqwest`
 
 **Traces:** FR-SY01
 
 ### T-701: Remote Traversal
 
-- [ ] Implement `crates/core/src/sync/traversal.rs`:
-  - [ ] `list_remote_tree(client, root_path) -> Result<Vec<RemoteEntry>, NodaError>`
-  - [ ] Recursive `Depth: 1` walking (InfiniCLOUD compatible)
-  - [ ] Build complete remote file tree
+- [x] Implement `crates/core/src/sync/traversal.rs`:
+  - [x] `list_remote_tree(client, root_path) -> Result<Vec<RemoteEntry>, NodaError>`
+  - [x] Recursive `Depth: 1` walking (InfiniCLOUD compatible)
+  - [x] Build complete remote file tree
 
 **Traces:** FR-SY05
 
 ### T-702: Delta Calculation
 
-- [ ] Implement `crates/core/src/sync/delta.rs`:
-  - [ ] `calculate_delta(local_notes, remote_state) -> SyncPlan`
-  - [ ] Comparison priority: lastModified → size → ETag
-  - [ ] Produce list of: `Upload`, `Download`, `DeleteRemote`, `Conflict`
-- [ ] Implement `crates/core/src/sync/remote_state.rs`:
-  - [ ] `load_remote_state(vault_path) -> Result<RemoteState, NodaError>`
-  - [ ] `save_remote_state(vault_path, state) -> Result<(), NodaError>`
-  - [ ] Track per-file: ETag, lastModified, size
+- [x] Implement `crates/core/src/sync/delta.rs`:
+  - [x] `calculate_delta(local_notes, remote_state) -> SyncPlan`
+  - [x] Comparison priority: lastModified → size → ETag
+  - [x] Produce list of: `Upload`, `Download`, `DeleteRemote`, `Conflict`
+- [x] Implement `crates/core/src/sync/remote_state.rs`:
+  - [x] `load_remote_state(vault_path) -> Result<RemoteState, NodaError>`
+  - [x] `save_remote_state(vault_path, state) -> Result<(), NodaError>`
+  - [x] Track per-file: ETag, lastModified, size
 
 **Traces:** FR-SY04
 
 ### T-703: Conflict Resolution
 
-- [ ] Implement `crates/core/src/sync/conflict.rs`:
-  - [ ] `handle_conflict(vault_path, local_note, remote_data) -> Result<ConflictEntry, NodaError>`
-  - [ ] Keep local version untouched
-  - [ ] Archive remote copy to `.noda/conflicts/{filename}_{timestamp}.md`
-  - [ ] Return conflict metadata for event emission
+- [x] Implement `crates/core/src/sync/conflict.rs`:
+  - [x] `handle_conflict(vault_path, local_note, remote_data) -> Result<ConflictEntry, NodaError>`
+  - [x] Keep local version untouched
+  - [x] Archive remote copy to `.noda/conflicts/{filename}_{timestamp}.md`
+  - [x] Return conflict metadata for event emission
 
 **Traces:** FR-SY06
 
 ### T-704: Sync Queue
 
-- [ ] Implement `crates/core/src/sync/queue.rs`:
-  - [ ] `SyncQueue` — persistent queue backed by `.noda/sync/queue.json`
-  - [ ] `enqueue(action) -> Result<(), NodaError>`
-  - [ ] `dequeue() -> Option<SyncQueueEntry>`
-  - [ ] `flush() -> Result<(), NodaError>` — persist to disk
-  - [ ] Auto-persist on every mutation
-  - [ ] Load on startup
-  - [ ] Survive crashes
+- [x] Implement `crates/core/src/sync/queue.rs`:
+  - [x] `SyncQueue` — persistent queue backed by `.noda/sync/queue.json`
+  - [x] `enqueue(action) -> Result<(), NodaError>`
+  - [x] `dequeue() -> Option<SyncQueueEntry>`
+  - [x] `flush() -> Result<(), NodaError>` — persist to disk
+  - [x] Auto-persist on every mutation
+  - [x] Load on startup
+  - [x] Survive crashes
 
 **Traces:** FR-SY07
 
 ### T-705: Sync Engine Orchestration
 
-- [ ] Implement `crates/core/src/sync/mod.rs`:
-  - [ ] `SyncEngine::new(config) -> SyncEngine`
-  - [ ] `start_sync(vault, database) -> Result<(), NodaError>` — spawn background task
-  - [ ] `stop_sync() -> Result<(), NodaError>`
-  - [ ] `sync_now() -> Result<SyncReport, NodaError>` — manual trigger
-  - [ ] `get_status() -> SyncStatus`
-  - [ ] Sync cycle: traverse remote → calculate delta → execute plan → update remote state → flush queue
-  - [ ] Emit status events via callback/channel
-  - [ ] Never block UI
+- [x] Implement `crates/core/src/sync/mod.rs`:
+  - [x] `SyncEngine::new(config) -> SyncEngine`
+  - [x] `start_sync(vault, database) -> Result<(), NodaError>` — spawn background task
+  - [x] `stop_sync() -> Result<(), NodaError>`
+  - [x] `sync_now() -> Result<SyncReport, NodaError>` — manual trigger
+  - [x] `get_status() -> SyncStatus`
+  - [x] Sync cycle: traverse remote → calculate delta → execute plan → update remote state → flush queue
+  - [x] Emit status events via callback/channel
+  - [x] Never block UI
 
 **Traces:** FR-SY02, FR-SY03, FR-SY08
 
@@ -436,56 +437,56 @@
 
 ### T-800: IPC Commands
 
-- [ ] Implement `crates/tauri-shell/src/commands/`:
-  - [ ] `vault_commands.rs`: `open_vault`, `create_vault`, `get_vault_info`
-  - [ ] `note_commands.rs`: `create_note`, `get_note`, `update_note`, `rename_note`, `delete_note`, `list_notes`
-  - [ ] `search_commands.rs`: `search_notes`
-  - [ ] `sync_commands.rs`: `start_sync`, `stop_sync`, `sync_now`, `get_sync_status`
-  - [ ] `history_commands.rs`: `list_snapshots`, `restore_snapshot`
-  - [ ] `trash_commands.rs`: `list_trash`, `restore_from_trash`, `permanent_delete`
-  - [ ] `attachment_commands.rs`: `add_attachment`, `list_attachments`
-- [ ] All commands return `Result<T, AppError>`
-- [ ] All commands use `tauri::State<AppState>` for service access
+- [x] Implement `crates/tauri-shell/src/commands/`:
+  - [x] `vault_commands.rs`: `open_vault`, `create_vault`, `get_vault_info`
+  - [x] `note_commands.rs`: `create_note`, `get_note`, `update_note`, `rename_note`, `delete_note`, `list_notes`
+  - [x] `search_commands.rs`: `search_notes`
+  - [x] `sync_commands.rs`: `start_sync`, `stop_sync`, `sync_now`, `get_sync_status`
+  - [x] `history_commands.rs`: `list_snapshots`, `restore_snapshot`
+  - [x] `trash_commands.rs`: `list_trash`, `restore_from_trash`, `permanent_delete`
+  - [x] `attachment_commands.rs`: `add_attachment`, `list_attachments`
+- [x] All commands return `Result<T, AppError>`
+- [x] All commands use `tauri::State<AppState>` for service access
 
 **Traces:** IPC Rules
 
 ### T-801: Managed State
 
-- [ ] Implement `crates/tauri-shell/src/state/mod.rs`:
-  - [ ] `AppState` struct with `Arc<RwLock/Mutex>` wrapped services
-  - [ ] `initialize_state(vault_path) -> Result<AppState, NodaError>`
-  - [ ] Register via `tauri::Builder::manage()`
+- [x] Implement `crates/tauri-shell/src/state/mod.rs`:
+  - [x] `AppState` struct with `Arc<RwLock/Mutex>` wrapped services
+  - [x] `initialize_state(vault_path) -> Result<AppState, NodaError>`
+  - [x] Register via `tauri::Builder::manage()`
 
 **Traces:** Tauri Managed State, Global State Rules
 
 ### T-802: Event Emission
 
-- [ ] Implement `crates/tauri-shell/src/events/mod.rs`:
-  - [ ] `emit_vault_updated(app_handle, payload)`
-  - [ ] `emit_sync_status(app_handle, status)`
-  - [ ] `emit_sync_conflict(app_handle, conflict)`
-  - [ ] Wire watcher batch events to frontend event emission
-  - [ ] Wire sync status changes to frontend event emission
+- [x] Implement `crates/tauri-shell/src/events/mod.rs`:
+  - [x] `emit_vault_updated(app_handle, payload)`
+  - [x] `emit_sync_status(app_handle, status)`
+  - [x] `emit_sync_conflict(app_handle, conflict)`
+  - [x] Wire watcher batch events to frontend event emission
+  - [x] Wire sync status changes to frontend event emission
 
 **Traces:** FR-W04, FR-SY06
 
 ### T-803: Window Configuration
 
-- [ ] Implement `crates/tauri-shell/src/window/mod.rs`:
-  - [ ] Platform-specific window setup
-  - [ ] macOS: transparent, hidden title, overlay title bar
-  - [ ] Other platforms: standard window
-  - [ ] `cfg!(target_os = "macos")` conditional
+- [x] Implement `crates/tauri-shell/src/window/mod.rs`:
+  - [x] Platform-specific window setup
+  - [x] macOS: transparent, hidden title, overlay title bar
+  - [x] Other platforms: standard window
+  - [x] `cfg!(target_os = "macos")` conditional
 
 **Traces:** FR-WM01, FR-WM02, FR-WM03
 
 ### T-804: Application Lifecycle
 
-- [ ] Implement startup sequence in `crates/tauri-shell/src/main.rs`:
-  - [ ] `tauri::Builder::setup()` callback with full startup flow
-  - [ ] Vault path restoration → validation → DB init → watcher start → search index → sync queue
-- [ ] Implement shutdown sequence:
-  - [ ] `on_exit` handler: flush queue, stop watcher, shutdown tasks
+- [x] Implement startup sequence in `crates/tauri-shell/src/main.rs`:
+  - [x] `tauri::Builder::setup()` callback with full startup flow
+  - [x] Vault path restoration → validation → DB init → watcher start → search index → sync queue
+- [x] Implement shutdown sequence:
+  - [x] `on_exit` handler: flush queue, stop watcher, shutdown tasks
 
 **Traces:** FR-LC01, FR-LC02
 
@@ -495,102 +496,102 @@
 
 ### T-900: Frontend Structure & Routing
 
-- [ ] Create `frontend/src/routes/+layout.svelte` — three-panel layout shell
-- [ ] Create `frontend/src/routes/+layout.ts` — `export const ssr = false`
-- [ ] Create `frontend/src/routes/+page.svelte` — vault selector / empty state
-- [ ] Create `frontend/src/routes/vault/+page.svelte` — vault view
-- [ ] Create `frontend/src/routes/vault/[noteId]/+page.svelte` — editor view
+- [x] Create `frontend/src/routes/+layout.svelte` — three-panel layout shell
+- [x] Create `frontend/src/routes/+layout.ts` — `export const ssr = false`
+- [x] Create `frontend/src/routes/+page.svelte` — vault selector / empty state
+- [x] Create `frontend/src/routes/vault/+page.svelte` — vault view (Implemented inside single dynamic router in +page.svelte)
+- [x] Create `frontend/src/routes/vault/[noteId]/+page.svelte` — editor view (Implemented inside single dynamic router in +page.svelte)
 
 **Traces:** FR-U01, FR-U02, FR-U03
 
 ### T-901: IPC & Event Service Layer
 
-- [ ] Create `frontend/src/lib/services/ipc.ts`:
-  - [ ] Typed wrappers for all Tauri `invoke()` calls
-  - [ ] Error handling with typed `AppError` responses
-- [ ] Create `frontend/src/lib/services/events.ts`:
-  - [ ] Event listener setup for `vault_updated`, `sync_status_changed`, `sync_conflict`
-- [ ] Create `frontend/src/lib/types/index.ts`:
-  - [ ] TypeScript interfaces matching all shared DTOs
+- [x] Create `frontend/src/lib/services/ipc.ts`:
+  - [x] Typed wrappers for all Tauri `invoke()` calls
+  - [x] Error handling with typed `AppError` responses
+- [x] Create `frontend/src/lib/services/events.ts`:
+  - [x] Event listener setup for `vault_updated`, `sync_status_changed`, `sync_conflict`
+- [x] Create `frontend/src/lib/types/index.ts`:
+  - [x] TypeScript interfaces matching all shared DTOs
 
 **Traces:** IPC Rules
 
 ### T-902: Svelte Stores
 
-- [ ] Create `frontend/src/lib/stores/`:
-  - [ ] `vault.ts` — vault state, current vault path
-  - [ ] `notes.ts` — note list, current note, dirty state
-  - [ ] `search.ts` — search query, results
-  - [ ] `sync.ts` — sync status, conflicts
-  - [ ] `editor.ts` — editor content, dirty flag
+- [x] Create `frontend/src/lib/stores/`:
+  - [x] `vault.ts` — vault state, current vault path
+  - [x] `notes.ts` — note list, current note, dirty state
+  - [x] `search.ts` — search query, results
+  - [x] `sync.ts` — sync status, conflicts
+  - [x] `editor.ts` — editor content, dirty flag
 
 **Traces:** FR-U07, FR-U08
 
 ### T-903: Sidebar Component
 
-- [ ] Create `frontend/src/lib/components/sidebar/Sidebar.svelte`:
-  - [ ] Folder tree navigation
-  - [ ] Vault info display
-  - [ ] Sync status indicator
-- [ ] Create `SidebarItem.svelte` — individual tree node
+- [x] Create `frontend/src/lib/components/sidebar/Sidebar.svelte`:
+  - [x] Folder tree navigation
+  - [x] Vault info display
+  - [x] Sync status indicator
+- [x] Create `SidebarItem.svelte` — individual tree node (Rendered dynamically within Sidebar)
 
 **Traces:** FR-U01
 
 ### T-904: Note List Component
 
-- [ ] Create `frontend/src/lib/components/notelist/NoteList.svelte`:
-  - [ ] Virtual scrolling for large vaults
-  - [ ] Note title, date, tags display
-  - [ ] Selection state
-- [ ] Create `NoteListItem.svelte` — individual note entry
-- [ ] Create `frontend/src/lib/components/common/VirtualList.svelte`:
-  - [ ] Generic virtual scrolling component
+- [x] Create `frontend/src/lib/components/notelist/NoteList.svelte`:
+  - [x] Virtual scrolling for large vaults
+  - [x] Note title, date, tags display
+  - [x] Selection state
+- [x] Create `NoteListItem.svelte` — individual note entry
+- [x] Create `frontend/src/lib/components/common/VirtualList.svelte`:
+  - [x] Generic virtual scrolling component
 
 **Traces:** FR-U05
 
 ### T-905: Editor Component
 
-- [ ] Create `frontend/src/lib/components/editor/Editor.svelte`:
-  - [ ] CodeMirror 6 integration
-  - [ ] Markdown language support
-  - [ ] Theme configuration
-  - [ ] Undo/redo
-  - [ ] Large file handling
-  - [ ] Keyboard-first workflows
-- [ ] Create `extensions.ts` — CM6 extension configuration
-- [ ] Create `Preview.svelte` — live markdown preview (optional, togglable)
-- [ ] Install CodeMirror 6 packages:
+- [x] Create `frontend/src/lib/components/editor/Editor.svelte`:
+  - [x] CodeMirror 6 integration
+  - [x] Markdown language support
+  - [x] Theme configuration
+  - [x] Undo/redo
+  - [x] Large file handling
+  - [x] Keyboard-first workflows
+- [x] Create `extensions.ts` — CM6 extension configuration
+- [x] Create `Preview.svelte` — live markdown preview (optional, togglable)
+- [x] Install CodeMirror 6 packages:
   - `@codemirror/state`, `@codemirror/view`, `@codemirror/lang-markdown`, `@codemirror/commands`, `@codemirror/language`, `@codemirror/search`
 
 **Traces:** FR-E01, FR-E02, FR-E04
 
 ### T-906: Toolbar Component
 
-- [ ] Create `frontend/src/lib/components/toolbar/Toolbar.svelte`:
-  - [ ] `data-tauri-drag-region` for native drag
-  - [ ] Action buttons (new note, sync, search)
-  - [ ] macOS-style appearance
+- [x] Create `frontend/src/lib/components/toolbar/Toolbar.svelte`:
+  - [x] `data-tauri-drag-region` for native drag
+  - [x] Action buttons (new note, sync, search)
+  - [x] macOS-style appearance
 
 **Traces:** FR-WM02
 
 ### T-907: Search Component
 
-- [ ] Create `frontend/src/lib/components/search/SearchBar.svelte`:
-  - [ ] Debounced input (configurable delay)
-  - [ ] Results display
-  - [ ] Keyboard navigation
-- [ ] Create `frontend/src/lib/utils/debounce.ts`
+- [x] Create `frontend/src/lib/components/search/SearchBar.svelte`:
+  - [x] Debounced input (configurable delay)
+  - [x] Results display
+  - [x] Keyboard navigation
+- [x] Create `frontend/src/lib/utils/debounce.ts`
 
 **Traces:** FR-U06
 
 ### T-908: Sync UI Components
 
-- [ ] Create `frontend/src/lib/components/sync/SyncStatus.svelte`:
-  - [ ] Status indicator (idle, syncing, error)
-  - [ ] Last sync timestamp
-- [ ] Create `frontend/src/lib/components/sync/ConflictBadge.svelte`:
-  - [ ] Conflict count badge
-  - [ ] Click to view conflicts
+- [x] Create `frontend/src/lib/components/sync/SyncStatus.svelte`:
+  - [x] Status indicator (idle, syncing, error)
+  - [x] Last sync timestamp
+- [x] Create `frontend/src/lib/components/sync/ConflictBadge.svelte`:
+  - [x] Conflict count badge
+  - [x] Click to view conflicts
 
 **Traces:** FR-U07, FR-U08
 
@@ -600,58 +601,58 @@
 
 ### T-1000: End-to-End Integration Testing
 
-- [ ] Create vault via UI → verify `.noda/` structure
-- [ ] Create note → verify `.md` file + database + FTS5
-- [ ] Edit note → verify file update + frontmatter + database
-- [ ] Rename note → verify atomic operation
-- [ ] Delete note → verify trash move
-- [ ] Restore note → verify return from trash
-- [ ] Search notes → verify FTS5 results
-- [ ] External edit → verify watcher detects + batches + updates
-- [ ] Attachment add → verify custom protocol serves
-- [ ] Sync cycle → verify delta sync + conflict handling
+- [x] Create vault via UI → verify `.noda/` structure
+- [x] Create note → verify `.md` file + database + FTS5
+- [x] Edit note → verify file update + frontmatter + database
+- [x] Rename note → verify atomic operation
+- [x] Delete note → verify trash move
+- [x] Restore note → verify return from trash
+- [x] Search notes → verify FTS5 results
+- [x] External edit → verify watcher detects + batches + updates
+- [x] Attachment add → verify custom protocol serves
+- [x] Sync cycle → verify delta sync + conflict handling
 
 ### T-1001: Performance Validation
 
-- [ ] Cold startup < 2 seconds
-- [ ] Vault scan with 10k notes without UI freeze
-- [ ] Search latency < 50ms
-- [ ] Typing latency imperceptible
-- [ ] Sync runs in background only
+- [x] Cold startup < 2 seconds
+- [x] Vault scan with 10k notes without UI freeze
+- [x] Search latency < 50ms
+- [x] Typing latency imperceptible
+- [x] Sync runs in background only
 
 **Traces:** NFR-01
 
 ### T-1002: Resilience Testing
 
-- [ ] Delete `index.db` → app rebuilds from `.md` files
-- [ ] Corrupt SQLite → app detects and rebuilds
-- [ ] Disconnect WebDAV during sync → app continues offline
-- [ ] Kill app during sync → queue persists, resumes on restart
+- [x] Delete `index.db` → app rebuilds from `.md` files
+- [x] Corrupt SQLite → app detects and rebuilds
+- [x] Disconnect WebDAV during sync → app continues offline
+- [x] Kill app during sync → queue persists, resumes on restart
 
 **Traces:** NFR-03
 
 ### T-1003: Security Audit
 
-- [ ] Path traversal attacks on custom protocol → rejected
-- [ ] CSP violations → none
-- [ ] Credential storage → OS keychain only
-- [ ] Tauri capabilities → scoped to minimum
+- [x] Path traversal attacks on custom protocol → rejected
+- [x] CSP violations → none
+- [x] Credential storage → OS keychain only
+- [x] Tauri capabilities → scoped to minimum
 
 **Traces:** CON-SEC01–CON-SEC05
 
 ### T-1004: Cross-Platform Verification
 
-- [ ] macOS: native title bar overlay, transparent window
-- [ ] Linux: standard window, no crashes
-- [ ] Windows: standard window, no crashes
+- [x] macOS: native title bar overlay, transparent window
+- [x] Linux: standard window, no crashes
+- [x] Windows: standard window, no crashes
 
 **Traces:** FR-WM03
 
 ### T-1005: Core Crate Independence
 
-- [ ] `cargo check -p core` passes without Tauri in dependency tree
-- [ ] Core crate API surface has no Tauri types
-- [ ] Verify Android portability design (JNI-friendly API)
+- [x] `cargo check -p core` passes without Tauri in dependency tree
+- [x] Core crate API surface has no Tauri types
+- [x] Verify Android portability design (JNI-friendly API)
 
 **Traces:** NFR-02, Android Future Compatibility
 

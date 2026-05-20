@@ -1,0 +1,83 @@
+// Main entry point for the Noda Tauri shell application.
+
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+pub mod commands;
+pub mod events;
+pub mod protocols;
+pub mod state;
+pub mod window;
+
+use state::AppState;
+use tauri::Manager;
+
+fn main() {
+    let app_state = AppState::default();
+
+    protocols::setup_protocols(tauri::Builder::default())
+        .manage(app_state)
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![
+            commands::vault_commands::open_vault,
+            commands::vault_commands::create_vault,
+            commands::vault_commands::get_vault_info,
+            commands::note_commands::create_note,
+            commands::note_commands::get_note,
+            commands::note_commands::update_note,
+            commands::note_commands::rename_note,
+            commands::note_commands::delete_note,
+            commands::note_commands::list_notes,
+            commands::search_commands::search_notes,
+            commands::sync_commands::start_sync,
+            commands::sync_commands::stop_sync,
+            commands::sync_commands::sync_now,
+            commands::sync_commands::get_sync_status,
+            commands::sync_commands::update_sync_config,
+            commands::sync_commands::validate_sync_config,
+            commands::sync_commands::get_sync_config,
+            commands::history_commands::list_snapshots,
+            commands::history_commands::restore_snapshot,
+            commands::trash_commands::list_trash,
+            commands::trash_commands::trash_note,
+            commands::trash_commands::restore_from_trash,
+            commands::trash_commands::permanent_delete,
+            commands::attachment_commands::add_attachment,
+            commands::attachment_commands::list_attachments,
+            commands::attachment_commands::delete_attachment,
+        ])
+        .setup(|app| {
+            // Configure main window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window::setup_window(&window);
+            }
+
+            let app_handle = app.handle().clone();
+            let app_state = app.state::<AppState>().inner().clone();
+
+            // Load last opened vault synchronously during setup to avoid race condition with Svelte onMount
+            tauri::async_runtime::block_on(async move {
+                if let Ok(Some(path)) = noda_core::vault::persistence::load_last_vault_path().await {
+                    if let Err(e) = app_state.init_vault(&path, app_handle).await {
+                        tracing::error!("Failed to auto-open last vault: {}", e);
+                    }
+                }
+            });
+
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let app_state = app_handle.state::<AppState>();
+                let app_state_clone = app_state.inner().clone();
+                tauri::async_runtime::block_on(async move {
+                    app_state_clone.shutdown().await;
+                });
+            }
+        });
+}

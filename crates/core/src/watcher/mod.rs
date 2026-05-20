@@ -1,87 +1,91 @@
-//! # Watcher Module
-//!
-//! Recursive filesystem monitoring with debounced event batching.
-//!
-//! Uses `notify` to watch the vault root, classifies events, ignores
-//! `.noda/sync/`, and batches rapid-fire events into a single `VaultUpdated`
-//! payload before forwarding to consumers.
-
-pub mod batcher;
+//! Vault watcher implementation
 pub mod handler;
+pub mod batcher;
+pub mod sync;
 
 use crate::errors::NodaError;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use tracing::instrument;
+pub use batcher::{EventBatcher, BatchState};
+use handler::process_event;
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tokio::sync::mpsc;
+use tracing::{error, info};
 
-/// A batched vault change event emitted to consumers.
-#[derive(Debug, Clone)]
-pub struct VaultUpdated {
-    /// Files created or modified (absolute paths).
-    pub modified: Vec<PathBuf>,
-    /// Files deleted (absolute paths).
-    pub deleted: Vec<PathBuf>,
-    /// Rename pairs: (old_path, new_path).
-    pub renamed: Vec<(PathBuf, PathBuf)>,
-}
-
-/// Handle to the running vault watcher.
-///
-/// Stop watching by calling `stop()` or dropping this handle.
 pub struct VaultWatcher {
     _watcher: RecommendedWatcher,
-    stop_tx: mpsc::Sender<()>,
 }
 
 impl VaultWatcher {
-    /// Start watching `vault_root` and forward batched events to `event_tx`.
-    ///
-    /// `.noda/sync/` is excluded automatically.
-    #[instrument(skip(vault_root, event_tx), fields(vault = %vault_root.display()))]
-    pub fn start(
-        vault_root: PathBuf,
-        event_tx: mpsc::Sender<VaultUpdated>,
+    /// Starts watching a vault path and sends debounced updates through the event_sender
+    pub fn start<P: AsRef<Path>>(
+        vault_path: P,
+        event_sender: mpsc::Sender<HashMap<PathBuf, BatchState>>,
     ) -> Result<Self, NodaError> {
-        let (raw_tx, raw_rx) = std::sync::mpsc::channel();
-        let (stop_tx, stop_rx) = mpsc::channel::<()>(1);
+        let path = vault_path.as_ref().to_path_buf();
+        let (raw_tx, raw_rx) = mpsc::channel(100);
 
-        let sync_ignore = vault_root.join(".noda").join("sync");
-
-        // Spawn the batcher task that consumes raw events.
-        let vault_root_clone = vault_root.clone();
-        tokio::spawn(batcher::run_batcher(
-            raw_rx,
-            event_tx,
-            vault_root_clone,
-            sync_ignore,
-            stop_rx,
-        ));
-
-        let mut watcher = notify::recommended_watcher(raw_tx).map_err(|e| {
-            NodaError::Watcher {
-                reason: e.to_string(),
+        // Notify watcher callback
+        let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+            match res {
+                Ok(event) => {
+                    let vault_events = process_event(event, &path);
+                    for ve in vault_events {
+                        // blocking_send is safe here as this is a background OS thread managed by notify
+                        let _ = raw_tx.blocking_send(ve);
+                    }
+                }
+                Err(e) => error!("Notify watcher error: {:?}", e),
             }
-        })?;
+        }).map_err(|e| NodaError::Watch(format!("Failed to create watcher: {}", e)))?;
 
-        watcher
-            .watch(&vault_root, RecursiveMode::Recursive)
-            .map_err(|e| NodaError::Watcher {
-                reason: e.to_string(),
-            })?;
+        // Start watching recursively
+        watcher.watch(vault_path.as_ref(), RecursiveMode::Recursive)
+            .map_err(|e| NodaError::Watch(format!("Failed to watch vault: {}", e)))?;
 
-        tracing::info!(vault = %vault_root.display(), "file watcher started");
+        // Spawn batcher
+        let batcher = EventBatcher::new(raw_rx, event_sender, Duration::from_millis(300));
+        tokio::spawn(batcher.run());
+
+        info!("Started file watcher on {:?}", vault_path.as_ref());
 
         Ok(Self {
             _watcher: watcher,
-            stop_tx,
         })
     }
+}
 
-    /// Signal the batcher task to stop.
-    pub async fn stop(&self) {
-        let _ = self.stop_tx.send(()).await;
-        tracing::info!("file watcher stop signal sent");
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use tokio::fs;
+
+    #[tokio::test]
+    async fn test_watcher_debouncer() {
+        let dir = tempdir().unwrap();
+        let canonical_dir = dir.path().canonicalize().unwrap();
+        let (tx, mut rx) = mpsc::channel(10);
+        
+        let _watcher = VaultWatcher::start(&canonical_dir, tx).unwrap();
+        
+        // Wait 200ms for watcher to initialize and start listening (crucial for FSEvents on macOS)
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        
+        let file_path = canonical_dir.join("test.md");
+        fs::write(&file_path, "Hello").await.unwrap();
+        
+        let batch = tokio::time::timeout(Duration::from_secs(10), rx.recv())
+            .await
+            .expect("Timeout waiting for watcher event")
+            .unwrap();
+            
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch.get(&file_path).unwrap(), &BatchState::Created);
+
+        // Explicitly drop watcher and sleep to allow clean background thread teardown on macOS
+        drop(_watcher);
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }
