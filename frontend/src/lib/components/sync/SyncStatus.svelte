@@ -1,124 +1,148 @@
 <script lang="ts">
-  import { syncStatus, triggerSyncNow, syncConflicts } from '../../stores/sync';
+  import { onMount, onDestroy } from 'svelte';
+  import { syncStatus, triggerSyncNow } from '../../stores/sync';
 
   $: status = $syncStatus;
-  $: conflicts = $syncConflicts;
+  let syncing = false;
+
+  let now = Date.now();
+  let intervalId: any;
+
+  onMount(() => {
+    intervalId = setInterval(() => { now = Date.now(); }, 15000);
+  });
+
+  onDestroy(() => {
+    if (intervalId) clearInterval(intervalId);
+  });
 
   async function handleSyncClick() {
-    if (status.status === 'Syncing') return;
+    if (status.status === 'Syncing' || syncing) return;
+    syncing = true;
     try {
       await triggerSyncNow();
     } catch (e) {
       console.error('Manual sync failed:', e);
+    } finally {
+      syncing = false;
     }
   }
 
-  function formatDate(isoStr?: string) {
+  function formatTime(isoStr: string | undefined, _now: number): string {
     if (!isoStr) return 'Never';
     const d = new Date(isoStr);
+    const diffMins = Math.floor((_now - d.getTime()) / 60000);
+    if (diffMins < 1)   return 'Just now';
+    if (diffMins < 60)  return `${diffMins}m ago`;
     return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   }
+
+  $: isBusy = status.status === 'Syncing' || syncing;
+  $: statusClass = isBusy ? 'syncing' : status.status === 'Error' ? 'error' : 'idle';
 </script>
 
-<div class="sync-status-badge {status.status.toLowerCase()}" class:clickable={status.status !== 'Syncing'} onclick={handleSyncClick}>
-  <div class="icon-container" class:spin={status.status === 'Syncing'}>
-    {#if status.status === 'Syncing'}
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-      </svg>
-    {:else if status.status === 'Error'}
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 text-rose-400">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+<button
+  class="sync-badge {statusClass}"
+  class:clickable={!isBusy}
+  onclick={handleSyncClick}
+  disabled={isBusy}
+  title={
+    isBusy ? 'Syncing…'
+    : status.status === 'Error' ? `Error: ${status.error_message ?? 'Unknown'}. Click to retry.`
+    : `Last sync: ${formatTime(status.last_sync_time, now)}. Click to sync now.`
+  }
+  aria-label="Sync status: {status.status}"
+>
+  <!-- İkon -->
+  <span class="sync-icon" class:spin={isBusy}>
+    {#if status.status === 'Error' && !isBusy}
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <circle cx="7" cy="7" r="5.5"/>
+        <line x1="7" y1="4.5" x2="7" y2="7.5"/>
+        <line x1="7" y1="9.5" x2="7" y2="9.5" stroke-width="2.4"/>
       </svg>
     {:else}
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+      <!-- Sync/ok ikonu -->
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M13 7A6 6 0 1 1 7 1"/>
+        <polyline points="10,1 13,1 13,4"/>
       </svg>
     {/if}
-  </div>
+  </span>
 
-  <div class="sync-info">
-    <span class="status-text">
-      {#if status.status === 'Syncing'}
-        Syncing...
-      {:else if status.status === 'Error'}
-        Sync Error
-      {:else}
-        Synced
-      {/if}
+  <!-- Metin — sadece syncing/error durumunda göster -->
+  {#if isBusy || status.status === 'Error'}
+    <span class="sync-label">
+      {isBusy ? 'Syncing…' : 'Sync Error'}
     </span>
-    <span class="time-text">
-      {status.status === 'Syncing' ? 'Updating cloud' : `Last: ${formatDate(status.last_sync_time)}`}
-    </span>
-  </div>
-</div>
+  {/if}
+</button>
 
 <style>
-  .sync-status-badge {
+  .sync-badge {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-radius: 9999px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 0.75rem;
-    background-color: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    color: #94a3b8;
+    gap: 5px;
+    padding: 4px 8px;
+    border-radius: var(--radius-pill);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: var(--text-tertiary);
     user-select: none;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.15s ease;
+    cursor: default;
+    line-height: 1;
   }
 
-  .clickable {
+  .sync-badge:disabled { cursor: default; }
+
+  .sync-badge.clickable {
     cursor: pointer;
   }
 
-  .clickable:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #f1f5f9;
+  .sync-badge.clickable:hover {
+    background-color: var(--bg-control);
+    border-color: var(--border-subtle);
+    color: var(--text-secondary);
   }
 
-  .sync-status-badge.syncing {
-    background-color: rgba(99, 102, 241, 0.05);
-    border-color: rgba(99, 102, 241, 0.2);
-    color: #818cf8;
+  .sync-badge.syncing {
+    color: var(--accent);
+    background-color: var(--accent-muted);
+    border-color: var(--accent-border);
   }
 
-  .sync-status-badge.error {
-    background-color: rgba(244, 63, 94, 0.05);
-    border-color: rgba(244, 63, 94, 0.2);
-    color: #f43f5e;
+  .sync-badge.error {
+    color: var(--color-red);
+    background-color: var(--color-red-muted);
+    border-color: rgba(255, 69, 58, 0.30);
+    cursor: pointer;
   }
 
-  .icon-container {
+  .sync-badge.error:hover {
+    background-color: rgba(255, 69, 58, 0.22);
+    border-color: rgba(255, 69, 58, 0.50);
+  }
+
+  .sync-icon {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .sync-icon svg {
+    width: 13px;
+    height: 13px;
+    display: block;
   }
 
   .spin {
-    animation: spin 1.2s linear infinite;
+    animation: spin 1s linear infinite;
   }
 
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  .sync-info {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    line-height: 1.2;
-  }
-
-  .status-text {
-    font-weight: 600;
-  }
-
-  .time-text {
-    font-size: 0.65rem;
-    opacity: 0.7;
-  }
+  .sync-label { white-space: nowrap; }
 </style>

@@ -6,80 +6,105 @@ import { bracketMatching, indentOnInput, syntaxHighlighting, defaultHighlightSty
 import { search, searchKeymap } from '@codemirror/search';
 
 /**
- * Modern premium dark theme configuration for CodeMirror 6 editor
+ * macOS native editor teması — Apple'ın Xcode Dark + iA Writer esinlenmiş
+ *
+ * Gelecekte light ve custom tema desteği eklemek için:
+ *   export function getLightEditorExtensions(...) { ... }
+ *   veya tema parametresi geçilebilir:
+ *   export function getEditorExtensions(onDocChange, theme: 'dark' | 'light' = 'dark')
  */
-const customTheme = EditorView.theme({
+const macOSDarkTheme = EditorView.theme({
   '&': {
-    color: '#e2e8f0',
-    backgroundColor: '#0a0d14',
-    fontFamily: '"SF Mono", "Fira Code", Menlo, Monaco, Consolas, monospace',
+    color: 'rgba(255, 255, 255, 0.88)',
+    backgroundColor: '#1c1c1e',
+    fontFamily: '"SF Mono", "Fira Code", "JetBrains Mono", Menlo, Monaco, monospace',
     fontSize: '14px',
     height: '100%',
   },
   '.cm-content': {
-    caretColor: '#6366f1',
-    padding: '24px 20px',
+    caretColor: '#0a84ff',
+    /* iA Writer benzeri geniş kenar boşlukları — odak hissi */
+    padding: '32px 60px',
+    maxWidth: '800px',
+    margin: '0 auto',
   },
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: '#6366f1',
+    borderLeftColor: '#0a84ff',
     borderLeftWidth: '2px',
   },
+  /* macOS mavi seçim rengi */
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
-    backgroundColor: 'rgba(99, 102, 241, 0.25) !important',
+    backgroundColor: 'rgba(10, 132, 255, 0.30) !important',
   },
   '.cm-gutters': {
-    backgroundColor: '#0a0d14',
-    color: '#475569',
+    backgroundColor: '#1c1c1e',
+    color: 'rgba(255, 255, 255, 0.20)',
     borderRight: 'none',
     userSelect: 'none',
-    paddingLeft: '12px',
+    paddingLeft: '8px',
+    minWidth: '48px',
   },
   '.cm-gutterElement': {
     padding: '0 8px 0 0',
+    fontSize: '12px',
   },
+  /* Aktif satır — çok hafif vurgu, dikkat dağıtmayan */
   '.cm-activeLine': {
-    backgroundColor: 'rgba(255, 255, 255, 0.015)',
+    backgroundColor: 'rgba(255, 255, 255, 0.025)',
   },
   '.cm-activeLineGutter': {
-    color: '#f8fafc',
-    backgroundColor: 'rgba(255, 255, 255, 0.015)',
+    color: 'rgba(255, 255, 255, 0.55)',
+    backgroundColor: 'rgba(255, 255, 255, 0.025)',
   },
   '.cm-matchingBracket': {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    color: '#38bdf8',
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    color: '#64d2ff',
   },
   '.cm-nonmatchingBracket': {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    color: '#ef4444',
+    backgroundColor: 'rgba(255, 69, 58, 0.20)',
+    color: '#ff453a',
   },
-  // Markdown style modifications
+  /* Markdown sözdizim stilleri */
   '.cm-heading': {
-    color: '#818cf8',
-    fontWeight: 'bold',
+    color: 'rgba(255, 255, 255, 0.88)',
+    fontWeight: '700',
   },
   '.cm-strong': {
-    color: '#f8fafc',
-    fontWeight: 'bold',
+    color: 'rgba(255, 255, 255, 0.95)',
+    fontWeight: '700',
   },
   '.cm-emphasis': {
-    color: '#cbd5e1',
+    color: 'rgba(255, 255, 255, 0.80)',
     fontStyle: 'italic',
   },
   '.cm-link': {
-    color: '#38bdf8',
+    color: '#0a84ff',
     textDecoration: 'underline',
   },
   '.cm-url': {
-    color: '#64748b',
+    color: 'rgba(255, 255, 255, 0.35)',
+  },
+  '.cm-code': {
+    color: '#64d2ff',
+    fontFamily: '"SF Mono", "Fira Code", Menlo, monospace',
+  },
+  /* Search highlight */
+  '.cm-searchMatch': {
+    backgroundColor: 'rgba(255, 214, 10, 0.25)',
+    outline: '1px solid rgba(255, 214, 10, 0.5)',
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: 'rgba(10, 132, 255, 0.40)',
   },
 }, { dark: true });
 
 /**
- * Export default collection of editor extensions
+ * Editor extension koleksiyonu.
+ * onDocChange: içerik değiştiğinde çağrılacak callback
  */
 export function getEditorExtensions(onDocChange: (val: string) => void) {
   return [
-    customTheme,
+    macOSDarkTheme,
     highlightActiveLine(),
     drawSelection(),
     dropCursor(),
@@ -89,20 +114,20 @@ export function getEditorExtensions(onDocChange: (val: string) => void) {
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     markdown(),
     search({ top: true }),
-    
-    // Listen to changes to notify stores/auto-save
+
+    // Değişiklik dinleyici — store'a ve otomatik kayıda bildir
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         onDocChange(update.state.doc.toString());
       }
     }),
 
-    // Keybindings
+    // Klavye kısayolları
     keymap.of([
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,
-      indentWithTab
+      indentWithTab,
     ]),
 
     EditorState.tabSize.of(4),

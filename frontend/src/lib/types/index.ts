@@ -14,6 +14,11 @@ export interface NoteDto {
   body: string;
   frontmatter: Frontmatter;
   file_path: string;
+  // Optional runtime enrichment fields
+  tags?: string[];
+  color?: string | null;
+  pinned?: boolean;
+  parent_id?: string | null;
 }
 
 export interface NoteListItemDto {
@@ -32,10 +37,20 @@ export interface VaultInfoDto {
 }
 
 export interface Snapshot {
-  id: string;
   note_id: string;
   timestamp: string;
-  file_path: string;
+  absolute_path: string;
+}
+
+export interface DiffChunk {
+  tag: 'Equal' | 'Insert' | 'Delete';
+  text: string;
+}
+
+export interface SnapshotDiffDto {
+  note_id: string;
+  timestamp: string;
+  body_chunks: DiffChunk[];
 }
 
 export interface TrashEntry {
@@ -63,3 +78,57 @@ export interface ConflictEntry {
   local_path: string;
   remote_path: string;
 }
+
+/**
+ * SyncReport — Rust backend'deki SyncReport struct'ının frontend karşılığı
+ * Alanlar: crates/core/src/sync/engine.rs — SyncReport
+ */
+export interface SyncReport {
+  uploads: number;
+  downloads: number;
+  deletes_local: number;
+  deletes_remote: number;
+  conflicts: number;
+  uploaded_files: string[];
+  downloaded_files: string[];
+  deleted_local_files: string[];
+  deleted_remote_files: string[];
+  conflict_files: string[];
+  /** Toplam işlem sayısı — hesaplanmış */
+  total?: number;
+  /** Sync tamamlanma zamanı — frontend tarafından eklenir */
+  completed_at?: string;
+}
+
+export interface SyncConfig {
+  webdav_url: string;
+  webdav_username: string;
+  webdav_password?: string;
+  interval_secs: number;
+}
+
+export interface AppearanceSettings {
+  theme: string; // "light", "dark", "auto"
+  accent_color: string;
+}
+
+export interface EditorSettings {
+  font_size: number;
+  typography: string; // "sans", "serif", "mono"
+  show_word_count: boolean;
+  auto_save_delay_ms: number;
+}
+
+export interface HistorySettings {
+  retention_days: number;
+  max_snapshots_per_note: number;
+  empty_trash_after_days: number;
+}
+
+export interface AppConfig {
+  appearance: AppearanceSettings;
+  editor: EditorSettings;
+  sync: SyncConfig;
+  history: HistorySettings;
+}
+

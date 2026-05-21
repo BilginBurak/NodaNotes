@@ -41,6 +41,7 @@ fn main() {
             commands::sync_commands::get_sync_config,
             commands::history_commands::list_snapshots,
             commands::history_commands::restore_snapshot,
+            commands::history_commands::compare_snapshot,
             commands::trash_commands::list_trash,
             commands::trash_commands::trash_note,
             commands::trash_commands::restore_from_trash,
@@ -48,6 +49,8 @@ fn main() {
             commands::attachment_commands::add_attachment,
             commands::attachment_commands::list_attachments,
             commands::attachment_commands::delete_attachment,
+            commands::settings_commands::get_settings,
+            commands::settings_commands::save_settings,
         ])
         .setup(|app| {
             // Configure main window

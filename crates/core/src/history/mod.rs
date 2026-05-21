@@ -5,6 +5,7 @@ pub mod retention;
 
 pub use storage::{Snapshot, save_snapshot, list_snapshots};
 pub use retention::{enforce_retention, RetentionPolicy};
+use shared::dtos::DiffChunk;
 
 use crate::errors::NodaError;
 use crate::models::note::Note;
@@ -19,7 +20,11 @@ pub async fn snapshot<P: AsRef<Path>>(
     note: &Note,
 ) -> Result<Snapshot, NodaError> {
     let snap = save_snapshot(&vault_path, note).await?;
-    enforce_retention(&vault_path, note.id, &RetentionPolicy::default()).await?;
+    let config = crate::settings::AppConfig::load(&vault_path).await.unwrap_or_default();
+    let policy = RetentionPolicy {
+        max_count: config.history.max_snapshots_per_note as usize,
+    };
+    enforce_retention(&vault_path, note.id, &policy).await?;
     Ok(snap)
 }
 
@@ -54,6 +59,33 @@ pub async fn restore<P: AsRef<Path>>(
         created_at: frontmatter.created_at,
         updated_at: frontmatter.updated_at,
     })
+}
+
+/// Compares a snapshot's body with the current note's body and returns line-by-line diffs
+pub async fn compare<P: AsRef<Path>>(
+    vault_path: P,
+    snapshot: &Snapshot,
+    current_note: &Note,
+) -> Result<Vec<DiffChunk>, NodaError> {
+    let restored = restore(vault_path, snapshot).await?;
+    
+    // Compare restored body (old) with current body (new)
+    let diff = similar::TextDiff::from_lines(&restored.body, &current_note.body);
+    
+    let mut chunks = Vec::new();
+    for change in diff.iter_all_changes() {
+        let tag = match change.tag() {
+            similar::ChangeTag::Delete => "Delete",
+            similar::ChangeTag::Insert => "Insert",
+            similar::ChangeTag::Equal => "Equal",
+        };
+        chunks.push(DiffChunk {
+            tag: tag.to_string(),
+            text: change.value().to_string(),
+        });
+    }
+    
+    Ok(chunks)
 }
 
 #[cfg(test)]

@@ -10,5 +10,6 @@ pub mod protocol;
 pub mod search;
 pub mod sync;
 pub mod trash;
+pub mod settings;
 pub mod vault;
 pub mod watcher;

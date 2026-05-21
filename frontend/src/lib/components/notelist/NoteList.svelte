@@ -8,7 +8,6 @@
   $: notes = $notesList;
   $: activeId = $activeNote ? $activeNote.id : null;
 
-  // Local filter for quick client-side filtering on title/tags
   $: filteredNotes = notes.filter((n) => {
     if (!localFilter.trim()) return true;
     const term = localFilter.toLowerCase();
@@ -22,47 +21,56 @@
   }
 </script>
 
-<div class="note-list-panel border-right">
-  <!-- Note List Header & Local Filter -->
+<div class="note-list-panel">
+  <!-- Header: başlık + sayaç -->
   <div class="list-header">
     <div class="title-row">
-      <h2>Notes</h2>
-      <span class="note-count-badge">{notes.length}</span>
+      <h2 class="panel-title">Notes</h2>
+      <span class="count-badge" aria-label="{notes.length} notes">{notes.length}</span>
     </div>
-    
-    <div class="filter-input-wrapper">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon w-3.5 h-3.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.637 10.637Z" />
+
+    <!-- Filtre alanı -->
+    <div class="filter-wrap" class:focused={false}>
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" class="filter-icon" aria-hidden="true">
+        <circle cx="6" cy="6" r="4.5"/>
+        <line x1="9.5" y1="9.5" x2="13" y2="13"/>
       </svg>
       <input
         type="text"
-        placeholder="Filter current list..."
+        placeholder="Filter..."
         bind:value={localFilter}
+        aria-label="Filter notes"
+        autocomplete="off"
+        spellcheck="false"
       />
       {#if localFilter}
-        <button class="clear-btn" onclick={clearFilter}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3 h-3">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        <button class="clear-btn" onclick={clearFilter} aria-label="Clear filter">
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <line x1="2" y1="2" x2="10" y2="10"/>
+            <line x1="10" y1="2" x2="2" y2="10"/>
           </svg>
         </button>
       {/if}
     </div>
   </div>
 
-  <!-- Virtual Notes Scroll Area -->
+  <!-- Not listesi -->
   <div class="list-body">
     {#if filteredNotes.length === 0}
-      <div class="list-empty-state">
+      <div class="empty-state">
         {#if localFilter}
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-8 h-8">
-            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.637 10.637Z" />
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="14" cy="14" r="9"/>
+            <line x1="21" y1="21" x2="28" y2="28"/>
           </svg>
-          <p>No results match "{localFilter}"</p>
+          <p>No results for "{localFilter}"</p>
         {:else}
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-8 h-8">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 10a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V10z"/>
+            <line x1="11" y1="14" x2="21" y2="14"/>
+            <line x1="11" y1="18" x2="17" y2="18"/>
           </svg>
-          <p>Vault is empty. Create a new note from the toolbar to start writing.</p>
+          <p>No notes yet.<br/>Create one from the toolbar.</p>
         {/if}
       </div>
     {:else}
@@ -75,25 +83,24 @@
 
 <style>
   .note-list-panel {
-    width: 260px;
+    width: 240px;
     height: 100%;
-    background-color: #080a0f;
+    background-color: var(--bg-notelist);
+    border-right: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
     overflow: hidden;
   }
 
-  .border-right {
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
+  /* Header */
   .list-header {
-    padding: 16px 16px 12px 16px;
+    padding: 12px 12px 10px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    gap: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
   }
 
   .title-row {
@@ -102,101 +109,120 @@
     justify-content: space-between;
   }
 
-  .title-row h2 {
+  .panel-title {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: 14px;
     font-weight: 700;
-    color: #f1f5f9;
+    color: var(--text-primary);
+    letter-spacing: -0.2px;
   }
 
-  .note-count-badge {
-    background-color: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #94a3b8;
-    font-size: 0.7rem;
+  /* Not sayısı badge */
+  .count-badge {
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-tertiary);
+    font-size: 11px;
     font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 9999px;
+    padding: 1px 7px;
+    border-radius: var(--radius-pill);
+    line-height: 1.6;
   }
 
-  .filter-input-wrapper {
+  /* Filtre alanı */
+  .filter-wrap {
     display: flex;
     align-items: center;
-    background-color: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 6px;
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
     padding: 4px 8px;
-    gap: 8px;
-    transition: all 0.2s ease;
+    gap: 6px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .filter-input-wrapper:focus-within {
-    border-color: rgba(99, 102, 241, 0.4);
-    background-color: rgba(255, 255, 255, 0.03);
-    box-shadow: 0 0 10px rgba(99, 102, 241, 0.08);
+  .filter-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-muted);
   }
 
-  .search-icon {
-    color: #475569;
+  .filter-icon {
+    width: 13px;
+    height: 13px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
   }
 
-  .filter-input-wrapper input {
+  .filter-wrap input {
     background: transparent;
     border: none;
     outline: none;
-    color: #e2e8f0;
-    font-size: 0.78rem;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: var(--font-sans);
     width: 100%;
-    font-family: inherit;
+    user-select: text;
   }
 
-  .filter-input-wrapper input::placeholder {
-    color: #475569;
+  .filter-wrap input::placeholder {
+    color: var(--text-placeholder);
   }
 
   .clear-btn {
     background: transparent;
     border: none;
-    color: #475569;
+    color: var(--text-tertiary);
     cursor: pointer;
     padding: 2px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.12s ease;
+  }
+
+  .clear-btn svg {
+    width: 10px;
+    height: 10px;
+    display: block;
   }
 
   .clear-btn:hover {
-    color: #f8fafc;
-    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
   }
 
+  /* Gövde */
   .list-body {
     flex: 1;
     overflow: hidden;
     position: relative;
   }
 
-  .list-empty-state {
+  /* Boş durum */
+  .empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px 16px;
+    gap: 10px;
+    padding: 48px 16px;
     text-align: center;
-    color: #475569;
+    color: var(--text-tertiary);
     height: 100%;
     box-sizing: border-box;
   }
 
-  .list-empty-state svg {
-    color: #27272a;
-    margin-bottom: 12px;
+  .empty-state svg {
+    width: 32px;
+    height: 32px;
+    opacity: 0.35;
   }
 
-  .list-empty-state p {
-    font-size: 0.75rem;
+  .empty-state p {
+    font-size: 12px;
     margin: 0;
-    line-height: 1.4;
+    line-height: 1.5;
   }
 </style>

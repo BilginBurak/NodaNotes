@@ -3,17 +3,21 @@ import type {
   NoteDto,
   NoteListItemDto,
   VaultInfoDto,
+  SyncStatus,
+  SyncReport,
+  AppError,
+  SyncConfig,
   Snapshot,
   TrashEntry,
-  SyncStatus,
-  AppError
+  SnapshotDiffDto,
+  AppConfig,
 } from '../types';
 
 async function call<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
   try {
     return await invoke<T>(cmd, args);
   } catch (err: any) {
-    // If err matches AppError shape, throw it, else make a generic one
+    // If err matches AppError shape, re-throw
     if (err && typeof err === 'object' && 'code' in err && 'message' in err) {
       throw err as AppError;
     }
@@ -24,21 +28,62 @@ async function call<T>(cmd: string, args: Record<string, any> = {}): Promise<T> 
   }
 }
 
-// Vault Commands
-export const openVault = (path: string) => call<VaultInfoDto>('open_vault', { path });
-export const createVault = (path: string) => call<VaultInfoDto>('create_vault', { path });
-export const getVaultInfo = () => call<VaultInfoDto | null>('get_vault_info');
+// ── Vault Commands ──────────────────────────────────────────
+export const openVault   = (path: string) => call<VaultInfoDto>('open_vault',  { path });
+export const createVault = (path: string) => call<VaultInfoDto>('create_vault',{ path });
+export const getVaultInfo = ()             => call<VaultInfoDto | null>('get_vault_info');
 
-// Note Commands
-export const createNote = () => call<NoteDto>('create_note');
-export const getNote = (id: string) => call<NoteDto>('get_note', { id });
-export const updateNote = (id: string, title: string, body: string, frontmatter: Record<string, any>) =>
-  call<NoteDto>('update_note', { id, title, body, frontmatter });
-export const renameNote = (id: string, newTitle: string) => call<NoteDto>('rename_note', { id, newTitle });
-export const deleteNote = (id: string) => call<void>('delete_note', { id });
-export const listNotes = () => call<NoteListItemDto[]>('list_notes');
+// ── Note Commands ───────────────────────────────────────────
+/**
+ * Rust backend `create_note` imzası:
+ *   title: String, body: String, parent_id: Option<String>,
+ *   color: Option<String>, pinned: bool, tags: Vec<String>
+ */
+export const createNote = (
+  title = 'Untitled',
+  body = '',
+  parentId: string | null = null,
+  color: string | null = null,
+  pinned = false,
+  tags: string[] = []
+) => call<NoteDto>('create_note', {
+  title,
+  body,
+  parentId,
+  color,
+  pinned,
+  tags,
+});
 
-// Search Commands
+export const getNote  = (id: string)  => call<NoteDto>('get_note', { id });
+export const listNotes = ()           => call<NoteListItemDto[]>('list_notes');
+
+/**
+ * Rust backend `update_note` imzası:
+ *   id, title, body, parent_id, color, pinned, tags
+ */
+export const updateNote = (
+  id: string,
+  title: string,
+  body: string,
+  parentId: string | null = null,
+  color: string | null = null,
+  pinned = false,
+  tags: string[] = []
+) => call<NoteDto>('update_note', {
+  id,
+  title,
+  body,
+  parentId,
+  color,
+  pinned,
+  tags,
+});
+
+export const renameNote  = (id: string, newTitle: string) => call<NoteDto>('rename_note',  { id, newTitle });
+export const deleteNote  = (id: string)                   => call<void>('delete_note',     { id });
+
+// ── Search Commands ─────────────────────────────────────────
 export interface SearchResult {
   id: string;
   title: string;
@@ -46,33 +91,36 @@ export interface SearchResult {
 }
 export const searchNotes = (query: string) => call<SearchResult[]>('search_notes', { query });
 
-// Sync Commands
-export interface SyncConfig {
-  webdav_url: string;
-  webdav_username: string;
-  webdav_password?: string;
-  interval_secs: number;
-}
-
-export const startSync = () => call<void>('start_sync');
-export const stopSync = () => call<void>('stop_sync');
-export const syncNow = () => call<void>('sync_now');
-export const getSyncStatus = () => call<SyncStatus>('get_sync_status');
+// ── Sync Commands ───────────────────────────────────────────
+export const startSync  = ()                  => call<void>('start_sync');
+export const stopSync   = ()                  => call<void>('stop_sync');
+/**
+ * syncNow artık SyncReport döndürüyor — backend zaten döndürüyordu ama
+ * frontend void olarak işaretliyordu.
+ */
+export const syncNow    = ()                  => call<SyncReport>('sync_now');
+export const getSyncStatus = ()               => call<SyncStatus>('get_sync_status');
 export const updateSyncConfig = (config: SyncConfig) => call<void>('update_sync_config', { config });
 export const validateSyncConfig = (config: SyncConfig) => call<void>('validate_sync_config', { config });
-export const getSyncConfig = () => call<SyncConfig>('get_sync_config');
+export const getSyncConfig = ()               => call<SyncConfig>('get_sync_config');
 
-// History Commands
-export const listSnapshots = (noteId: string) => call<Snapshot[]>('list_snapshots', { noteId });
-export const restoreSnapshot = (noteId: string, timestamp: string) => call<NoteDto>('restore_snapshot', { noteId, timestamp });
+// ── History Commands ────────────────────────────────────────
+export const listSnapshots    = (noteId: string)                    => call<Snapshot[]>('list_snapshots',    { noteId });
+export const restoreSnapshot  = (noteId: string, timestamp: string) => call<NoteDto>('restore_snapshot',    { noteId, timestamp });
+export const compareSnapshot  = (noteId: string, timestamp: string) => call<SnapshotDiffDto>('compare_snapshot',    { noteId, timestamp });
 
-// Trash Commands
-export const listTrash = () => call<TrashEntry[]>('list_trash');
-export const trashNote = (id: string) => call<void>('trash_note', { id });
-export const restoreFromTrash = (id: string) => call<void>('restore_from_trash', { id });
-export const permanentDelete = (id: string) => call<void>('permanent_delete', { id });
+// ── Trash Commands ──────────────────────────────────────────
+export const listTrash        = ()            => call<TrashEntry[]>('list_trash');
+export const trashNote        = (id: string)  => call<void>('trash_note',          { id });
+export const restoreFromTrash = (id: string)  => call<void>('restore_from_trash',  { id });
+export const permanentDelete  = (id: string)  => call<void>('permanent_delete',    { id });
 
-// Attachment Commands
-export const addAttachment = (sourcePath: string) => call<string>('add_attachment', { sourcePath });
-export const listAttachments = () => call<string[]>('list_attachments');
-export const deleteAttachment = (name: string) => call<void>('delete_attachment', { name });
+// ── Attachment Commands ─────────────────────────────────────
+export const addAttachment    = (sourcePath: string) => call<string>('add_attachment',    { sourcePath });
+export const listAttachments  = ()                   => call<string[]>('list_attachments');
+export const deleteAttachment = (name: string)       => call<void>('delete_attachment',   { name });
+
+// ── Settings Commands ───────────────────────────────────────
+export const getSettings      = ()                   => call<AppConfig>('get_settings');
+export const saveSettings     = (config: AppConfig)  => call<void>('save_settings',       { config });
+

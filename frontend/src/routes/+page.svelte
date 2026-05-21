@@ -1,39 +1,48 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import { vaultInfo, openExistingVault, createNewVault, vaultError, loadingVault } from '../lib/stores/vault';
+  import { loadSettings } from '../lib/stores/settings';
   import Sidebar from '../lib/components/sidebar/Sidebar.svelte';
   import NoteList from '../lib/components/notelist/NoteList.svelte';
   import Editor from '../lib/components/editor/Editor.svelte';
   import Toolbar from '../lib/components/toolbar/Toolbar.svelte';
+  import SyncReportModal from '../lib/components/sync/SyncReportModal.svelte';
+  import SettingsModal from '../lib/components/settings/SettingsModal.svelte';
 
   $: info = $vaultInfo;
   $: error = $vaultError;
   $: loading = $loadingVault;
 
+  let showSettingsModal = false;
+  let settingsTab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' = 'appearance';
+
+  onMount(async () => {
+    try {
+      await loadSettings();
+    } catch (e) {
+      console.error('Failed to load settings on startup:', e);
+    }
+  });
+
   async function handleOpenVault() {
-    console.log('handleOpenVault starting...');
     vaultError.set(null);
     try {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Select Existing Vault Folder'
+        title: 'Select Vault Folder'
       });
-      console.log('Selected path:', selected);
-      
       if (selected && typeof selected === 'string') {
         await openExistingVault(selected);
-      } else {
-        console.log('No folder selected or selection cancelled');
       }
     } catch (e: any) {
       console.error('Failed to open vault:', e);
-      vaultError.set(`Dialog error: ${e.message || e.toString()}`);
+      vaultError.set(`Could not open vault: ${e.message || e.toString()}`);
     }
   }
 
   async function handleCreateVault() {
-    console.log('handleCreateVault starting...');
     vaultError.set(null);
     try {
       const selected = await open({
@@ -41,374 +50,408 @@
         multiple: false,
         title: 'Choose Folder for New Vault'
       });
-      console.log('Selected path:', selected);
-      
       if (selected && typeof selected === 'string') {
         await createNewVault(selected);
-      } else {
-        console.log('No folder selected or selection cancelled');
       }
     } catch (e: any) {
       console.error('Failed to create vault:', e);
-      vaultError.set(`Dialog error: ${e.message || e.toString()}`);
+      vaultError.set(`Could not create vault: ${e.message || e.toString()}`);
     }
   }
 </script>
 
 {#if !info}
-  <!-- Gorgeous Launcher screen with blurry background circles -->
-  <div class="launcher-shell">
-    <div class="bg-glow purple"></div>
-    <div class="bg-glow indigo"></div>
+  <!-- ─── Launcher ─────────────────────────────────── -->
+  <div class="launcher">
+    <!-- macOS traffic lights boşluğu -->
+    <div class="launcher-traffic-lights" data-tauri-drag-region></div>
 
-    <div class="launcher-card border-glow">
-      <div class="launcher-header">
-        <div class="logo-animation">
-          <div class="logo-ring">
-            <div class="logo-dot"></div>
-          </div>
-        </div>
-        <h1>Noda Notes</h1>
-        <p class="subtitle">State-of-the-Art Private Markdown Vault</p>
-      </div>
+    <!-- Drag region — üst alan sürüklenebilir -->
+    <div class="launcher-drag" data-tauri-drag-region></div>
 
-      {#if error}
-        <div class="error-banner">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-5 h-5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+    <!-- İçerik kartı -->
+    <div class="launcher-card">
+      <!-- Marka -->
+      <div class="launcher-brand">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 48 48" fill="none">
+            <rect width="48" height="48" rx="12" fill="#0a84ff"/>
+            <path d="M13 36V12l11 18 11-18v24" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <div class="error-text">
-            <h4>Vault Operation Failed</h4>
-            <p>{error}</p>
+        </div>
+        <div class="brand-text">
+          <h1>Noda</h1>
+          <p>Local-first Markdown vault</p>
+        </div>
+      </div>
+
+      <!-- Hata mesajı -->
+      {#if error}
+        <div class="error-box" role="alert">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5"/>
+            <line x1="8" y1="5" x2="8" y2="8.5"/>
+            <line x1="8" y1="11" x2="8" y2="11" stroke-width="2.4"/>
+          </svg>
+          <div class="error-content">
+            <strong>Failed to open vault</strong>
+            <span>{error}</span>
           </div>
         </div>
       {/if}
 
-      <div class="launcher-actions">
-        <button class="action-card hover-glow open" onclick={handleOpenVault} disabled={loading}>
-          <div class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-7 h-7">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A9 9 0 0 1 12 3v0a9 9 0 0 1 9 9v.75m-18 0a2.25 2.25 0 0 0 2.25 2.25h13.5A2.25 2.25 0 0 0 21 12.75m-18 0V12a9 9 0 0 1 9-9v0a9 9 0 0 1 9 9v.75m-18 0a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 12.75m-18 0v1.5a2.25 2.25 0 0 0 2.25 2.25h13.5a2.25 2.25 0 0 0 2.25-2.25v-1.5m-18 0V12a9 9 0 0 0 9 9v0a9 9 0 0 0 9-9v-.75" />
+      <!-- Eylem kartları -->
+      <div class="action-list">
+        <button
+          class="action-card"
+          onclick={handleOpenVault}
+          disabled={loading}
+        >
+          <div class="action-icon open-icon" aria-hidden="true">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7a2 2 0 0 1 2-2h3.586a1 1 0 0 1 .707.293L10.5 6.5H15a2 2 0 0 1 2 2V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
             </svg>
           </div>
-          <div class="card-details">
-            <h3>Open Existing Vault</h3>
-            <p>Select a folder already formatted with a `.noda` index.</p>
+          <div class="action-text">
+            <strong>Open Existing Vault</strong>
+            <span>Select a folder with a .noda index</span>
           </div>
+          <svg class="chevron" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="2,2 8,8 2,14"/>
+          </svg>
         </button>
 
-        <button class="action-card hover-glow create" onclick={handleCreateVault} disabled={loading}>
-          <div class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-7 h-7">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        <button
+          class="action-card"
+          onclick={handleCreateVault}
+          disabled={loading}
+        >
+          <div class="action-icon create-icon" aria-hidden="true">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="10" r="7.5"/>
+              <line x1="10" y1="6.5" x2="10" y2="13.5"/>
+              <line x1="6.5" y1="10" x2="13.5" y2="10"/>
             </svg>
           </div>
-          <div class="card-details">
-            <h3>Create New Vault</h3>
-            <p>Select an empty directory to initialize a secure local database.</p>
+          <div class="action-text">
+            <strong>Create New Vault</strong>
+            <span>Initialize an empty directory as a vault</span>
           </div>
+          <svg class="chevron" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="2,2 8,8 2,14"/>
+          </svg>
         </button>
       </div>
 
+      <!-- Yükleniyor durumu -->
       {#if loading}
-        <div class="launcher-loading">
-          <div class="spinner"></div>
-          <span>Mounting vault structures...</span>
+        <div class="loading-row" aria-live="polite">
+          <div class="loading-spinner"></div>
+          <span>Opening vault…</span>
         </div>
       {/if}
 
+      <!-- Versiyon bilgisi -->
       <div class="launcher-footer">
-        <span>Version 2.0.0 (Tauri + Rust)</span>
-        <span class="dot">•</span>
-        <span>End-to-End Encryption Capable</span>
+        <span>Noda v2.0 · Tauri + Rust + SvelteKit</span>
       </div>
     </div>
   </div>
+
 {:else}
-  <!-- Gorgeous Three-Panel Dashboard Workspace -->
+  <!-- ─── Uygulama Workspace ───────────────────────── -->
   <div class="app-container">
     <Toolbar />
     <div class="app-workspace">
-      <Sidebar />
+      <Sidebar onOpenSettings={(tab) => { showSettingsModal = true; settingsTab = tab; }} />
       <NoteList />
       <div class="main-content">
         <Editor />
       </div>
     </div>
+    <!-- Global sync rapor bildirimi + detay modal -->
+    <SyncReportModal />
+
+    {#if showSettingsModal}
+      <SettingsModal isOpen={showSettingsModal} bind:activeTab={settingsTab} on:close={() => showSettingsModal = false} />
+    {/if}
   </div>
 {/if}
 
 <style>
-  /* Launcher Styling */
-  .launcher-shell {
+  /* ── Launcher ── */
+  .launcher {
     position: fixed;
     inset: 0;
-    background-color: #030712;
+    background-color: var(--bg-window);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-sans);
+    /* Hafif doku hissi */
+    background-image: radial-gradient(
+      ellipse at 50% 0%,
+      rgba(10, 132, 255, 0.04) 0%,
+      transparent 60%
+    );
   }
 
-  /* Blurry decorative backgrounds */
-  .bg-glow {
+  /* Traffic lights için sabit üst boşluk */
+  .launcher-traffic-lights {
     position: absolute;
-    width: 350px;
-    height: 350px;
-    border-radius: 50%;
-    filter: blur(140px);
-    opacity: 0.15;
-    z-index: 1;
-    pointer-events: none;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 48px;
   }
 
-  .bg-glow.purple {
-    background-color: #8b5cf6;
-    top: 20%;
-    left: 25%;
-    animation: floatPurple 8s ease-in-out infinite alternate;
+  .launcher-drag {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 48px;
   }
 
-  .bg-glow.indigo {
-    background-color: #4f46e5;
-    bottom: 20%;
-    right: 25%;
-    animation: floatIndigo 8s ease-in-out infinite alternate;
-  }
-
-  @keyframes floatPurple {
-    from { transform: translate(0, 0) scale(1); }
-    to { transform: translate(40px, 30px) scale(1.1); }
-  }
-
-  @keyframes floatIndigo {
-    from { transform: translate(0, 0) scale(1); }
-    to { transform: translate(-40px, -30px) scale(1.15); }
-  }
-
+  /* ── Kart ── */
   .launcher-card {
-    position: relative;
-    width: 480px;
-    background-color: rgba(13, 17, 26, 0.7);
-    backdrop-filter: blur(20px);
-    border-radius: 16px;
-    padding: 40px;
-    z-index: 10;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    width: 400px;
+    max-width: calc(100vw - 48px);
     display: flex;
     flex-direction: column;
-    align-items: center;
+    gap: 20px;
+    animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .border-glow {
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    box-shadow: 0 0 40px rgba(99, 102, 241, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  }
-
-  .launcher-header {
-    text-align: center;
-    margin-bottom: 30px;
-  }
-
-  .logo-animation {
-    display: inline-flex;
-    margin-bottom: 16px;
-  }
-
-  .logo-ring {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #6366f1;
-    border-radius: 50%;
+  /* ── Marka ── */
+  .launcher-brand {
     display: flex;
     align-items: center;
-    justify-content: center;
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
-    animation: pulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    gap: 14px;
+    margin-bottom: 4px;
   }
 
-  .logo-dot {
-    width: 8px;
-    height: 8px;
-    background-color: #818cf8;
-    border-radius: 50%;
+  .brand-logo {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(10, 132, 255, 0.25), 0 2px 6px rgba(0,0,0,0.5);
   }
 
-  @keyframes pulseRing {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.08); opacity: 0.9; }
-  }
-
-  .launcher-header h1 {
-    font-family: 'Outfit', sans-serif;
-    font-size: 2rem;
-    font-weight: 700;
-    color: #ffffff;
-    margin: 0 0 6px 0;
-    letter-spacing: -0.5px;
-  }
-
-  .subtitle {
-    font-size: 0.84rem;
-    color: #64748b;
-    margin: 0;
-  }
-
-  /* Error Banner */
-  .error-banner {
+  .brand-logo svg {
     width: 100%;
-    background-color: rgba(244, 63, 94, 0.06);
-    border: 1px solid rgba(244, 63, 94, 0.15);
-    border-radius: 8px;
-    padding: 12px 16px;
+    height: 100%;
+    display: block;
+  }
+
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .brand-text h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+
+  .brand-text p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-tertiary);
+  }
+
+  /* ── Hata kutusu ── */
+  .error-box {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 24px;
-    box-sizing: border-box;
-    color: #f43f5e;
+    gap: 10px;
+    background-color: var(--color-red-muted);
+    border: 1px solid rgba(255, 69, 58, 0.25);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    color: var(--color-red);
+    font-size: 12px;
   }
 
-  .error-text h4 {
-    margin: 0 0 2px 0;
-    font-size: 0.8rem;
-    font-weight: 600;
+  .error-box svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    margin-top: 1px;
   }
 
-  .error-text p {
-    margin: 0;
-    font-size: 0.74rem;
-    opacity: 0.85;
-    line-height: 1.3;
-  }
-
-  .launcher-actions {
+  .error-content {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    width: 100%;
+    gap: 2px;
   }
 
+  .error-content strong {
+    font-weight: 600;
+    font-size: 12px;
+  }
+
+  .error-content span {
+    color: rgba(255, 69, 58, 0.75);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  /* ── Eylem listesi ── */
+  .action-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Eylem kartı — macOS Settings tarzı büyük liste öğesi */
   .action-card {
     display: flex;
     align-items: center;
+    gap: 14px;
     width: 100%;
-    background-color: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    border-radius: 10px;
-    padding: 16px 20px;
-    gap: 16px;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
     cursor: pointer;
     text-align: left;
-    transition: all 0.2s ease;
+    font-family: var(--font-sans);
+    transition: all 0.15s ease;
     box-sizing: border-box;
   }
 
   .action-card:hover:not(:disabled) {
-    background-color: rgba(255, 255, 255, 0.04);
-    border-color: rgba(99, 102, 241, 0.25);
+    background-color: var(--bg-elevated-2);
+    border-color: var(--border-normal);
+  }
+
+  .action-card:active:not(:disabled) {
+    transform: scale(0.99);
   }
 
   .action-card:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
   }
 
-  .card-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 8px;
-    background-color: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+  /* Eylem ikonları */
+  .action-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    color: #94a3b8;
-    transition: all 0.2s ease;
+    transition: all 0.12s ease;
   }
 
-  .action-card:hover .card-icon {
-    background-color: rgba(99, 102, 241, 0.1);
-    border-color: rgba(99, 102, 241, 0.2);
-    color: #818cf8;
+  .action-icon svg {
+    width: 18px;
+    height: 18px;
+    display: block;
   }
 
-  .action-card.open:hover .card-icon {
-    box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+  .open-icon {
+    background-color: var(--accent-muted);
+    color: var(--accent);
   }
 
-  .action-card.create:hover .card-icon {
-    background-color: rgba(16, 185, 129, 0.1);
-    border-color: rgba(16, 185, 129, 0.2);
-    color: #10b981;
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+  .action-card:hover:not(:disabled) .open-icon {
+    background-color: var(--accent);
+    color: white;
   }
 
-  .card-details h3 {
-    margin: 0 0 2px 0;
-    font-size: 0.88rem;
+  .create-icon {
+    background-color: var(--color-green-muted);
+    color: var(--color-green);
+  }
+
+  .action-card:hover:not(:disabled) .create-icon {
+    background-color: var(--color-green);
+    color: white;
+  }
+
+  /* Eylem metni */
+  .action-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .action-text strong {
+    font-size: 14px;
     font-weight: 600;
-    color: #cbd5e1;
-    transition: color 0.2s ease;
+    color: var(--text-primary);
+    letter-spacing: -0.1px;
   }
 
-  .action-card:hover .card-details h3 {
-    color: #ffffff;
+  .action-text span {
+    font-size: 11px;
+    color: var(--text-tertiary);
   }
 
-  .card-details p {
-    margin: 0;
-    font-size: 0.74rem;
-    color: #475569;
-    line-height: 1.3;
+  /* Chevron ok */
+  .chevron {
+    width: 8px;
+    height: 14px;
+    color: var(--text-disabled);
+    flex-shrink: 0;
+    display: block;
+    transition: color 0.12s ease;
   }
 
-  .launcher-loading {
+  .action-card:hover:not(:disabled) .chevron {
+    color: var(--text-tertiary);
+  }
+
+  /* ── Yükleniyor ── */
+  .loading-row {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
-    color: #818cf8;
-    font-size: 0.76rem;
-    margin-top: 20px;
+    color: var(--text-tertiary);
+    font-size: 12px;
   }
 
-  .spinner {
+  .loading-spinner {
     width: 14px;
     height: 14px;
-    border: 2px solid rgba(255, 255, 255, 0.05);
-    border-top-color: #6366f1;
+    border: 1.5px solid var(--border-normal);
+    border-top-color: var(--accent);
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: spin 0.7s linear infinite;
   }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
+  /* ── Footer ── */
   .launcher-footer {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #334155;
-    font-size: 0.65rem;
-    margin-top: 30px;
-    font-weight: 500;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-disabled);
+    padding-top: 4px;
   }
 
-  .launcher-footer .dot {
-    opacity: 0.5;
-  }
-
-  /* App workspace panel styling */
+  /* ── App workspace — global class kullanımı ── */
   .app-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
     width: 100vw;
     overflow: hidden;
-    background-color: #0a0d14;
+    background-color: var(--bg-window);
   }
 
   .app-workspace {

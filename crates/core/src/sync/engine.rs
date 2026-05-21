@@ -22,7 +22,7 @@ use crate::vault::service::VaultService;
 use crate::models::note::Note;
 
 /// Configuration for the sync engine
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SyncConfig {
     pub webdav_url: String,
     pub webdav_username: String,
@@ -84,6 +84,11 @@ pub struct SyncReport {
     pub deletes_local: u32,
     pub deletes_remote: u32,
     pub conflicts: u32,
+    pub uploaded_files: Vec<String>,
+    pub downloaded_files: Vec<String>,
+    pub deleted_local_files: Vec<String>,
+    pub deleted_remote_files: Vec<String>,
+    pub conflict_files: Vec<String>,
 }
 
 /// The core SyncEngine managing synchronization tasks and periodic sync loops
@@ -291,6 +296,7 @@ impl SyncEngine {
                             }
 
                             report.uploads += 1;
+                            report.uploaded_files.push(relative_path.clone());
                         }
                         Err(e) => {
                             tracing::warn!("Note {} was deleted locally before upload: {:?}", relative_path, e);
@@ -349,6 +355,7 @@ impl SyncEngine {
                                         });
 
                                         report.downloads += 1;
+                                        report.downloaded_files.push(relative_path.clone());
                                     }
                                     Err(e) => {
                                         tracing::error!("Failed to parse downloaded note {} frontmatter: {:?}", relative_path, e);
@@ -373,6 +380,7 @@ impl SyncEngine {
                     }
                     remote_state.files.remove(relative_path);
                     report.deletes_remote += 1;
+                    report.deleted_remote_files.push(relative_path.clone());
                 }
                 SyncAction::DeleteLocal { relative_path } => {
                     let full_path = vault_path.join(relative_path);
@@ -396,6 +404,7 @@ impl SyncEngine {
 
                     remote_state.files.remove(relative_path);
                     report.deletes_local += 1;
+                    report.deleted_local_files.push(relative_path.clone());
                 }
                 SyncAction::Conflict { relative_path, local_note, remote_entry: _ } => {
                     // Conflict Resolution Flow:
@@ -439,6 +448,7 @@ impl SyncEngine {
 
                                     tracing::info!("Conflict archived and resolved: {:?}", conflict_entry);
                                     report.conflicts += 1;
+                                    report.conflict_files.push(relative_path.clone());
                                 }
                                 Err(e) => {
                                     sync_queue.enqueue(action.clone()).await?;

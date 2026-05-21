@@ -4,6 +4,7 @@ use shared::dtos::{NoteDto, NoteListItemDto};
 use crate::state::AppState;
 use noda_core::models::note::{Note, NoteId};
 use noda_core::database::queries;
+use noda_core::history;
 use ulid::Ulid;
 use chrono::Utc;
 
@@ -143,14 +144,17 @@ pub async fn update_note(
     let now = Utc::now();
     
     // Get existing note first to preserve created_at
-    let existing_note = {
-        let conn = db.conn.lock();
-        queries::get_note(&conn, note_id)
-            .map_err(AppError::from)?
-            .ok_or_else(|| AppError {
+    let vault_path = service.base_path().clone();
+
+    // Get existing note first to preserve created_at and for version history
+    let existing_note_full = match service.read_note(note_id).await {
+        Ok(n) => n,
+        Err(_) => {
+            return Err(AppError {
                 code: "NOT_FOUND".to_string(),
-                message: format!("Note not found: {}", id),
-            })?
+                message: format!("Note file not found for: {}", id),
+            });
+        }
     };
 
     let note = Note {
@@ -161,10 +165,18 @@ pub async fn update_note(
         color,
         pinned,
         tags,
-        status: existing_note.status,
-        created_at: existing_note.created_at,
+        status: existing_note_full.status.clone(),
+        created_at: existing_note_full.created_at,
         updated_at: now,
     };
+
+    // Check if content actually changed
+    let content_changed = existing_note_full.title != note.title || existing_note_full.body != note.body || existing_note_full.color != note.color || existing_note_full.pinned != note.pinned || existing_note_full.tags != note.tags;
+
+    if content_changed {
+        // Take a snapshot of the PREVIOUS state before we overwrite it
+        let _ = history::snapshot(&vault_path, &existing_note_full).await;
+    }
 
     // 1. Write to local disk
     service.write_note(&note).await.map_err(AppError::from)?;

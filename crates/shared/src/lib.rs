@@ -40,4 +40,17 @@ pub mod dtos {
         pub name: String,
         pub path: String,
     }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct DiffChunk {
+        pub tag: String, // "Equal", "Insert", "Delete"
+        pub text: String,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct SnapshotDiffDto {
+        pub note_id: String,
+        pub timestamp: String,
+        pub body_chunks: Vec<DiffChunk>,
+    }
 }

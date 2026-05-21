@@ -2,7 +2,8 @@ use tauri::State;
 use shared::AppError;
 use shared::dtos::NoteDto;
 use crate::state::AppState;
-use noda_core::history::{Snapshot, list_snapshots as core_list_snapshots, restore as core_restore, snapshot as core_snapshot};
+use noda_core::history::{Snapshot, list_snapshots as core_list_snapshots, restore as core_restore, snapshot as core_snapshot, compare as core_compare};
+use shared::dtos::SnapshotDiffDto;
 use noda_core::models::note::NoteId;
 use noda_core::database::queries;
 use ulid::Ulid;
@@ -110,4 +111,70 @@ pub async fn restore_snapshot(
     }
 
     Ok(NoteDto::from(restored_note))
+}
+
+#[tauri::command]
+pub async fn compare_snapshot(
+    state: State<'_, AppState>,
+    note_id: String,
+    timestamp: String,
+) -> Result<SnapshotDiffDto, AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let service = {
+        let guard = state.vault_service.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let parsed_note_id = NoteId(Ulid::from_string(&note_id).map_err(|e| AppError {
+        code: "INVALID_ID".to_string(),
+        message: format!("Invalid NoteId: {}", e),
+    })?);
+
+    let parsed_timestamp = DateTime::parse_from_rfc3339(&timestamp)
+        .map(|d| d.with_timezone(&Utc))
+        .map_err(|e| AppError {
+            code: "INVALID_TIMESTAMP".to_string(),
+            message: format!("Invalid timestamp format: {}", e),
+        })?;
+
+    // 1. Reconstruct snapshot object to find it on disk
+    let snaps = core_list_snapshots(&vault_path, parsed_note_id).await
+        .map_err(AppError::from)?;
+
+    let target_snap = snaps.into_iter().find(|s| s.timestamp == parsed_timestamp)
+        .ok_or_else(|| AppError {
+            code: "NOT_FOUND".to_string(),
+            message: format!("Snapshot not found for timestamp: {}", timestamp),
+        })?;
+
+    // 2. Get current note from disk (guarantees freshest state)
+    let current_note = match service.read_note(parsed_note_id).await {
+        Ok(n) => n,
+        Err(_) => {
+            return Err(AppError {
+                code: "NOT_FOUND".to_string(),
+                message: format!("Current note file not found for: {}", note_id),
+            });
+        }
+    };
+
+    // 3. Compare
+    let diffs = core_compare(&vault_path, &target_snap, &current_note).await
+        .map_err(AppError::from)?;
+
+    Ok(SnapshotDiffDto {
+        note_id,
+        timestamp,
+        body_chunks: diffs,
+    })
 }

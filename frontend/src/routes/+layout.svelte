@@ -27,8 +27,17 @@
       });
 
       // 2. Listen for background sync status updates
-      unlistenSync = await listenToSyncStatus((status) => {
-        syncStatus.set(status);
+      unlistenSync = await listenToSyncStatus((status: any) => {
+        syncStatus.update(current => {
+          if (typeof status === 'string') {
+            if (status === 'Idle') return { status: 'Idle', last_sync_time: current.last_sync_time };
+            if (status === 'Syncing') return { status: 'Syncing', last_sync_time: current.last_sync_time };
+          } else if (typeof status === 'object' && status !== null && status.Error) {
+            return { status: 'Error', error_message: status.Error, last_sync_time: current.last_sync_time };
+          }
+          // fallback
+          return { status: 'Idle', last_sync_time: current.last_sync_time };
+        });
       });
 
       // 3. Listen for sync conflicts

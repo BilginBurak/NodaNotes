@@ -3,22 +3,37 @@
   import { EditorView } from '@codemirror/view';
   import { EditorState } from '@codemirror/state';
   import { getEditorExtensions } from './extensions';
-  import { activeNote, updateActiveNoteBody, saveActiveNote, activeNoteDirty } from '../../stores/notes';
-  import { editorViewMode, snapshotsList, showSnapshots, loadNoteSnapshots, restoreNoteSnapshot, loadingEditorMetadata } from '../../stores/editor';
+  import DiffViewer from '../history/DiffViewer.svelte';
+  import {
+    activeNote, updateActiveNoteBody, saveActiveNote, renameActiveNote,
+    activeNoteDirty, lastSavedAt
+  } from '../../stores/notes';
+  import {
+    editorViewMode, snapshotsList, showSnapshots,
+    loadNoteSnapshots, restoreNoteSnapshot, loadingEditorMetadata
+  } from '../../stores/editor';
+  import * as ipc from '../../services/ipc';
+  import { appConfig } from '../../stores/settings';
   import Preview from './Preview.svelte';
+  import StatusBar from './StatusBar.svelte';
 
-  let editorElement: HTMLDivElement;
   let editorView: EditorView | null = null;
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  // Track the current note ID to detect note switches
   let lastNoteId: string | null = null;
+  let wordCount = 0;
+  let charCount = 0;
+
+  let currentDiff: import('../../types').SnapshotDiffDto | null = null;
+  let isDiffOpen = false;
 
   $: currentNote = $activeNote;
-  $: viewMode = $editorViewMode;
+  $: viewMode    = $editorViewMode;
   $: displaySnapshots = $showSnapshots;
+  $: isDirty    = $activeNoteDirty;
+  $: savedAt    = $lastSavedAt;
 
-  // React to note changes: reload content into editor
+  // Not değişince editörü güncelle — editor boşluğunu önlemek için
+  // CodeMirror setState kullanıyoruz; hidden/visible değişimi requestMeasure ile handle ediliyor
   $: if (currentNote && currentNote.id !== lastNoteId) {
     lastNoteId = currentNote.id;
     if (editorView) {
@@ -27,119 +42,249 @@
         extensions: getEditorExtensions(handleDocChange),
       });
       editorView.setState(state);
+      // Yeniden ölçüm — hidden durumdan dönülürse boyutları düzeltir
+      setTimeout(() => editorView?.requestMeasure(), 10);
     }
-    // Pre-fetch snapshots for this note in background
-    loadNoteSnapshots(currentNote.id);
+    updateStats(currentNote.body);
+  }
+
+  // viewMode değişince CodeMirror boyutlarını yeniden ölçtür
+  $: if (editorView && viewMode !== 'preview') {
+    setTimeout(() => editorView?.requestMeasure(), 0);
+  }
+
+  function updateStats(content: string) {
+    charCount = content.length;
+    const words = content.trim().split(/\s+/).filter(Boolean);
+    wordCount = content.trim() ? words.length : 0;
   }
 
   function handleDocChange(newContent: string) {
     updateActiveNoteBody(newContent);
-    
-    // Auto-save debounced (1500ms of typing silence)
+    updateStats(newContent);
     if (saveTimeout) clearTimeout(saveTimeout);
+    
+    const delay = $appConfig?.editor?.auto_save_delay_ms ?? 1500;
     saveTimeout = setTimeout(async () => {
       try {
         await saveActiveNote();
       } catch (err) {
-        console.error('Failed to auto-save:', err);
+        console.error('Auto-save failed:', err);
       }
-    }, 1500);
+    }, delay);
   }
 
-  onMount(() => {
+  async function handleManualSave() {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    try {
+      await saveActiveNote();
+    } catch (err) {
+      console.error('Manual save failed:', err);
+    }
+  }
+
+  // Cmd+S kısayolu
+  function handleGlobalKeyDown(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      e.preventDefault();
+      handleManualSave();
+    }
+  }
+
+  async function handleTitleChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const newTitle = input.value.trim() || 'Untitled';
+    if (currentNote && currentNote.title !== newTitle) {
+      try {
+        await renameActiveNote(newTitle);
+      } catch (err) {
+        console.error('Failed to rename note:', err);
+        input.value = currentNote.title; // revert on fail
+      }
+    }
+  }
+
+  function editorAction(node: HTMLElement) {
     const initialState = EditorState.create({
       doc: currentNote ? currentNote.body : '',
       extensions: getEditorExtensions(handleDocChange),
     });
-
     editorView = new EditorView({
       state: initialState,
-      parent: editorElement,
+      parent: node,
     });
+
+    if (currentNote) {
+      updateStats(currentNote.body);
+    }
+
+    return {
+      destroy() {
+        editorView?.destroy();
+        editorView = null;
+      }
+    };
+  }
+
+  onMount(() => {
+    window.addEventListener('keydown', handleGlobalKeyDown);
   });
 
   onDestroy(() => {
-    if (editorView) editorView.destroy();
     if (saveTimeout) clearTimeout(saveTimeout);
+    window.removeEventListener('keydown', handleGlobalKeyDown);
   });
+
+  async function openDiff(timestamp: string) {
+    if (!currentNote) return;
+    try {
+      currentDiff = await ipc.compareSnapshot(currentNote.id, timestamp);
+      isDiffOpen = true;
+    } catch (e) {
+      console.error("Failed to load snapshot diff:", e);
+      alert("Diff could not be loaded.");
+    }
+  }
 
   async function handleRestore(timestamp: string) {
     if (!currentNote) return;
-    if (confirm('Are you sure you want to restore this historical snapshot? This will overwrite the current content.')) {
+    isDiffOpen = false;
+    currentDiff = null;
+    if (confirm('Are you sure you want to restore this version? Current unsaved changes will be lost.')) {
       await restoreNoteSnapshot(currentNote.id, timestamp);
     }
   }
 
-  function formatDate(isoStr: string) {
-    const d = new Date(isoStr);
-    return d.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+  function formatDate(isoStr: string): string {
+    return new Date(isoStr).toLocaleString(undefined, {
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
     });
   }
 </script>
 
 <div class="editor-shell">
   {#if !currentNote}
+    <!-- Boş durum -->
     <div class="editor-empty">
-      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-      </svg>
+      <div class="empty-icon">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="8" y="6" width="32" height="36" rx="4"/>
+          <line x1="15" y1="16" x2="33" y2="16"/>
+          <line x1="15" y1="22" x2="33" y2="22"/>
+          <line x1="15" y1="28" x2="25" y2="28"/>
+        </svg>
+      </div>
       <h2>No Note Selected</h2>
-      <p>Select a note from the list or create a new one to start writing.</p>
+      <p>Select a note from the list or create one with <kbd>⌘N</kbd></p>
     </div>
+
   {:else}
     <div class="editor-workspace">
-      <!-- Editor & Preview Panel -->
-      <div class="editor-panels" class:split-layout={viewMode === 'split'}>
-        <div class="panel-editor" class:hidden={viewMode === 'preview'} bind:this={editorElement}></div>
-        
-        {#if viewMode === 'split'}
-          <div class="panel-divider"></div>
-        {/if}
+      <!-- Editor + Önizleme paneli -->
+      <div class="editor-area">
+        <!-- Başlık bar — not adı + aksiyon butonları -->
+        <div class="note-titlebar">
+          <div class="title-spacer"></div> <!-- Sol tarafta flex boşluğu -->
+          
+          <input
+            type="text"
+            class="note-title-input"
+            value={currentNote.title || ''}
+            placeholder="Untitled"
+            onblur={handleTitleChange}
+            onkeydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            title={currentNote.file_path}
+          />
 
-        <div class="panel-preview" class:hidden={viewMode === 'edit'}>
-          <Preview content={currentNote.body} />
+          <div class="note-actions">
+            {#if isDirty}
+              <span class="unsaved-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
+            {/if}
+            <button
+              class="action-btn"
+              class:accent={isDirty}
+              onclick={handleManualSave}
+              title="Save (⌘S)"
+              disabled={!isDirty}
+            >
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12V4.5L4.5 2h7a.5.5 0 0 1 .5.5V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+                <rect x="4" y="2" width="5" height="4" rx=".5"/>
+                <rect x="3.5" y="8" width="7" height="5" rx=".5"/>
+              </svg>
+              Save
+            </button>
+          </div>
         </div>
+
+        <!-- Panel alanı -->
+        <div class="editor-panels" class:split={viewMode === 'split'}>
+          <div
+            class="panel-editor"
+            class:panel-hidden={viewMode === 'preview'}
+            use:editorAction
+            aria-hidden={viewMode === 'preview'}
+          ></div>
+
+          {#if viewMode === 'split'}
+            <div class="panel-divider" role="separator"></div>
+          {/if}
+
+          <div
+            class="panel-preview"
+            class:panel-hidden={viewMode === 'edit'}
+            aria-hidden={viewMode === 'edit'}
+          >
+            <Preview content={currentNote.body} />
+          </div>
+        </div>
+
+        <!-- Status bar -->
+        <StatusBar
+          {wordCount}
+          {charCount}
+          {isDirty}
+          {savedAt}
+        />
       </div>
 
-      <!-- History Snapshots Side Panel -->
+      <!-- Geçmiş paneli -->
       {#if displaySnapshots}
-        <div class="snapshots-sidebar border-left">
-          <div class="sidebar-header">
+        <div class="snapshots-panel">
+          <div class="snapshots-header">
             <h3>Version History</h3>
-            <button class="close-btn" onclick={() => showSnapshots.set(false)}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+            <button class="icon-close" onclick={() => showSnapshots.set(false)} aria-label="Close">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <line x1="2" y1="2" x2="12" y2="12"/>
+                <line x1="12" y1="2" x2="2" y2="12"/>
               </svg>
             </button>
           </div>
 
           <div class="snapshots-list scrollbar-thin">
             {#if $loadingEditorMetadata}
-              <div class="metadata-loading">
+              <div class="snap-state">
                 <div class="spinner"></div>
-                <span>Loading history...</span>
+                <span>Loading history…</span>
               </div>
             {:else if $snapshotsList.length === 0}
-              <div class="empty-state">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              <div class="snap-state">
+                <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true">
+                  <circle cx="16" cy="16" r="13"/>
+                  <polyline points="16,9 16,16 20,20"/>
                 </svg>
-                <p>No snapshots recorded yet. A version is saved every time you edit.</p>
+                <p>No snapshots yet.<br/>Auto-created on edits.</p>
               </div>
             {:else}
-              {#each $snapshotsList as snap (snap.id)}
-                <div class="snapshot-card">
-                  <div class="snapshot-info">
-                    <span class="timestamp">{formatDate(snap.timestamp)}</span>
-                    <span class="file-name">{snap.file_path.split('/').pop()}</span>
+              {#each $snapshotsList as snap (snap.timestamp)}
+                <div class="snap-card">
+                  <div class="snap-info">
+                    <span class="snap-date">{formatDate(snap.timestamp)}</span>
+                    <span class="snap-file">{snap.absolute_path ? snap.absolute_path.split('/').pop() : 'Unknown'}</span>
                   </div>
-                  <button class="restore-btn hover-glow" onclick={() => handleRestore(snap.timestamp)}>
-                    Restore
+                  <button class="restore-btn" onclick={() => openDiff(snap.timestamp)}>
+                    Preview Diff
                   </button>
                 </div>
               {/each}
@@ -151,48 +296,77 @@
   {/if}
 </div>
 
+{#if currentDiff && isDiffOpen}
+  <DiffViewer 
+    diff={currentDiff} 
+    isOpen={isDiffOpen} 
+    on:close={() => { isDiffOpen = false; currentDiff = null; }}
+    on:restore={(e) => handleRestore(e.detail)} 
+  />
+{/if}
+
 <style>
   .editor-shell {
     display: flex;
     flex-direction: column;
     flex: 1;
     height: 100%;
-    background-color: #0a0d14;
+    background-color: var(--bg-editor);
     overflow: hidden;
   }
 
+  /* Boş durum */
   .editor-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     flex: 1;
-    color: #475569;
+    height: 100%;
+    gap: 12px;
     padding: 40px;
     text-align: center;
   }
 
   .empty-icon {
-    width: 64px;
-    height: 64px;
-    margin-bottom: 16px;
-    color: #334155;
+    width: 56px;
+    height: 56px;
+    color: var(--text-disabled);
+  }
+
+  .empty-icon svg {
+    width: 100%;
+    height: 100%;
   }
 
   .editor-empty h2 {
-    color: #94a3b8;
-    font-size: 1.25rem;
-    font-weight: 500;
-    margin: 0 0 8px 0;
+    color: var(--text-secondary);
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.2px;
   }
 
   .editor-empty p {
-    color: #475569;
-    max-width: 320px;
-    font-size: 0.9rem;
+    color: var(--text-tertiary);
+    max-width: 260px;
+    font-size: 12px;
     margin: 0;
+    line-height: 1.5;
   }
 
+  .editor-empty kbd {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-normal);
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  /* Workspace */
   .editor-workspace {
     display: flex;
     flex: 1;
@@ -200,204 +374,275 @@
     overflow: hidden;
   }
 
+  .editor-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Başlık bar */
+  .note-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    height: 40px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    background-color: var(--bg-editor);
+  }
+
+  .title-spacer {
+    flex: 1;
+  }
+
+  .note-title-input {
+    flex: 2;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.15s ease;
+    outline: none;
+    font-family: var(--font-sans);
+  }
+
+  .note-title-input:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .note-title-input:focus {
+    background-color: var(--bg-control);
+    border-color: var(--border-subtle);
+    text-overflow: clip;
+  }
+
+  .note-actions {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* Kaydedilmemiş değişiklik noktası */
+  .unsaved-dot {
+    display: block;
+    width: 6px;
+    height: 6px;
+    background-color: var(--color-orange);
+    border-radius: 50%;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50%       { opacity: 1;   transform: scale(1.3); }
+  }
+
+  /* Save butonu */
+  .action-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-disabled);
+    font-size: 11px;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    padding: 3px 7px;
+    transition: all 0.12s ease;
+    user-select: none;
+  }
+
+  .action-btn svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+
+  .action-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .action-btn:not(:disabled):hover {
+    background-color: var(--bg-control);
+    border-color: var(--border-subtle);
+    color: var(--text-secondary);
+  }
+
+  .action-btn.accent {
+    color: var(--accent);
+    border-color: var(--accent-border);
+    background-color: var(--accent-muted);
+  }
+
+  .action-btn.accent:hover {
+    background-color: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  /* Panel alanı */
   .editor-panels {
     display: flex;
     flex: 1;
-    height: 100%;
+    height: 0; /* flex child olduğu için overflow doğru çalışsın */
     overflow: hidden;
   }
 
-  .panel-editor, .panel-preview {
-    flex: 1;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .panel-editor {
-    background-color: #0a0d14;
-  }
-
+  .panel-editor,
   .panel-preview {
-    background-color: #0d1117;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+    transition: opacity 0.15s ease;
   }
 
-  .hidden {
-    display: none !important;
-  }
-
-  .split-layout .panel-editor {
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
+  /* CodeMirror'u DOM'da tutup görünmez yapıyoruz —
+     display:none CodeMirror boyutlarını sıfırlar ve yeniden açılınca boş kalır */
+  .panel-hidden {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
   }
 
   .panel-divider {
     width: 1px;
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: var(--border-subtle);
+    flex-shrink: 0;
   }
 
-  /* Version History Sidebar */
-  .snapshots-sidebar {
-    width: 280px;
+  /* Geçmiş paneli */
+  .snapshots-panel {
+    width: 240px;
     height: 100%;
     display: flex;
     flex-direction: column;
-    background-color: #090b10;
+    background-color: var(--bg-notelist);
+    border-left: 1px solid var(--border-subtle);
+    flex-shrink: 0;
   }
 
-  .border-left {
-    border-left: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  .sidebar-header {
+  .snapshots-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
   }
 
-  .sidebar-header h3 {
+  .snapshots-header h3 {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: 12px;
     font-weight: 600;
-    color: #cbd5e1;
+    color: var(--text-primary);
   }
 
-  .close-btn {
+  .icon-close {
     background: transparent;
     border: none;
-    color: #475569;
+    color: var(--text-tertiary);
     cursor: pointer;
     padding: 4px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition: all 0.12s ease;
   }
 
-  .close-btn:hover {
-    color: #f8fafc;
-    background-color: rgba(255, 255, 255, 0.05);
+  .icon-close svg { width: 12px; height: 12px; display: block; }
+
+  .icon-close:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
   }
 
   .snapshots-list {
     flex: 1;
     overflow-y: auto;
-    padding: 12px;
+    padding: 8px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
 
-  .snapshot-card {
-    background-color: #0f131c;
-    border: 1px solid rgba(255, 255, 255, 0.03);
-    padding: 12px;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    transition: border-color 0.2s ease;
-  }
-
-  .snapshot-card:hover {
-    border-color: rgba(99, 102, 241, 0.3);
-  }
-
-  .snapshot-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .snapshot-info .timestamp {
-    color: #e2e8f0;
-    font-size: 0.85rem;
-    font-weight: 500;
-  }
-
-  .snapshot-info .file-name {
-    color: #475569;
-    font-size: 0.7rem;
-    font-family: monospace;
-  }
-
-  .restore-btn {
-    align-self: flex-end;
-    background: rgba(99, 102, 241, 0.15);
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    color: #818cf8;
-    padding: 4px 10px;
-    font-size: 0.75rem;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.15s ease;
-  }
-
-  .restore-btn:hover {
-    background: #6366f1;
-    color: #ffffff;
-    box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
-  }
-
-  .metadata-loading {
+  .snap-state {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 10px;
-    color: #475569;
-    padding: 40px 0;
+    gap: 8px;
+    padding: 32px 12px;
+    color: var(--text-tertiary);
+    text-align: center;
+  }
+
+  .snap-state svg { width: 24px; height: 24px; opacity: 0.4; }
+  .snap-state p { font-size: 11px; margin: 0; line-height: 1.5; }
+
+  .snap-card {
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    padding: 9px 10px;
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color 0.12s ease;
+  }
+
+  .snap-card:hover { border-color: var(--accent-border); }
+
+  .snap-info { display: flex; flex-direction: column; gap: 2px; }
+  .snap-date { color: var(--text-secondary); font-size: 11px; font-weight: 500; }
+  .snap-file { color: var(--text-tertiary); font-size: 10px; font-family: var(--font-mono); }
+
+  .restore-btn {
+    align-self: flex-end;
+    background-color: var(--accent-muted);
+    border: 1px solid var(--accent-border);
+    color: var(--accent);
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: var(--font-sans);
+    transition: all 0.12s ease;
+  }
+
+  .restore-btn:hover {
+    background-color: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
   }
 
   .spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid rgba(255, 255, 255, 0.05);
-    border-top-color: #6366f1;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border-normal);
+    border-top-color: var(--accent);
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 30px 10px;
-    color: #475569;
-  }
-
-  .empty-state svg {
-    width: 32px;
-    height: 32px;
-    color: #334155;
-    margin-bottom: 8px;
-  }
-
-  .empty-state p {
-    font-size: 0.75rem;
-    margin: 0;
-    line-height: 1.4;
-  }
-
-  /* Sleek modern scrollbar */
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 9999px;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.15);
+    animation: spin 0.7s linear infinite;
   }
 </style>

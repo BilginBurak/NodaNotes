@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createNewNote, activeNote } from '../../stores/notes';
-  import { editorViewMode, showSnapshots } from '../../stores/editor';
+  import { editorViewMode, showSnapshots, loadNoteSnapshots } from '../../stores/editor';
   import { vaultInfo } from '../../stores/vault';
+  import { get } from 'svelte/store';
   import SyncStatus from '../sync/SyncStatus.svelte';
   import ConflictBadge from '../sync/ConflictBadge.svelte';
   import SearchBar from '../search/SearchBar.svelte';
@@ -24,91 +25,118 @@
   }
 
   function toggleSnapshots() {
-    showSnapshots.update(v => !v);
+    showSnapshots.update(v => {
+      const newVal = !v;
+      if (newVal) {
+        const current = get(activeNote);
+        if (current) {
+          // Explicitly load snapshots when panel is opened, rather than relying on reactive blocks
+          loadNoteSnapshots(current.id).catch(console.error);
+        }
+      }
+      return newVal;
+    });
   }
 </script>
 
-<header class="toolbar border-bottom" data-tauri-drag-region>
-  <!-- macOS Traffic Lights Gap -->
+<header class="toolbar" data-tauri-drag-region>
+  <!-- macOS Traffic Lights boşluğu (72px) -->
   <div class="macos-gap" data-tauri-drag-region></div>
 
-  <!-- Left: Vault Information & Add Button -->
-  <div class="left-section" data-tauri-drag-region>
+  <!-- Sol: Vault bilgisi + Yeni Not butonu -->
+  <div class="section section-left" data-tauri-drag-region>
     {#if info}
-      <div class="vault-info-pill" data-tauri-drag-region>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3.5 h-3.5 icon">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A9 9 0 0 1 12 3v0a9 9 0 0 1 9 9v.75m-18 0a2.25 2.25 0 0 0 2.25 2.25h13.5A2.25 2.25 0 0 0 21 12.75m-18 0V12a9 9 0 0 1 9-9v0a9 9 0 0 1 9 9v.75m-18 0a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 12.75m-18 0v1.5a2.25 2.25 0 0 0 2.25 2.25h13.5a2.25 2.25 0 0 0 2.25-2.25v-1.5m-18 0V12a9 9 0 0 0 9 9v0a9 9 0 0 0 9-9v-.75" />
+      <div class="vault-pill" data-tauri-drag-region>
+        <!-- Vault ikonu — küçük, subtle -->
+        <svg viewBox="0 0 16 16" fill="currentColor" class="vault-icon" aria-hidden="true">
+          <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H4z"/>
+          <path d="M5 4h6v1H5V4zm0 2h6v1H5V6zm0 2h4v1H5V8z"/>
         </svg>
         <span class="vault-name">{info.name}</span>
       </div>
-      <button class="new-note-btn hover-glow" onclick={handleNewNote} title="New Note (Cmd+N)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+
+      <button class="btn-new-note" onclick={handleNewNote} title="Yeni Not (⌘N)">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+          <line x1="7" y1="1" x2="7" y2="13"/>
+          <line x1="1" y1="7" x2="13" y2="7"/>
         </svg>
         <span>New Note</span>
       </button>
     {/if}
   </div>
 
-  <!-- Center: Search Widget -->
-  <div class="center-section" data-tauri-drag-region>
+  <!-- Orta: Arama -->
+  <div class="section section-center" data-tauri-drag-region>
     {#if info}
       <SearchBar />
     {/if}
   </div>
 
-  <!-- Right: Views, Sync & Conflicts -->
-  <div class="right-section" data-tauri-drag-region>
+  <!-- Sağ: View toggle + Geçmiş + Sync -->
+  <div class="section section-right" data-tauri-drag-region>
     {#if info}
-      <ConflictBadge />
-      <SyncStatus />
-
       {#if hasActiveNote}
-        <div class="view-toggles border-all">
+        <!-- Segmented control — macOS tarzı görünüm toggle -->
+        <div class="segmented-control" role="group" aria-label="View mode">
           <button
-            class="toggle-btn"
+            class="seg-btn"
             class:active={viewMode === 'edit'}
             onclick={() => setViewMode('edit')}
-            title="Edit Mode"
+            title="Edit mode"
+            aria-pressed={viewMode === 'edit'}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
+            <!-- Pencil icon -->
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M11.5 2.5 13.5 4.5 5 13H3v-2L11.5 2.5z"/>
             </svg>
           </button>
           <button
-            class="toggle-btn"
+            class="seg-btn"
             class:active={viewMode === 'split'}
             onclick={() => setViewMode('split')}
-            title="Split Mode"
+            title="Split mode"
+            aria-pressed={viewMode === 'split'}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-9-15h12a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V6a1.5 1.5 0 0 1 1.5-1.5Z" />
+            <!-- Split columns icon -->
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <rect x="1" y="2" width="6" height="12" rx="1"/>
+              <rect x="9" y="2" width="6" height="12" rx="1"/>
             </svg>
           </button>
           <button
-            class="toggle-btn"
+            class="seg-btn"
             class:active={viewMode === 'preview'}
             onclick={() => setViewMode('preview')}
-            title="Preview Mode"
+            title="Preview mode"
+            aria-pressed={viewMode === 'preview'}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+            <!-- Eye icon -->
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+              <circle cx="8" cy="8" r="2"/>
             </svg>
           </button>
         </div>
 
+        <!-- Geçmiş butonu -->
         <button
-          class="snapshots-toggle-btn hover-glow"
+          class="icon-btn"
           class:active={snapshotsVisible}
           onclick={toggleSnapshots}
-          title="Toggle Note History"
+          title="Version history"
+          aria-pressed={snapshotsVisible}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5"/>
+            <polyline points="8,4.5 8,8 10.5,10"/>
           </svg>
         </button>
+
+        <div class="divider-v" role="separator"></div>
       {/if}
+
+      <ConflictBadge />
+      <SyncStatus />
     {/if}
   </div>
 </header>
@@ -116,20 +144,22 @@
 <style>
   .toolbar {
     height: 48px;
-    background-color: #0b0e14;
+    /* Vibrancy efekti — macOS toolbar hissi */
+    background-color: var(--toolbar-bg);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 12px;
     user-select: none;
     flex-shrink: 0;
+    /* macOS metal/glass görünümü için çok ince üst kenar */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
-  .border-bottom {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  /* macOS Traffic Light Padding Gap */
+  /* macOS traffic lights boşluğu — sadece Darwin'de görünür */
   .macos-gap {
     width: 72px;
     height: 100%;
@@ -141,128 +171,169 @@
     display: block;
   }
 
-  .left-section, .right-section {
+  /* Genel bölüm düzeni */
+  .section {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     height: 100%;
   }
 
-  .left-section {
+  .section-left {
     flex: 1;
     justify-content: flex-start;
   }
 
-  .center-section {
-    display: flex;
-    justify-content: center;
-    align-items: center;
+  .section-center {
     flex-shrink: 0;
+    justify-content: center;
   }
 
-  .right-section {
+  .section-right {
     flex: 1;
     justify-content: flex-end;
   }
 
-  .vault-info-pill {
+  /* Vault pill — küçük, bilgilendirici */
+  .vault-pill {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background-color: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    border-radius: 6px;
-    color: #94a3b8;
+    gap: 5px;
+    padding: 3px 8px;
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.1px;
   }
 
-  .vault-info-pill .icon {
-    color: #6366f1;
+  .vault-icon {
+    width: 12px;
+    height: 12px;
+    color: var(--accent);
+    flex-shrink: 0;
   }
 
   .vault-name {
-    font-size: 0.78rem;
-    font-weight: 600;
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .new-note-btn {
+  /* Yeni Not butonu — macOS mavi pill */
+  .btn-new-note {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
-    background-color: #6366f1;
+    gap: 5px;
+    padding: 4px 10px;
+    background-color: var(--accent);
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: #ffffff;
-    font-family: inherit;
-    font-size: 0.78rem;
-    font-weight: 500;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+    letter-spacing: 0.1px;
   }
 
-  .new-note-btn:hover {
-    background-color: #4f46e5;
-    box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+  .btn-new-note svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
   }
 
-  /* View mode and snap toggles styling */
-  .border-all {
-    border: 1px solid rgba(255, 255, 255, 0.05);
+  .btn-new-note:hover {
+    background-color: var(--accent-hover);
   }
 
-  .view-toggles {
+  .btn-new-note:active {
+    transform: scale(0.96);
+  }
+
+  /* Segmented control — macOS stili grup buton */
+  .segmented-control {
     display: flex;
-    background-color: rgba(255, 255, 255, 0.01);
-    border-radius: 6px;
-    overflow: hidden;
+    align-items: center;
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    gap: 1px;
   }
 
-  .toggle-btn {
+  .seg-btn {
     background: transparent;
     border: none;
-    color: #475569;
-    padding: 6px 10px;
+    color: var(--text-tertiary);
+    padding: 4px 7px;
+    border-radius: 3px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition: all 0.12s ease;
+    line-height: 1;
   }
 
-  .toggle-btn:hover {
-    color: #94a3b8;
-    background-color: rgba(255, 255, 255, 0.03);
+  .seg-btn svg {
+    width: 14px;
+    height: 14px;
+    display: block;
   }
 
-  .toggle-btn.active {
-    color: #818cf8;
-    background-color: rgba(99, 102, 241, 0.1);
+  .seg-btn:hover {
+    color: var(--text-secondary);
+    background-color: var(--bg-control-hover);
   }
 
-  .snapshots-toggle-btn {
-    background-color: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    color: #475569;
-    padding: 6px;
-    border-radius: 6px;
+  .seg-btn.active {
+    color: var(--accent);
+    background-color: var(--bg-selected);
+  }
+
+  /* Genel icon buton (geçmiş, vb.) */
+  .icon-btn {
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: var(--text-tertiary);
+    padding: 5px 7px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition: all 0.12s ease;
   }
 
-  .snapshots-toggle-btn:hover {
-    color: #94a3b8;
-    background-color: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.1);
+  .icon-btn svg {
+    width: 14px;
+    height: 14px;
+    display: block;
   }
 
-  .snapshots-toggle-btn.active {
-    color: #818cf8;
-    background-color: rgba(99, 102, 241, 0.1);
-    border-color: rgba(99, 102, 241, 0.3);
-    box-shadow: 0 0 10px rgba(99, 102, 241, 0.15);
+  .icon-btn:hover {
+    color: var(--text-secondary);
+    background-color: var(--bg-control);
+    border-color: var(--border-subtle);
+  }
+
+  .icon-btn.active {
+    color: var(--accent);
+    background-color: var(--accent-muted);
+    border-color: var(--accent-border);
+  }
+
+  /* Dikey ayırıcı */
+  .divider-v {
+    width: 1px;
+    height: 16px;
+    background-color: var(--border-subtle);
+    flex-shrink: 0;
+    margin: 0 2px;
   }
 </style>

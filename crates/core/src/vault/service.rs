@@ -25,6 +25,11 @@ impl VaultService {
         Ok(Self { base_path: path })
     }
 
+    /// Returns the base path of the vault
+    pub fn base_path(&self) -> &PathBuf {
+        &self.base_path
+    }
+
     /// Resolves the filesystem path for a specific note by ID.
     fn note_path(&self, id: NoteId) -> PathBuf {
         self.base_path.join(format!("{}.md", id.0.to_string()))

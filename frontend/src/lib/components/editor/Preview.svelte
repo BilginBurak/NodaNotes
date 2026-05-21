@@ -3,146 +3,178 @@
 
   export let content: string = '';
 
-  // Simple customization of marked for safety / styling
   $: html = marked.parse(content) as string;
 </script>
 
 <div class="markdown-preview scrollbar-thin">
+  <!-- eslint-disable-next-line svelte/no-at-html-tags -->
   {@html html}
 </div>
 
 <style>
   .markdown-preview {
-    padding: 24px 30px;
+    padding: 32px 60px;
     height: 100%;
     overflow-y: auto;
-    color: #cbd5e1;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
     font-size: 15px;
-    line-height: 1.6;
-    background-color: #0d1117;
+    line-height: 1.7;
+    background-color: var(--bg-editor);
+    max-width: 800px;
+    margin: 0 auto;
+    box-sizing: border-box;
   }
 
   :global(.markdown-preview h1) {
-    font-size: 1.8rem;
+    font-size: 1.75rem;
     font-weight: 700;
-    color: #f8fafc;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    padding-bottom: 0.3em;
+    color: var(--text-primary);
+    margin: 0 0 0.5em 0;
+    letter-spacing: -0.3px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 0.4em;
+    line-height: 1.2;
   }
 
   :global(.markdown-preview h2) {
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: #f8fafc;
-    margin-top: 1.4em;
-    margin-bottom: 0.5em;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 1.4em 0 0.4em 0;
+    letter-spacing: -0.2px;
   }
 
   :global(.markdown-preview h3) {
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     font-weight: 600;
-    color: #f8fafc;
-    margin-top: 1.3em;
-    margin-bottom: 0.5em;
+    color: var(--text-primary);
+    margin: 1.2em 0 0.4em 0;
+  }
+
+  :global(.markdown-preview h4, .markdown-preview h5, .markdown-preview h6) {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 1em 0 0.3em 0;
   }
 
   :global(.markdown-preview p) {
-    margin-top: 0;
-    margin-bottom: 1em;
+    margin: 0 0 1em 0;
+    color: var(--text-secondary);
   }
 
   :global(.markdown-preview strong) {
-    color: #f8fafc;
-    font-weight: 600;
+    font-weight: 700;
+    color: var(--text-primary);
   }
 
   :global(.markdown-preview em) {
-    color: #e2e8f0;
+    color: var(--text-secondary);
     font-style: italic;
   }
 
   :global(.markdown-preview a) {
-    color: #38bdf8;
+    color: var(--accent);
     text-decoration: none;
     transition: color 0.15s ease;
   }
 
   :global(.markdown-preview a:hover) {
-    color: #7dd3fc;
+    color: var(--accent-hover);
     text-decoration: underline;
   }
 
   :global(.markdown-preview code) {
-    background-color: rgba(255, 255, 255, 0.06);
-    padding: 0.2em 0.4em;
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    padding: 0.15em 0.4em;
     border-radius: 4px;
-    font-family: "SF Mono", "Fira Code", monospace;
-    font-size: 0.9em;
-    color: #f472b6;
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    color: var(--accent-hover);
   }
 
   :global(.markdown-preview pre) {
-    background-color: #07090e;
-    padding: 16px;
-    border-radius: 8px;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    padding: 16px 20px;
+    border-radius: var(--radius-md);
     overflow-x: auto;
-    border: 1px solid rgba(255, 255, 255, 0.05);
     margin: 1.2em 0;
   }
 
   :global(.markdown-preview pre code) {
-    background-color: transparent;
+    background: none;
+    border: none;
     padding: 0;
-    border-radius: 0;
-    color: #e2e8f0;
-    font-size: 13.5px;
+    font-size: 13px;
+    color: var(--text-primary);
   }
 
   :global(.markdown-preview ul, .markdown-preview ol) {
-    padding-left: 20px;
+    padding-left: 22px;
     margin-bottom: 1em;
+    color: var(--text-secondary);
   }
 
   :global(.markdown-preview li) {
-    margin-bottom: 0.4em;
+    margin-bottom: 0.3em;
   }
 
   :global(.markdown-preview blockquote) {
     margin: 1.2em 0;
-    padding: 0 16px;
-    color: #94a3b8;
-    border-left: 4px solid #6366f1;
-    background-color: rgba(99, 102, 241, 0.03);
-    border-top-right-radius: 4px;
-    border-bottom-right-radius: 4px;
+    padding: 10px 16px;
+    color: var(--text-secondary);
+    border-left: 3px solid var(--accent);
+    background-color: var(--accent-muted);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+
+  :global(.markdown-preview blockquote p) {
+    margin: 0;
   }
 
   :global(.markdown-preview img) {
     max-width: 100%;
-    border-radius: 8px;
-    margin: 1.5em 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    border-radius: var(--radius-md);
+    margin: 1.2em 0;
+    box-shadow: var(--shadow-md);
   }
 
-  /* Sleek modern scrollbar */
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  :global(.markdown-preview hr) {
+    border: none;
+    border-top: 1px solid var(--border-subtle);
+    margin: 2em 0;
   }
 
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
+  :global(.markdown-preview table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.2em 0;
+    font-size: 0.9em;
   }
 
+  :global(.markdown-preview th) {
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border-normal);
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  :global(.markdown-preview td) {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+  }
+
+  /* Scrollbar */
+  .scrollbar-thin::-webkit-scrollbar { width: 5px; height: 5px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 9999px;
+    background: var(--scrollbar-thumb);
+    border-radius: var(--radius-pill);
   }
-
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 </style>
