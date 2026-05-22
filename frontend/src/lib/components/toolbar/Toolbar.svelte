@@ -42,9 +42,19 @@
 
 <header class="toolbar" data-tauri-drag-region>
 
-  <!-- Sol: Vault bilgisi + Yeni Not butonu -->
+  <!-- Sol: Marka + Vault bilgisi + Yeni Not butonu -->
   <div class="section section-left" data-tauri-drag-region>
     {#if info}
+      <div class="app-brand" data-tauri-drag-region>
+        <div class="brand-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="none">
+            <rect width="20" height="20" rx="5" fill="#0a84ff"/>
+            <path d="M5 15V5l5 8 5-8v10" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span class="brand-name">Noda</span>
+      </div>
+
       <div class="vault-pill" data-tauri-drag-region>
         <!-- Vault ikonu — küçük, subtle -->
         <svg viewBox="0 0 16 16" fill="currentColor" class="vault-icon" aria-hidden="true">
@@ -142,6 +152,10 @@
 </header>
 
 <style>
+  :global(.platform-darwin) .toolbar {
+    padding-left: 80px; /* macOS pencere kontrolleri (traffic lights) için sol boşluk */
+  }
+
   .toolbar {
     height: 48px;
     /* Vibrancy efekti — macOS toolbar hissi */
@@ -157,6 +171,37 @@
     flex-shrink: 0;
     /* macOS metal/glass görünümü için çok ince üst kenar */
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  /* Marka */
+  .app-brand {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-right: 12px;
+    cursor: default;
+    user-select: none;
+  }
+
+  .brand-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .brand-icon svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .brand-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.2px;
   }
 
   /* Genel bölüm düzeni */

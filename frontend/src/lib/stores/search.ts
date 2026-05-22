@@ -5,6 +5,7 @@ export const searchQuery = writable<string>('');
 export const searchResults = writable<ipc.SearchResult[]>([]);
 export const searching = writable<boolean>(false);
 export const searchError = writable<string | null>(null);
+export const searchModalOpen = writable<boolean>(false);
 
 export async function executeSearch(query: string) {
   searchQuery.set(query);

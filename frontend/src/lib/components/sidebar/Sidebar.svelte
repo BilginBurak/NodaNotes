@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { slide } from 'svelte/transition';
   import { vaultInfo } from '../../stores/vault';
   import { trashList, loadTrash, recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
+  import { syncConflicts } from '../../stores/sync';
   import { 
     notesList, 
     foldersList, 
@@ -29,8 +31,10 @@
   const folders = $derived($foldersList);
   const notes = $derived($notesList);
   const activeFld = $derived($selectedFolder);
+  const conflicts = $derived($syncConflicts);
 
-  let activeTab = $state<'navigation' | 'trash'>('navigation');
+  let trashExpanded = $state(false);
+  let conflictsExpanded = $state(false);
   let expandedFolders = $state<Record<string, boolean>>({});
 
   // Reactive Tree Generation
@@ -198,198 +202,206 @@
 </script>
 
 <aside class="sidebar" style="position: relative; z-index: 100; overflow: visible;" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>
-  <!-- Header + Tab switcher -->
-  <div class="sidebar-header" data-tauri-drag-region>
-    <div class="app-brand" data-tauri-drag-region>
-      <div class="brand-icon" aria-hidden="true">
-        <svg viewBox="0 0 20 20" fill="none">
-          <rect width="20" height="20" rx="5" fill="#0a84ff"/>
-          <path d="M5 15V5l5 8 5-8v10" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <span class="brand-name">Noda</span>
-    </div>
-
-    <!-- Tab switcher -->
-    <div class="tab-switcher" role="tablist" aria-label="Sidebar sections">
-      <button
-        class="tab-btn"
-        class:active={activeTab === 'navigation'}
-        onclick={() => activeTab = 'navigation'}
-        role="tab"
-        aria-selected={activeTab === 'navigation'}
-        title="Notes"
-      >
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="2" y="2" width="12" height="12" rx="2"/>
-          <line x1="5" y1="6" x2="11" y2="6"/>
-          <line x1="5" y1="9" x2="9" y2="9"/>
-        </svg>
-      </button>
-      <button
-        class="tab-btn"
-        class:active={activeTab === 'trash'}
-        onclick={() => { activeTab = 'trash'; loadTrash(); }}
-        role="tab"
-        aria-selected={activeTab === 'trash'}
-        title="Trash"
-      >
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="2,4 14,4"/>
-          <path d="M5 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1M6 7v5M10 7v5"/>
-          <path d="M3 4l1 9a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-9"/>
-        </svg>
-        {#if trash.length > 0}
-          <span class="tab-badge">{trash.length > 9 ? '9+' : trash.length}</span>
-        {/if}
-      </button>
-    </div>
-  </div>
-
   <!-- Content Area -->
   <div class="sidebar-body scrollbar-thin">
-    {#if activeTab === 'navigation'}
-      <!-- Workspace Section -->
-      <div 
-        class="nav-section"
-        class:drag-over={rootDragOver}
-        ondragover={handleRootDragOver}
-        ondragleave={handleRootDragLeave}
-        ondrop={handleRootDrop}
+    <!-- Workspace Section -->
+    <div 
+      class="nav-section"
+      class:drag-over={rootDragOver}
+      ondragover={handleRootDragOver}
+      ondragleave={handleRootDragLeave}
+      ondrop={handleRootDrop}
+    >
+      <span 
+        class="section-label"
+        oncontextmenu={(e) => handleContextMenu(e, 'root', '')}
       >
-        <span 
-          class="section-label"
-          oncontextmenu={(e) => handleContextMenu(e, 'root', '')}
+        Workspace
+      </span>
+      <div class="nav-items">
+        <button 
+          class="nav-item nav-btn" 
+          class:active-item={activeFld === null}
+          onclick={() => selectedFolder.set(null)}
         >
-          Workspace
-        </span>
-        <div class="nav-items">
-          <button 
-            class="nav-item nav-btn" 
-            class:active-item={activeFld === null}
-            onclick={() => selectedFolder.set(null)}
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M2 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/>
-              <line x1="5" y1="7" x2="11" y2="7"/>
-              <line x1="5" y1="10" x2="9" y2="10"/>
-            </svg>
-            <span>All Notes</span>
-          </button>
-        </div>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/>
+            <line x1="5" y1="7" x2="11" y2="7"/>
+            <line x1="5" y1="10" x2="9" y2="10"/>
+          </svg>
+          <span>All Notes</span>
+        </button>
       </div>
+    </div>
 
-      <!-- Folders Section -->
-      <div 
-        class="nav-section folders-section"
-        class:drag-over={rootDragOver}
-        ondragover={handleRootDragOver}
-        ondragleave={handleRootDragLeave}
-        ondrop={handleRootDrop}
-      >
-        <div class="section-header-row">
-          <span class="section-label" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>Folders</span>
-          <button 
-            class="add-folder-btn" 
-            onclick={() => createFolderAndStartRename(activeFld)} 
-            title="Create subfolder in active folder"
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="8" y1="3" x2="8" y2="13" />
-              <line x1="3" y1="8" x2="13" y2="8" />
-            </svg>
-          </button>
-        </div>
-        
-        <div class="folder-tree scrollbar-thin" role="tree">
-          {#if tree.children.length === 0}
-            <div class="empty-tree-state" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>
-              Right-click or click + to create a folder.
-            </div>
-          {:else}
-            {#each tree.children as child (child.type + '-' + child.relPath)}
-              <FolderTreeItem 
-                node={child} 
-                depth={0} 
-                {expandedFolders} 
-              />
-            {/each}
-          {/if}
-        </div>
+    <!-- Folders Section -->
+    <div 
+      class="nav-section folders-section"
+      class:drag-over={rootDragOver}
+      ondragover={handleRootDragOver}
+      ondragleave={handleRootDragLeave}
+      ondrop={handleRootDrop}
+    >
+      <div class="section-header-row">
+        <span class="section-label" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>Folders</span>
+        <button 
+          class="add-folder-btn" 
+          onclick={() => createFolderAndStartRename(activeFld)} 
+          title="Create subfolder in active folder"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="3" x2="8" y2="13" />
+            <line x1="3" y1="8" x2="13" y2="8" />
+          </svg>
+        </button>
       </div>
-
-      <!-- Preferences & Sync -->
-      <div class="nav-section">
-        <span class="section-label">Preferences</span>
-        <div class="nav-items">
-          <button class="nav-item nav-btn" onclick={() => onOpenSettings('sync')}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M13 10a4 4 0 0 0-4-4H6a4 4 0 0 0 0 8h3"/>
-              <polyline points="10,7 13,10 10,13"/>
-            </svg>
-            <span>WebDAV Sync</span>
-          </button>
-          <button class="nav-item nav-btn" onclick={() => onOpenSettings('appearance')}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="8" cy="8" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 0 1-.7-.7 2 2 0 0 1-.3-1.54l.1-.38A1.65 1.65 0 0 0 17 8.5h-.08a2 2 0 0 1-1.26-.64 2 2 0 0 1-.54-1.18l-.1-.47a1.65 1.65 0 0 0-1.3-1.2h-.08a2 2 0 0 1-1.18-.54 2 2 0 0 1-.64-1.26l-.08-.08a1.65 1.65 0 0 0-1.82-.33l-.06.06a2 2 0 0 1-.7.7 2 2 0 0 1-1.54.3l-.38-.1a1.65 1.65 0 0 0-2 1.34V5a2 2 0 0 1-.64 1.26 2 2 0 0 1-1.18.54l-.47.1a1.65 1.65 0 0 0-1.2 1.3v.08a2 2 0 0 1-.54 1.18 2 2 0 0 1-1.26.64l-.08.08a1.65 1.65 0 0 0-.33 1.82l.06.06a2 2 0 0 1 .7.7 2 2 0 0 1 .3 1.54l-.1.38A1.65 1.65 0 0 0 3 11.5h.08a2 2 0 0 1 1.26.64 2 2 0 0 1 .54 1.18l.1.47a1.65 1.65 0 0 0 1.3 1.2h.08a2 2 0 0 1 1.18.54 2 2 0 0 1 .64 1.26l.08.08a1.65 1.65 0 0 0 1.82.33l.06-.06a2 2 0 0 1 .7-.7 2 2 0 0 1 1.54-.3l.38.1a1.65 1.65 0 0 0 2-1.34v-.08a2 2 0 0 1 .64-1.26 2 2 0 0 1 1.18-.54l.47-.1a1.65 1.65 0 0 0 1.2-1.3v-.08a2 2 0 0 1 .54-1.18 2 2 0 0 1 1.26-.64l.08-.08z"/>
-            </svg>
-            <span>Preferences</span>
-          </button>
-        </div>
-      </div>
-
-    {:else}
-      <!-- Trash Section -->
-      <div class="trash-section">
-        <span class="section-label">Trash</span>
-
-        {#if trash.length === 0}
-          <div class="empty-state">
-            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="4,8 28,8"/>
-              <path d="M10 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2M6 8l2 18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2l2-18"/>
-            </svg>
-            <p>Trash is empty</p>
+      
+      <div class="folder-tree scrollbar-thin" role="tree">
+        {#if tree.children.length === 0}
+          <div class="empty-tree-state" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>
+            Right-click or click + to create a folder.
           </div>
         {:else}
-          <div class="trash-list">
-            {#each trash as note (note.id)}
-              <div class="trash-item">
-                <div class="trash-item-info">
-                  <span class="trash-title">{note.title || 'Untitled'}</span>
-                  <span class="trash-path">{note.original_path.split('/').pop()}</span>
-                </div>
-                <div class="trash-actions">
-                  <button
-                    class="trash-action-btn restore"
-                    onclick={() => handleRestoreTrash(note.id)}
-                    title="Restore"
-                    aria-label="Restore note"
-                  >
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M2 8a6 6 0 1 1 1.2 3.6"/>
-                      <polyline points="2,4 2,8 6,8"/>
-                    </svg>
-                  </button>
-                  <button
-                    class="trash-action-btn delete"
-                    onclick={() => handlePermanentDelete(note.id)}
-                    title="Delete permanently"
-                    aria-label="Permanently delete note"
-                  >
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <line x1="4" y1="4" x2="12" y2="12"/>
-                      <line x1="12" y1="4" x2="4" y2="12"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            {/each}
-          </div>
+          {#each tree.children as child (child.type + '-' + child.relPath)}
+            <FolderTreeItem 
+              node={child} 
+              depth={0} 
+              {expandedFolders} 
+            />
+          {/each}
         {/if}
       </div>
-    {/if}
+    </div>
+
+    <!-- Management & Preferences Section -->
+    <div class="nav-section">
+      <span class="section-label">Management & Settings</span>
+      <div class="nav-items">
+        <!-- Settings Toggle -->
+        <button class="nav-item nav-btn" onclick={() => onOpenSettings('appearance')}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 0 1-.7-.7 2 2 0 0 1-.3-1.54l.1-.38A1.65 1.65 0 0 0 17 8.5h-.08a2 2 0 0 1-1.26-.64 2 2 0 0 1-.54-1.18l-.1-.47a1.65 1.65 0 0 0-1.3-1.2h-.08a2 2 0 0 1-1.18-.54 2 2 0 0 1-.64-1.26l-.08-.08a1.65 1.65 0 0 0-1.82-.33l-.06.06a2 2 0 0 1-.7.7 2 2 0 0 1-1.54.3l-.38-.1a1.65 1.65 0 0 0-2 1.34V5a2 2 0 0 1-.64 1.26 2 2 0 0 1-1.18.54l-.47.1a1.65 1.65 0 0 0-1.2 1.3v.08a2 2 0 0 1-.54 1.18 2 2 0 0 1-1.26.64l-.08.08a1.65 1.65 0 0 0-.33 1.82l.06.06a2 2 0 0 1 .7.7 2 2 0 0 1 .3 1.54l-.1.38A1.65 1.65 0 0 0 3 11.5h.08a2 2 0 0 1 1.26.64 2 2 0 0 1 .54 1.18l.1.47a1.65 1.65 0 0 0 1.3 1.2h.08a2 2 0 0 1 1.18.54 2 2 0 0 1 .64 1.26l.08.08a1.65 1.65 0 0 0 1.82.33l.06-.06a2 2 0 0 1 .7-.7 2 2 0 0 1 1.54-.3l.38.1a1.65 1.65 0 0 0 2-1.34v-.08a2 2 0 0 1 .64-1.26 2 2 0 0 1 1.18-.54l.47-.1a1.65 1.65 0 0 0 1.2-1.3v-.08a2 2 0 0 1 .54-1.18 2 2 0 0 1 1.26-.64l.08-.08z"/>
+          </svg>
+          <span>Settings</span>
+        </button>
+
+        <!-- WebDAV Sync Link -->
+        <button class="nav-item nav-btn" onclick={() => onOpenSettings('sync')}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13 10a4 4 0 0 0-4-4H6a4 4 0 0 0 0 8h3"/>
+            <polyline points="10,7 13,10 10,13"/>
+          </svg>
+          <span>WebDAV Sync</span>
+        </button>
+
+        <!-- Deleted Notes Accordion -->
+        <button 
+          class="nav-item nav-btn accordion-trigger" 
+          class:expanded={trashExpanded}
+          onclick={() => { trashExpanded = !trashExpanded; if (trashExpanded) loadTrash(); }}
+          aria-expanded={trashExpanded}
+        >
+          <svg class="chevron-icon" class:rotated={trashExpanded} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 12 10 8 6 4"/>
+          </svg>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="2,4 14,4"/>
+            <path d="M5 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1M6 7v5M10 7v5"/>
+            <path d="M3 4l1 9a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-9"/>
+          </svg>
+          <span class="flex-grow">Deleted Notes</span>
+          {#if trash.length > 0}
+            <span class="badge badge-red">{trash.length}</span>
+          {/if}
+        </button>
+
+        {#if trashExpanded}
+          <div class="accordion-content" transition:slide={{ duration: 180 }}>
+            {#if trash.length === 0}
+              <div class="accordion-empty">Trash is empty</div>
+            {:else}
+              <div class="accordion-list">
+                {#each trash as note (note.id)}
+                  <div class="accordion-item inline-item">
+                    <div class="item-text" title={note.title || 'Untitled'}>
+                      <span class="item-title">{note.title || 'Untitled'}</span>
+                      <span class="item-subtitle">{note.original_path.split('/').pop()}</span>
+                    </div>
+                    <div class="item-actions">
+                      <button
+                        class="action-mini-btn restore"
+                        onclick={() => handleRestoreTrash(note.id)}
+                        title="Restore"
+                        aria-label="Restore note"
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M2 8a6 6 0 1 1 1.2 3.6"/>
+                          <polyline points="2,4 2,8 6,8"/>
+                        </svg>
+                      </button>
+                      <button
+                        class="action-mini-btn delete"
+                        onclick={() => handlePermanentDelete(note.id)}
+                        title="Delete permanently"
+                        aria-label="Permanently delete note"
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <line x1="4" y1="4" x2="12" y2="12"/>
+                          <line x1="12" y1="4" x2="4" y2="12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Conflicts Accordion -->
+        <button 
+          class="nav-item nav-btn accordion-trigger" 
+          class:expanded={conflictsExpanded}
+          onclick={() => conflictsExpanded = !conflictsExpanded}
+          aria-expanded={conflictsExpanded}
+        >
+          <svg class="chevron-icon" class:rotated={conflictsExpanded} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 12 10 8 6 4"/>
+          </svg>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 1.5L14 12.5H2L8 1.5z"/>
+            <line x1="8" y1="6" x2="8" y2="9"/>
+            <line x1="8" y1="11" x2="8" y2="11" stroke-width="2"/>
+          </svg>
+          <span class="flex-grow">Sync Conflicts</span>
+          {#if conflicts.length > 0}
+            <span class="badge badge-orange">{conflicts.length}</span>
+          {/if}
+        </button>
+
+        {#if conflictsExpanded}
+          <div class="accordion-content" transition:slide={{ duration: 180 }}>
+            {#if conflicts.length === 0}
+              <div class="accordion-empty">No sync conflicts</div>
+            {:else}
+              <div class="accordion-list">
+                {#each conflicts as conflict}
+                  <div class="accordion-item inline-item no-hover">
+                    <div class="item-text" title={conflict.filename}>
+                      <span class="item-title color-orange">{conflict.filename}</span>
+                      <span class="item-subtitle">Archived: {conflict.remote_path.split('/').pop()}</span>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+      </div>
+    </div>
+
   </div>
 
   <!-- Footer -->
@@ -427,106 +439,6 @@
     position: relative;
     z-index: 100;
     overflow: visible;
-  }
-
-  /* ── Header ── */
-  .sidebar-header {
-    height: 48px;
-    padding: 0 12px 0 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--border-subtle);
-    flex-shrink: 0;
-  }
-
-  :global(.platform-darwin) .sidebar-header {
-    padding-left: 20px;
-  }
-
-  /* Brand */
-  .app-brand {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-
-  .brand-icon {
-    width: 20px;
-    height: 20px;
-    border-radius: 5px;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-
-  .brand-icon svg {
-    width: 100%;
-    height: 100%;
-  }
-
-  .brand-name {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: -0.2px;
-  }
-
-  /* Tab switcher */
-  .tab-switcher {
-    display: flex;
-    gap: 1px;
-    background-color: var(--bg-control);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    padding: 2px;
-  }
-
-  .tab-btn {
-    position: relative;
-    background: transparent;
-    border: none;
-    color: var(--text-tertiary);
-    padding: 4px 6px;
-    border-radius: 3px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    transition: all 0.12s ease;
-  }
-
-  .tab-btn svg {
-    width: 14px;
-    height: 14px;
-    display: block;
-  }
-
-  .tab-btn:hover {
-    color: var(--text-secondary);
-    background-color: var(--bg-control-hover);
-  }
-
-  .tab-btn.active {
-    color: var(--accent);
-    background-color: var(--bg-selected);
-  }
-
-  /* Trash badge */
-  .tab-badge {
-    position: absolute;
-    top: 0px;
-    right: 0px;
-    background-color: var(--color-red);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 700;
-    min-width: 14px;
-    height: 14px;
-    border-radius: var(--radius-pill);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 3px;
-    line-height: 1;
   }
 
   /* ── Body ── */
@@ -605,6 +517,173 @@
     background-color: var(--bg-hover);
   }
 
+  /* ── Accordion ── */
+  .accordion-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    position: relative;
+    cursor: pointer;
+  }
+
+  .accordion-trigger .chevron-icon {
+    width: 10px;
+    height: 10px;
+    color: var(--text-tertiary);
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    flex-shrink: 0;
+  }
+
+  .accordion-trigger .chevron-icon.rotated {
+    transform: rotate(90deg);
+  }
+
+  .flex-grow {
+    flex: 1;
+  }
+
+  .badge {
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 16px;
+    height: 16px;
+    border-radius: var(--radius-pill);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .badge-red {
+    background-color: var(--color-red-muted);
+    color: var(--color-red);
+  }
+
+  .badge-orange {
+    background-color: var(--color-orange-muted);
+    color: var(--color-orange);
+  }
+
+  .accordion-content {
+    overflow: hidden;
+    padding-left: 10px;
+    margin-top: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .accordion-empty {
+    font-size: 11px;
+    color: var(--text-disabled);
+    padding: 8px 12px;
+    text-align: center;
+    cursor: default;
+    user-select: none;
+    background-color: rgba(255, 255, 255, 0.01);
+    border-radius: var(--radius-md);
+  }
+
+  .accordion-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .accordion-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-md);
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-subtle);
+    transition: all 0.12s ease;
+  }
+
+  .accordion-item:not(.no-hover):hover {
+    background-color: rgba(255, 255, 255, 0.04);
+    border-color: var(--border-normal);
+  }
+
+  .item-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  .item-title {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .item-subtitle {
+    font-size: 9px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .color-orange {
+    color: var(--color-orange);
+  }
+
+  .item-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .action-mini-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 3px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+  }
+
+  .action-mini-btn svg {
+    width: 11px;
+    height: 11px;
+    display: block;
+  }
+
+  .action-mini-btn.restore {
+    color: var(--accent);
+  }
+
+  .action-mini-btn.restore:hover {
+    background-color: var(--accent-muted);
+  }
+
+  .action-mini-btn.delete {
+    color: var(--color-red);
+  }
+
+  .action-mini-btn.delete:hover {
+    background-color: var(--color-red-muted);
+  }
+
   /* ── Folders Section ── */
   .folders-section {
     flex: 1;
@@ -666,125 +745,6 @@
   .nav-section.drag-over {
     background-color: var(--accent-muted);
     border-radius: var(--radius-lg);
-  }
-
-  /* ── Trash ── */
-  .trash-section {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    height: 100%;
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 40px 16px;
-    color: var(--text-disabled);
-    text-align: center;
-  }
-
-  .empty-state svg {
-    width: 32px;
-    height: 32px;
-    opacity: 0.4;
-  }
-
-  .empty-state p {
-    font-size: 12px;
-    margin: 0;
-  }
-
-  .trash-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .trash-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    padding: 6px 8px;
-    border-radius: var(--radius-md);
-    background-color: var(--bg-control);
-    border: 1px solid var(--border-subtle);
-    transition: border-color 0.12s ease;
-  }
-
-  .trash-item:hover {
-    border-color: var(--border-normal);
-  }
-
-  .trash-item-info {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    flex: 1;
-    gap: 1px;
-  }
-
-  .trash-title {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .trash-path {
-    font-size: 10px;
-    color: var(--text-tertiary);
-    font-family: var(--font-mono);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .trash-actions {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    flex-shrink: 0;
-  }
-
-  .trash-action-btn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.12s ease;
-  }
-
-  .trash-action-btn svg {
-    width: 13px;
-    height: 13px;
-    display: block;
-  }
-
-  .trash-action-btn.restore {
-    color: var(--accent);
-  }
-
-  .trash-action-btn.restore:hover {
-    background-color: var(--accent-muted);
-  }
-
-  .trash-action-btn.delete {
-    color: var(--color-red);
-  }
-
-  .trash-action-btn.delete:hover {
-    background-color: var(--color-red-muted);
   }
 
   /* ── Footer ── */

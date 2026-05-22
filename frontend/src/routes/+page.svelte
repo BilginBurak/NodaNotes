@@ -11,6 +11,7 @@
   import SettingsModal from '../lib/components/settings/SettingsModal.svelte';
   import ContextMenu from '../lib/components/common/ContextMenu.svelte';
   import PromptModal from '../lib/components/common/PromptModal.svelte';
+  import SearchModal from '../lib/components/search/SearchModal.svelte';
 
   $: info = $vaultInfo;
   $: error = $vaultError;
@@ -180,6 +181,7 @@
 
     <ContextMenu />
     <PromptModal />
+    <SearchModal />
   </div>
 {/if}
 
