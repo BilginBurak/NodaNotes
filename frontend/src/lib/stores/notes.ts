@@ -15,7 +15,7 @@ export async function loadNotes() {
   notesError.set(null);
   try {
     const list = await ipc.listNotes();
-    list.sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
+    list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     notesList.set(list);
   } catch (e: any) {
     notesError.set(e.message || 'Failed to load notes');
@@ -61,7 +61,7 @@ export async function saveActiveNote() {
       currentActive.parent_id ?? null,
       currentActive.color ?? null,
       currentActive.pinned ?? false,
-      currentActive.frontmatter?.tags ?? [],
+      currentActive.tags ?? [],
     );
     activeNote.set(updated);
     activeNoteDirty.set(false);
@@ -148,13 +148,28 @@ export function updateActiveNoteBody(body: string) {
 export function updateActiveNoteFrontmatter(frontmatter: Record<string, any>) {
   activeNote.update((note) => {
     if (!note) return null;
+    const oldFm = note.frontmatter || {
+      id: note.id,
+      title: note.title,
+      created: note.created_at,
+      updated: note.updated_at,
+      tags: note.tags
+    };
     return {
       ...note,
       frontmatter: {
-        ...note.frontmatter,
+        ...oldFm,
         ...frontmatter
       }
     };
+  });
+  activeNoteDirty.set(true);
+}
+
+export function updateActiveNoteTags(tags: string[]) {
+  activeNote.update((note) => {
+    if (!note) return null;
+    return { ...note, tags };
   });
   activeNoteDirty.set(true);
 }

@@ -46,15 +46,11 @@ export async function saveSyncConfig(config: SyncConfig) {
 
 export async function loadSyncStatus() {
   try {
-    const status: any = await ipc.getSyncStatus();
-    syncStatus.update(current => {
-      if (typeof status === 'string') {
-        if (status === 'Idle') return { status: 'Idle', last_sync_time: current.last_sync_time };
-        if (status === 'Syncing') return { status: 'Syncing', last_sync_time: current.last_sync_time };
-      } else if (typeof status === 'object' && status !== null && status.Error) {
-        return { status: 'Error', error_message: status.Error, last_sync_time: current.last_sync_time };
-      }
-      return { status: 'Idle', last_sync_time: current.last_sync_time };
+    const res: any = await ipc.getSyncStatus();
+    syncStatus.set({
+      status: res.status,
+      last_sync_time: res.last_sync_time || undefined,
+      error_message: res.error_message || undefined
     });
   } catch (e: any) {
     console.error('Failed to load sync status:', e);

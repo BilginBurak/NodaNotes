@@ -468,6 +468,7 @@ impl SyncEngine {
         }
 
         // Save updated remote state to survive crash
+        remote_state.last_sync_time = Some(chrono::Utc::now());
         save_remote_state(vault_path, &remote_state).await?;
 
         self.update_status(SyncStatus::Idle);

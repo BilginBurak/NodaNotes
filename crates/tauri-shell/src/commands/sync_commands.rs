@@ -90,10 +90,22 @@ pub async fn sync_now(
     Ok(report)
 }
 
+#[derive(serde::Serialize)]
+pub struct SyncStatusDto {
+    pub status: String,
+    pub last_sync_time: Option<String>,
+    pub error_message: Option<String>,
+}
+
 #[tauri::command]
 pub async fn get_sync_status(
     state: State<'_, AppState>,
-) -> Result<SyncStatus, AppError> {
+) -> Result<SyncStatusDto, AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone()
+    };
+
     let sync_engine = {
         let guard = state.sync_engine.read();
         guard.clone().ok_or_else(|| AppError {
@@ -102,7 +114,27 @@ pub async fn get_sync_status(
         })?
     };
 
-    Ok(sync_engine.get_status())
+    let last_sync_time = if let Some(path) = &vault_path {
+        match noda_core::sync::load_remote_state(path).await {
+            Ok(state) => state.last_sync_time.map(|t| t.to_rfc3339()),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    let engine_status = sync_engine.get_status();
+    let (status_str, error_message) = match engine_status {
+        SyncStatus::Idle => ("Idle".to_string(), None),
+        SyncStatus::Syncing => ("Syncing".to_string(), None),
+        SyncStatus::Error(err) => ("Error".to_string(), Some(err)),
+    };
+
+    Ok(SyncStatusDto {
+        status: status_str,
+        last_sync_time,
+        error_message,
+    })
 }
 
 #[tauri::command]

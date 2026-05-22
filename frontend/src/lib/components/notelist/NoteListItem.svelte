@@ -16,17 +16,13 @@
 
   function formatDate(isoStr: string): string {
     const d = new Date(isoStr);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1)   return 'Just now';
-    if (diffMins < 60)  return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7)   return `${diffDays}d ago`;
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    if (isNaN(d.getTime())) return 'Invalid Date';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day}.${month}.${year} ${hours}.${minutes}`;
   }
 
   function handleSelect() {
@@ -135,7 +131,7 @@
     {:else}
       <div class="note-header">
         <span class="note-title">{item.title || 'Untitled'}</span>
-        <span class="note-date">{formatDate(item.updated)}</span>
+        <span class="note-date">{formatDate(item.updated_at)}</span>
       </div>
 
       {#if item.tags && item.tags.length > 0}

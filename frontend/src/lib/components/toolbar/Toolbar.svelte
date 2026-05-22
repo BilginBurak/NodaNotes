@@ -40,8 +40,6 @@
 </script>
 
 <header class="toolbar" data-tauri-drag-region>
-  <!-- macOS Traffic Lights boşluğu (72px) -->
-  <div class="macos-gap" data-tauri-drag-region></div>
 
   <!-- Sol: Vault bilgisi + Yeni Not butonu -->
   <div class="section section-left" data-tauri-drag-region>
@@ -157,18 +155,6 @@
     flex-shrink: 0;
     /* macOS metal/glass görünümü için çok ince üst kenar */
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
-
-  /* macOS traffic lights boşluğu — sadece Darwin'de görünür */
-  .macos-gap {
-    width: 72px;
-    height: 100%;
-    flex-shrink: 0;
-    display: none;
-  }
-
-  :global(.platform-darwin) .macos-gap {
-    display: block;
   }
 
   /* Genel bölüm düzeni */

@@ -21,6 +21,7 @@ pub mod dtos {
         pub body: String,
         pub color: Option<String>,
         pub pinned: bool,
+        pub tags: Vec<String>,
         pub created_at: String,
         pub updated_at: String,
     }
@@ -32,6 +33,7 @@ pub mod dtos {
         pub title: String,
         pub color: Option<String>,
         pub pinned: bool,
+        pub tags: Vec<String>,
         pub updated_at: String,
     }
 

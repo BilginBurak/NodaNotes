@@ -6,7 +6,7 @@
   import DiffViewer from '../history/DiffViewer.svelte';
   import {
     activeNote, updateActiveNoteBody, saveActiveNote, renameActiveNote,
-    activeNoteDirty, lastSavedAt
+    activeNoteDirty, lastSavedAt, updateActiveNoteTags, notesList
   } from '../../stores/notes';
   import {
     editorViewMode, snapshotsList, showSnapshots,
@@ -30,7 +30,75 @@
   $: viewMode    = $editorViewMode;
   $: displaySnapshots = $showSnapshots;
   $: isDirty    = $activeNoteDirty;
-  $: savedAt    = $lastSavedAt;
+  $: savedAt    = currentNote ? new Date(currentNote.updated_at) : null;
+
+  let tagInput = '';
+  let showSuggestions = false;
+  let activeSuggestionIndex = 0;
+  let suggestionEl: HTMLDivElement;
+
+  $: currentNoteTags = currentNote?.tags || [];
+
+  // Extract all unique tags in other notes
+  $: allExistingTags = Array.from(
+    new Set(
+      ($notesList || []).flatMap(note => note.tags || [])
+    )
+  ).sort();
+
+  // Filter suggestions based on typed input and not already present on currentNote
+  $: suggestions = allExistingTags.filter(t => 
+    t.toLowerCase().includes(tagInput.toLowerCase()) && 
+    !currentNoteTags.includes(t)
+  );
+
+  function addTag(tag: string) {
+    const trimmed = tag.trim().replace(/#/g, '');
+    if (trimmed && !currentNoteTags.includes(trimmed)) {
+      const newTags = [...currentNoteTags, trimmed];
+      updateActiveNoteTags(newTags);
+    }
+    tagInput = '';
+    showSuggestions = false;
+    activeSuggestionIndex = 0;
+  }
+
+  function removeTag(tagToRemove: string) {
+    const newTags = currentNoteTags.filter(t => t !== tagToRemove);
+    updateActiveNoteTags(newTags);
+  }
+
+  function handleTagInputKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (showSuggestions && suggestions.length > 0 && activeSuggestionIndex >= 0) {
+        addTag(suggestions[activeSuggestionIndex]);
+      } else if (tagInput.trim()) {
+        addTag(tagInput);
+      }
+    } else if (e.key === ',' || e.key === ' ') {
+      if (tagInput.trim()) {
+        e.preventDefault();
+        addTag(tagInput);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!showSuggestions) {
+        showSuggestions = true;
+      } else if (suggestions.length > 0) {
+        activeSuggestionIndex = (activeSuggestionIndex + 1) % suggestions.length;
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (showSuggestions && suggestions.length > 0) {
+        activeSuggestionIndex = (activeSuggestionIndex - 1 + suggestions.length) % suggestions.length;
+      }
+    } else if (e.key === 'Escape') {
+      showSuggestions = false;
+    } else if (e.key === 'Backspace' && !tagInput && currentNoteTags.length > 0) {
+      removeTag(currentNoteTags[currentNoteTags.length - 1]);
+    }
+  }
 
   // Not değişince editörü güncelle — editor boşluğunu önlemek için
   // CodeMirror setState kullanıyoruz; hidden/visible değişimi requestMeasure ile handle ediliyor
@@ -237,6 +305,58 @@
             aria-hidden={viewMode === 'edit'}
           >
             <Preview content={currentNote.body} />
+          </div>
+        </div>
+
+        <!-- Tag management panel -->
+        <div class="tag-manager">
+          <div class="tag-label">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="tag-icon">
+              <path d="M11 2.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z M2.5 7.5L8 2l4.5 4.5L7 12H2.5V7.5z"/>
+            </svg>
+            <span>Tags:</span>
+          </div>
+
+          <div class="tags-container">
+            {#each currentNoteTags as tag}
+              <span class="tag-pill">
+                #{tag}
+                <button class="remove-tag-btn" onclick={() => removeTag(tag)} aria-label="Remove {tag}">
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <line x1="4" y1="4" x2="10" y2="10"/>
+                    <line x1="10" y1="4" x2="4" y2="10"/>
+                  </svg>
+                </button>
+              </span>
+            {/each}
+
+            <div class="tag-input-wrapper">
+              <input
+                type="text"
+                class="tag-input"
+                placeholder={currentNoteTags.length === 0 ? "Add tags..." : "Add tag..."}
+                bind:value={tagInput}
+                onkeydown={handleTagInputKeyDown}
+                onfocus={() => { showSuggestions = true; }}
+                onblur={() => {
+                  setTimeout(() => { showSuggestions = false; }, 200);
+                }}
+              />
+              
+              {#if showSuggestions && suggestions.length > 0}
+                <div class="tag-suggestions" bind:this={suggestionEl}>
+                  {#each suggestions as sug, i}
+                    <button
+                      class="suggestion-item"
+                      class:active={i === activeSuggestionIndex}
+                      onclick={() => addTag(sug)}
+                    >
+                      #{sug}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
           </div>
         </div>
 
@@ -644,5 +764,174 @@
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
+  }
+
+  /* ── Tag Manager Styles ── */
+  .tag-manager {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background-color: var(--bg-elevated);
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    position: relative;
+    user-select: none;
+    box-sizing: border-box;
+  }
+
+  .tag-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .tag-icon {
+    width: 12px;
+    height: 12px;
+    color: var(--text-tertiary);
+  }
+
+  .tags-container {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    overflow: visible;
+  }
+
+  .tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--accent);
+    background-color: var(--accent-muted);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
+    font-weight: 500;
+    white-space: nowrap;
+    animation: fadeIn 0.12s ease;
+    transition: all 0.12s ease;
+  }
+
+  .tag-pill:hover {
+    border-color: var(--accent);
+    transform: translateY(-0.5px);
+  }
+
+  .remove-tag-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    color: var(--accent);
+    opacity: 0.6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    width: 12px;
+    height: 12px;
+    transition: all 0.12s ease;
+  }
+
+  .remove-tag-btn svg {
+    width: 10px;
+    height: 10px;
+    stroke-width: 2.5;
+  }
+
+  .remove-tag-btn:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .tag-input-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .tag-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 12px;
+    color: var(--text-primary);
+    padding: 4px 6px;
+    font-family: var(--font-sans);
+  }
+
+  .tag-input::placeholder {
+    color: var(--text-disabled);
+    font-style: italic;
+    font-size: 11px;
+  }
+
+  /* Tag Suggestions Dropdown */
+  .tag-suggestions {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    z-index: 100;
+    background-color: var(--modal-bg);
+    border: 1px solid var(--border-normal);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    min-width: 180px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    animation: slideUp 0.15s ease;
+  }
+
+  .suggestion-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.1s ease;
+  }
+
+  .suggestion-item:hover,
+  .suggestion-item.active {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 </style>

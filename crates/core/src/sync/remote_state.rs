@@ -20,6 +20,8 @@ pub struct RemoteFileMetadata {
 /// The local cache of remote file states used to calculate three-way sync deltas
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct RemoteState {
+    #[serde(default)]
+    pub last_sync_time: Option<DateTime<Utc>>,
     pub files: HashMap<String, RemoteFileMetadata>, // key: path relative to vault root
 }
 

@@ -10,24 +10,27 @@ export interface Frontmatter {
 
 export interface NoteDto {
   id: string;
+  parent_id?: string | null;
   title: string;
   body: string;
-  frontmatter: Frontmatter;
-  file_path: string;
-  // Optional runtime enrichment fields
-  tags?: string[];
   color?: string | null;
-  pinned?: boolean;
-  parent_id?: string | null;
+  pinned: boolean;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  file_path?: string;
+  frontmatter?: Frontmatter; // Keep optional for backwards compatibility
 }
 
 export interface NoteListItemDto {
   id: string;
+  parent_id?: string | null;
   title: string;
-  file_path: string;
+  color?: string | null;
+  pinned: boolean;
   tags: string[];
-  created: string;
-  updated: string;
+  updated_at: string;
+  file_path?: string;
 }
 
 export interface VaultInfoDto {

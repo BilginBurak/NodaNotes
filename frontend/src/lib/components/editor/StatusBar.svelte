@@ -1,14 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { syncStatus, lastSyncReport } from '../../stores/sync';
 
   export let wordCount: number = 0;
   export let charCount: number = 0;
   export let isDirty: boolean = false;
   export let savedAt: Date | null = null;
-
-  $: status = $syncStatus;
-  $: report = $lastSyncReport;
 
   let now = Date.now();
   let intervalId: any;
@@ -26,21 +22,14 @@
     const diffMs = _now - date.getTime();
     const diffSecs = Math.floor(diffMs / 1000);
     const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
     if (diffSecs < 10)  return 'Just saved';
     if (diffSecs < 60)  return `Saved ${diffSecs}s ago`;
     if (diffMins < 60)  return `Saved ${diffMins}m ago`;
-    return `Saved at ${date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
-  }
-
-  function formatSyncTime(isoStr: string | undefined, _now: number): string {
-    if (!isoStr) return 'Never synced';
-    const d = new Date(isoStr);
-    const diffMs = _now - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1)   return 'Just synced';
-    if (diffMins < 60)  return `Synced ${diffMins}m ago`;
-    return `Synced at ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+    if (diffHours < 24) return `Saved ${diffHours}h ago`;
+    return `Saved ${diffDays}d ago`;
   }
 </script>
 
@@ -61,7 +50,7 @@
     </span>
   </div>
 
-  <!-- Sağ: kayıt ve sync bilgisi -->
+  <!-- Sağ: kayıt bilgisi -->
   <div class="status-group">
     <!-- Kayıt durumu -->
     <span
@@ -79,40 +68,6 @@
         {formatRelativeTime(savedAt, now)}
       {/if}
     </span>
-
-    <span class="status-sep" aria-hidden="true">·</span>
-
-    <!-- Sync durumu -->
-    <span
-      class="status-item"
-      class:syncing={status.status === 'Syncing'}
-      class:sync-error={status.status === 'Error'}
-      title={status.status === 'Error' ? status.error_message : 'Sync status'}
-    >
-      {#if status.status === 'Syncing'}
-        <span class="sync-spinner" aria-hidden="true"></span>
-        Syncing…
-      {:else if status.status === 'Error'}
-        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-          <circle cx="5" cy="5" r="4"/>
-          <line x1="5" y1="3" x2="5" y2="5.5"/>
-          <line x1="5" y1="7" x2="5" y2="7" stroke-width="2"/>
-        </svg>
-        Sync Error
-      {:else}
-        {formatSyncTime(status.last_sync_time, now)}
-      {/if}
-    </span>
-
-    {#if report}
-      <span class="status-sep" aria-hidden="true">·</span>
-      <span class="status-item sync-summary" title="Last sync: {report.uploads} up, {report.downloads} down">
-        ↑{report.uploads} ↓{report.downloads}
-        {#if report.conflicts > 0}
-          <span class="conflict-indicator">· {report.conflicts}⚠</span>
-        {/if}
-      </span>
-    {/if}
   </div>
 </div>
 
@@ -165,38 +120,5 @@
   .status-item.saved {
     color: var(--color-green);
     opacity: 0.8;
-  }
-
-  /* Syncing */
-  .status-item.syncing {
-    color: var(--accent);
-  }
-
-  .status-item.sync-error {
-    color: var(--color-red);
-  }
-
-  /* Küçük dönen sync göstergesi */
-  .sync-spinner {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border: 1.5px solid currentColor;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    flex-shrink: 0;
-  }
-
-  /* Son sync özeti */
-  .sync-summary {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.2px;
-  }
-
-  .conflict-indicator {
-    color: var(--color-orange);
-    font-weight: 600;
   }
 </style>

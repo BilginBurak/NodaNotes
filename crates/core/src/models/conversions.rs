@@ -13,6 +13,7 @@ impl From<Note> for NoteDto {
             body: note.body,
             color: note.color,
             pinned: note.pinned,
+            tags: note.tags,
             created_at: note.created_at.to_rfc3339(),
             updated_at: note.updated_at.to_rfc3339(),
         }
@@ -27,6 +28,7 @@ impl From<NoteMeta> for NoteListItemDto {
             title: meta.title,
             color: meta.color,
             pinned: meta.pinned,
+            tags: meta.tags,
             updated_at: meta.updated_at.to_rfc3339(),
         }
     }
