@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { EditorView } from '@codemirror/view';
   import { EditorState } from '@codemirror/state';
-  import { getEditorExtensions } from './extensions';
+  import { getEditorExtensions, livePreviewCompartment, editorModeCompartment, livePreviewPlugin } from './extensions';
   import DiffViewer from '../history/DiffViewer.svelte';
   import {
     activeNote, updateActiveNoteBody, saveActiveNote, renameActiveNote,
@@ -107,7 +107,7 @@
     if (editorView) {
       const state = EditorState.create({
         doc: currentNote.body,
-        extensions: getEditorExtensions(handleDocChange),
+        extensions: getEditorExtensions(handleDocChange, viewMode),
       });
       editorView.setState(state);
       // Yeniden ölçüm — hidden durumdan dönülürse boyutları düzeltir
@@ -116,9 +116,19 @@
     updateStats(currentNote.body);
   }
 
-  // viewMode değişince CodeMirror boyutlarını yeniden ölçtür
-  $: if (editorView && viewMode !== 'preview') {
-    setTimeout(() => editorView?.requestMeasure(), 0);
+  // viewMode değişince CodeMirror Live Preview uzantısını güncelle ve boyutları ölç
+  $: if (editorView) {
+    editorView.dispatch({
+      effects: [
+        livePreviewCompartment.reconfigure(viewMode === 'live' ? [livePreviewPlugin] : []),
+        editorModeCompartment.reconfigure(EditorView.editorAttributes.of({
+          class: viewMode === 'live' ? 'cm-mode-live' : 'cm-mode-edit'
+        }))
+      ]
+    });
+    if (viewMode !== 'preview') {
+      setTimeout(() => editorView?.requestMeasure(), 0);
+    }
   }
 
   function updateStats(content: string) {
@@ -175,7 +185,7 @@
   function editorAction(node: HTMLElement) {
     const initialState = EditorState.create({
       doc: currentNote ? currentNote.body : '',
-      extensions: getEditorExtensions(handleDocChange),
+      extensions: getEditorExtensions(handleDocChange, viewMode),
     });
     editorView = new EditorView({
       state: initialState,
@@ -287,7 +297,7 @@
         </div>
 
         <!-- Panel alanı -->
-        <div class="editor-panels" class:split={viewMode === 'split'}>
+        <div class="editor-panels">
           <div
             class="panel-editor"
             class:panel-hidden={viewMode === 'preview'}
@@ -295,14 +305,10 @@
             aria-hidden={viewMode === 'preview'}
           ></div>
 
-          {#if viewMode === 'split'}
-            <div class="panel-divider" role="separator"></div>
-          {/if}
-
           <div
             class="panel-preview"
-            class:panel-hidden={viewMode === 'edit'}
-            aria-hidden={viewMode === 'edit'}
+            class:panel-hidden={viewMode !== 'preview'}
+            aria-hidden={viewMode !== 'preview'}
           >
             <Preview content={currentNote.body} />
           </div>

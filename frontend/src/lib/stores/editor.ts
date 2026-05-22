@@ -7,7 +7,7 @@ export const snapshotsList = writable<Snapshot[]>([]);
 export const attachmentsList = writable<string[]>([]);
 export const trashList = writable<TrashEntry[]>([]);
 export const showSnapshots = writable<boolean>(false);
-export const editorViewMode = writable<'edit' | 'preview' | 'split'>('edit');
+export const editorViewMode = writable<'edit' | 'preview' | 'live'>('live');
 export const loadingEditorMetadata = writable<boolean>(false);
 
 export async function loadNoteSnapshots(noteId: string) {

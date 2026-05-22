@@ -20,7 +20,7 @@
     }
   }
 
-  function setViewMode(mode: 'edit' | 'preview' | 'split') {
+  function setViewMode(mode: 'edit' | 'preview' | 'live') {
     editorViewMode.set(mode);
   }
 
@@ -80,32 +80,33 @@
             class="seg-btn"
             class:active={viewMode === 'edit'}
             onclick={() => setViewMode('edit')}
-            title="Edit mode"
+            title="Raw Markdown Source"
             aria-pressed={viewMode === 'edit'}
           >
-            <!-- Pencil icon -->
+            <!-- Raw / Pencil icon -->
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M11.5 2.5 13.5 4.5 5 13H3v-2L11.5 2.5z"/>
             </svg>
           </button>
           <button
             class="seg-btn"
-            class:active={viewMode === 'split'}
-            onclick={() => setViewMode('split')}
-            title="Split mode"
-            aria-pressed={viewMode === 'split'}
+            class:active={viewMode === 'live'}
+            onclick={() => setViewMode('live')}
+            title="Live Preview (Obsidian Style)"
+            aria-pressed={viewMode === 'live'}
           >
-            <!-- Split columns icon -->
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-              <rect x="1" y="2" width="6" height="12" rx="1"/>
-              <rect x="9" y="2" width="6" height="12" rx="1"/>
+            <!-- Sparkles/WYSIWYG combining Edit and Preview icon -->
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 8s2.5-4.5 6-4.5 6 4.5 6 4.5-2.5 4.5-7 4.5" />
+              <circle cx="8" cy="8" r="1.8" />
+              <path d="M11.5 2.5 L13.5 4.5" />
             </svg>
           </button>
           <button
             class="seg-btn"
             class:active={viewMode === 'preview'}
             onclick={() => setViewMode('preview')}
-            title="Preview mode"
+            title="Reading View (Full HTML Preview)"
             aria-pressed={viewMode === 'preview'}
           >
             <!-- Eye icon -->
