@@ -156,6 +156,7 @@
     border-bottom: 1px solid var(--border-subtle);
     transition: background-color 0.1s ease;
     user-select: none;
+    -webkit-user-drag: element;
   }
 
   .note-item:hover { background-color: var(--bg-hover); }

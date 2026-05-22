@@ -11,7 +11,8 @@
     moveFolder,
     loadNotes,
     draggedItem,
-    createFolderAndStartRename
+    createFolderAndStartRename,
+    renamingFolder
   } from '../../stores/notes';
   import FolderTreeItem from './FolderTreeItem.svelte';
   import type { TreeNode, NoteListItemDto } from '../../types';
@@ -178,6 +179,18 @@
   function handleContextMenu(e: MouseEvent, type: 'folder' | 'note' | 'root', relPath: string, noteId = '') {
     openContextMenu(e, type, relPath, noteId);
   }
+
+  $effect(() => {
+    const renaming = $renamingFolder;
+    if (renaming) {
+      const parts = renaming.split('/');
+      let accumulated = '';
+      for (let i = 0; i < parts.length - 1; i++) {
+        accumulated = accumulated ? `${accumulated}/${parts[i]}` : parts[i];
+        expandedFolders[accumulated] = true;
+      }
+    }
+  });
 
   onMount(() => {
     loadTrash();

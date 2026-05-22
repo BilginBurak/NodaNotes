@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { notesList, activeNote, selectedFolder } from '../../stores/notes';
+  import { notesList, activeNote, selectedFolder, draggedItem, moveNote } from '../../stores/notes';
   import NoteListItem from './NoteListItem.svelte';
   import VirtualList from '../common/VirtualList.svelte';
   import { openContextMenu } from '../../stores/contextMenu';
 
-  let localFilter = '';
+  let localFilter = $state('');
 
-  $: notes = $notesList;
-  $: activeId = $activeNote ? $activeNote.id : null;
-  $: currentFolder = $selectedFolder;
+  const notes = $derived($notesList);
+  const activeId = $derived($activeNote ? $activeNote.id : null);
+  const currentFolder = $derived($selectedFolder);
 
-  $: filteredNotes = notes.filter((n) => {
+  const filteredNotes = $derived(notes.filter((n) => {
     // Apply selectedFolder filtering if active
     if (currentFolder !== null) {
       // Check if note resides inside selectedFolder (exact match or subdirectory prefix)
@@ -26,7 +26,7 @@
     const titleMatch = (n.title || '').toLowerCase().includes(term);
     const tagMatch = n.tags ? n.tags.some((t) => t.toLowerCase().includes(term)) : false;
     return titleMatch || tagMatch;
-  });
+  }));
 
   function clearFilter() {
     localFilter = '';
@@ -40,9 +40,59 @@
       openContextMenu(e, 'root', '');
     }
   }
+
+  let dragOverActive = $state(false);
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragOverActive = true;
+  }
+
+  function handleDragLeave(e: DragEvent) {
+    e.stopPropagation();
+    dragOverActive = false;
+  }
+
+  async function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragOverActive = false;
+
+    let data = $draggedItem;
+
+    if (!data && e.dataTransfer) {
+      const rawData = e.dataTransfer.getData('text/plain');
+      if (rawData) {
+        try {
+          data = JSON.parse(rawData);
+        } catch (err) {
+          console.error('Failed to parse fallback dataTransfer rawData:', err);
+        }
+      }
+    }
+
+    if (!data) return;
+
+    try {
+      if (data.type === 'note') {
+        await moveNote(data.id, currentFolder || '');
+      }
+      draggedItem.set(null);
+    } catch (err) {
+      console.error('Drop to NoteList failed:', err);
+    }
+  }
 </script>
 
-<div class="note-list-panel" oncontextmenu={handlePanelContextMenu}>
+<div 
+  class="note-list-panel" 
+  class:drag-over={dragOverActive}
+  oncontextmenu={handlePanelContextMenu}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+>
   <!-- Header: başlık + sayaç -->
   <div class="list-header">
     <div class="title-row">
@@ -112,6 +162,14 @@
     flex-direction: column;
     flex-shrink: 0;
     overflow: hidden;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    box-sizing: border-box;
+  }
+
+  .note-list-panel.drag-over {
+    background-color: var(--accent-muted);
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
   }
 
   /* Header */

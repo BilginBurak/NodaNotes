@@ -281,6 +281,7 @@
     cursor: pointer;
     transition: all 0.12s ease;
     border: 2px dashed transparent;
+    -webkit-user-drag: element;
   }
 
   .tree-item-row:hover {
