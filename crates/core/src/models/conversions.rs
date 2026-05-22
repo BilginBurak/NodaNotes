@@ -16,6 +16,7 @@ impl From<Note> for NoteDto {
             tags: note.tags,
             created_at: note.created_at.to_rfc3339(),
             updated_at: note.updated_at.to_rfc3339(),
+            file_path: note.file_path,
         }
     }
 }
@@ -30,6 +31,7 @@ impl From<NoteMeta> for NoteListItemDto {
             pinned: meta.pinned,
             tags: meta.tags,
             updated_at: meta.updated_at.to_rfc3339(),
+            file_path: meta.file_path,
         }
     }
 }

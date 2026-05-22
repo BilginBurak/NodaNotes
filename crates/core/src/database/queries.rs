@@ -18,6 +18,7 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
     let tags_json: String = row.get("tags")?;
     let created_str: String = row.get("created")?;
     let updated_str: String = row.get("updated")?;
+    let file_path: String = row.get("file_path")?;
     
     let created_at = DateTime::parse_from_rfc3339(&created_str)
         .map(|d| d.with_timezone(&Utc))
@@ -43,6 +44,7 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
         status: row.get("status")?,
         created_at,
         updated_at,
+        file_path,
     })
 }
 
@@ -51,6 +53,7 @@ fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
     let parent_id_str: Option<String> = row.get("parent_id")?;
     let tags_json: String = row.get("tags")?;
     let updated_str: String = row.get("updated")?;
+    let file_path: String = row.get("file_path")?;
     
     let updated_at = DateTime::parse_from_rfc3339(&updated_str)
         .map(|d| d.with_timezone(&Utc))
@@ -70,11 +73,12 @@ fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
         tags,
         status: row.get("status")?,
         updated_at,
+        file_path,
     })
 }
 
 pub fn get_note(conn: &Connection, id: NoteId) -> Result<Option<Note>, NodaError> {
-    let mut stmt = conn.prepare("SELECT id, parent_id, title, body, color, pinned, tags, status, created, updated FROM notes WHERE id = ?1")
+    let mut stmt = conn.prepare("SELECT id, parent_id, title, body, color, pinned, tags, status, created, updated, file_path FROM notes WHERE id = ?1")
         .map_err(|e| NodaError::Database(format!("Prepare get_note failed: {}", e)))?;
     
     let note = stmt.query_row(params![id.0.to_string()], row_to_note)
@@ -211,7 +215,7 @@ pub fn delete_note_by_path(conn: &Connection, file_path: &str) -> Result<(), Nod
 }
 
 pub fn list_notes(conn: &Connection) -> Result<Vec<NoteMeta>, NodaError> {
-    let mut stmt = conn.prepare("SELECT id, parent_id, title, color, pinned, tags, status, updated FROM notes ORDER BY pinned DESC, updated DESC")
+    let mut stmt = conn.prepare("SELECT id, parent_id, title, color, pinned, tags, status, updated, file_path FROM notes ORDER BY pinned DESC, updated DESC")
         .map_err(|e| NodaError::Database(format!("Prepare list_notes failed: {}", e)))?;
         
     let rows = stmt.query_map([], row_to_note_meta)
@@ -226,6 +230,14 @@ pub fn list_notes(conn: &Connection) -> Result<Vec<NoteMeta>, NodaError> {
     }
     
     Ok(notes)
+}
+
+pub fn update_note_file_path(conn: &Connection, id: NoteId, file_path: &str) -> Result<(), NodaError> {
+    conn.execute(
+        "UPDATE notes SET file_path = ?2 WHERE id = ?1",
+        params![id.0.to_string(), file_path],
+    ).map_err(|e| NodaError::Database(format!("Failed to update note file_path: {}", e)))?;
+    Ok(())
 }
 
 #[cfg(test)]

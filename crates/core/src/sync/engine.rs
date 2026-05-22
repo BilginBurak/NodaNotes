@@ -324,6 +324,7 @@ impl SyncEngine {
                                             status: frontmatter.status,
                                             created_at: frontmatter.created_at,
                                             updated_at: frontmatter.updated_at,
+                                            file_path: relative_path.clone(),
                                         };
 
                                         // Persist locally

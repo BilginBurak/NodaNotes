@@ -124,3 +124,12 @@ export const deleteAttachment = (name: string)       => call<void>('delete_attac
 export const getSettings      = ()                   => call<AppConfig>('get_settings');
 export const saveSettings     = (config: AppConfig)  => call<void>('save_settings',       { config });
 
+// ── Folder Commands ─────────────────────────────────────────
+export const listFolders  = () => call<string[]>('list_folders');
+export const createFolder = (relPath: string) => call<void>('create_folder', { relPath });
+export const deleteFolder = (relPath: string) => call<void>('delete_folder', { relPath });
+export const moveNote     = (id: string, targetDir: string) => call<void>('move_note', { id, targetDir });
+export const moveFolder   = (srcDir: string, targetDir: string) => call<void>('move_folder', { srcDir, targetDir });
+export const renameFolder = (srcDir: string, newName: string) => call<void>('rename_folder', { srcDir, newName });
+
+

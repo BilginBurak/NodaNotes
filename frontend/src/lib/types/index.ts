@@ -18,7 +18,7 @@ export interface NoteDto {
   tags: string[];
   created_at: string;
   updated_at: string;
-  file_path?: string;
+  file_path: string;
   frontmatter?: Frontmatter; // Keep optional for backwards compatibility
 }
 
@@ -30,7 +30,7 @@ export interface NoteListItemDto {
   pinned: boolean;
   tags: string[];
   updated_at: string;
-  file_path?: string;
+  file_path: string;
 }
 
 export interface VaultInfoDto {
@@ -133,5 +133,14 @@ export interface AppConfig {
   editor: EditorSettings;
   sync: SyncConfig;
   history: HistorySettings;
+}
+
+export interface TreeNode {
+  name: string;
+  type: 'folder' | 'note';
+  relPath: string; // relative path from root, e.g. "work/ideas"
+  id?: string; // note ID if type is 'note'
+  children: TreeNode[];
+  isOpen?: boolean;
 }
 

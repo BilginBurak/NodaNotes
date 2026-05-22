@@ -52,7 +52,16 @@ pub async fn trash_note(
     })?);
 
     // 1. Core soft_delete (saves a final snapshot and moves markdown file to trash)
-    let relative_path = format!("{}.md", note_id.0.to_string());
+    let relative_path = {
+        let conn = db.conn.lock();
+        let note_opt = queries::get_note(&conn, note_id).map_err(AppError::from)?;
+        let note = note_opt.ok_or_else(|| AppError {
+            code: "NOT_FOUND".to_string(),
+            message: format!("Note not found in database: {}", id),
+        })?;
+        note.file_path
+    };
+
     let entry = core_soft_delete(&vault_path, &relative_path).await
         .map_err(AppError::from)?;
 

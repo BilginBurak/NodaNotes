@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createNewNote, activeNote } from '../../stores/notes';
+  import { createNewNote, activeNote, selectedFolder } from '../../stores/notes';
   import { editorViewMode, showSnapshots, loadNoteSnapshots } from '../../stores/editor';
   import { vaultInfo } from '../../stores/vault';
   import { get } from 'svelte/store';
@@ -14,7 +14,8 @@
 
   async function handleNewNote() {
     try {
-      await createNewNote();
+      const folder = get(selectedFolder);
+      await createNewNote(folder);
     } catch (e) {
       console.error('Failed to create new note:', e);
     }

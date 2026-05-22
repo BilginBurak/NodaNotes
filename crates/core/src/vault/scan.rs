@@ -25,7 +25,7 @@ fn is_hidden_or_noda(entry: &DirEntry) -> bool {
 }
 
 /// Helper function to parse a file or convert it to a standard NodaNote (ULID filename + frontmatter).
-pub async fn parse_or_create_note_from_file(file_path: &Path) -> Result<Note, NodaError> {
+pub async fn parse_or_create_note_from_file(file_path: &Path, vault_root: &Path) -> Result<Note, NodaError> {
     use crate::models::note::NoteId;
     use chrono::{DateTime, Utc};
 
@@ -48,6 +48,10 @@ pub async fn parse_or_create_note_from_file(file_path: &Path) -> Result<Note, No
             // Perfect case: filename is valid ULID, and frontmatter matches or has valid ULID
             let expected_id = NoteId(ulid::Ulid::from_string(filename_stem).unwrap());
             if fm.id == expected_id {
+                let rel_path = file_path.strip_prefix(vault_root)
+                    .unwrap_or(file_path)
+                    .to_string_lossy()
+                    .to_string();
                 return Ok(Note {
                     id: fm.id,
                     parent_id: fm.parent_id,
@@ -59,6 +63,7 @@ pub async fn parse_or_create_note_from_file(file_path: &Path) -> Result<Note, No
                     status: fm.status,
                     created_at: fm.created_at,
                     updated_at: fm.updated_at,
+                    file_path: rel_path,
                 });
             }
         }
@@ -97,6 +102,18 @@ pub async fn parse_or_create_note_from_file(file_path: &Path) -> Result<Note, No
     let created_at = frontmatter_opt.as_ref().map(|fm| fm.created_at).unwrap_or(file_created);
     let updated_at = frontmatter_opt.as_ref().map(|fm| fm.updated_at).unwrap_or(file_modified);
 
+    // 5. Serialize and write the converted note
+    let parent_dir = file_path.parent().ok_or_else(|| {
+        NodaError::Vault("Invalid file path: no parent directory".to_string())
+    })?;
+    let new_filename = format!("{}.md", note_id.0.to_string());
+    let new_path = parent_dir.join(&new_filename);
+
+    let new_rel_path = new_path.strip_prefix(vault_root)
+        .unwrap_or(&new_path)
+        .to_string_lossy()
+        .to_string();
+
     // 4. Build Note object
     let note = Note {
         id: note_id,
@@ -109,14 +126,8 @@ pub async fn parse_or_create_note_from_file(file_path: &Path) -> Result<Note, No
         status: frontmatter_opt.as_ref().map(|fm| fm.status.clone()).unwrap_or_else(|| "active".to_string()),
         created_at,
         updated_at,
+        file_path: new_rel_path,
     };
-
-    // 5. Serialize and write the converted note
-    let parent_dir = file_path.parent().ok_or_else(|| {
-        NodaError::Vault("Invalid file path: no parent directory".to_string())
-    })?;
-    let new_filename = format!("{}.md", note.id.0.to_string());
-    let new_path = parent_dir.join(&new_filename);
 
     let frontmatter: Frontmatter = (&note).into();
     let yaml_string = serde_yaml::to_string(&frontmatter)
@@ -172,7 +183,7 @@ pub async fn scan_vault<P: AsRef<Path>>(vault_path: P) -> Result<Vec<Note>, Noda
 
     // Process each markdown file
     for file_path in md_files {
-        match parse_or_create_note_from_file(&file_path).await {
+        match parse_or_create_note_from_file(&file_path, path).await {
             Ok(note) => {
                 notes.push(note);
             }

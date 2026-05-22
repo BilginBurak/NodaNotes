@@ -34,6 +34,7 @@ pub struct Note {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub file_path: String,
 }
 
 impl Default for Note {
@@ -46,8 +47,9 @@ impl Note {
     /// Creates a new Note with current UTC timestamps and empty title/body
     pub fn new() -> Self {
         let now = Utc::now();
+        let id = NoteId::new();
         Self {
-            id: NoteId::new(),
+            id,
             parent_id: None,
             title: String::new(),
             body: String::new(),
@@ -57,6 +59,7 @@ impl Note {
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
+            file_path: format!("{}.md", id.0.to_string()),
         }
     }
 
@@ -111,6 +114,7 @@ pub struct NoteMeta {
     pub tags: Vec<String>,
     pub status: String,
     pub updated_at: DateTime<Utc>,
+    pub file_path: String,
 }
 
 impl From<&Note> for NoteMeta {
@@ -124,6 +128,7 @@ impl From<&Note> for NoteMeta {
             tags: note.tags.clone(),
             status: note.status.clone(),
             updated_at: note.updated_at,
+            file_path: note.file_path.clone(),
         }
     }
 }

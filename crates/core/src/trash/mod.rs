@@ -52,6 +52,7 @@ pub async fn soft_delete<P: AsRef<Path>, P2: AsRef<Path>>(
         status: frontmatter.status,
         created_at: frontmatter.created_at,
         updated_at: frontmatter.updated_at,
+        file_path: relative_note_path.to_string_lossy().to_string(),
     };
     
     // 1. Take a snapshot

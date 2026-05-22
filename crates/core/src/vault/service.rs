@@ -30,14 +30,44 @@ impl VaultService {
         &self.base_path
     }
 
-    /// Resolves the filesystem path for a specific note by ID.
-    fn note_path(&self, id: NoteId) -> PathBuf {
-        self.base_path.join(format!("{}.md", id.0.to_string()))
+    /// Resolves the filesystem path for a specific note by ID by walking the directory recursively.
+    pub fn find_note_path(&self, id: NoteId) -> PathBuf {
+        let expected_filename = format!("{}.md", id.0.to_string());
+        
+        // Optimistically check if it's directly under the base path
+        let direct_path = self.base_path.join(&expected_filename);
+        if direct_path.exists() {
+            return direct_path;
+        }
+
+        // Walk directory recursively to find the note file
+        for entry in walkdir::WalkDir::new(&self.base_path)
+            .into_iter()
+            .filter_entry(|e| {
+                // Avoid hidden files and folders, particularly ".noda"
+                if e.depth() == 0 {
+                    return true;
+                }
+                e.file_name()
+                    .to_str()
+                    .map(|s| !s.starts_with('.'))
+                    .unwrap_or(false)
+            })
+        {
+            if let Ok(entry) = entry {
+                if entry.file_type().is_file() && entry.file_name() == expected_filename.as_str() {
+                    return entry.path().to_path_buf();
+                }
+            }
+        }
+
+        // Default fallback to root
+        direct_path
     }
 
     /// Reads and parses a markdown note and its frontmatter.
     pub async fn read_note(&self, id: NoteId) -> Result<Note, NodaError> {
-        let path = self.note_path(id);
+        let path = self.find_note_path(id);
         if !path.exists() {
             return Err(NodaError::Vault(format!("Note not found: {}", id.0)));
         }
@@ -54,6 +84,11 @@ impl VaultService {
             .deserialize()
             .map_err(|e| NodaError::Vault(format!("Invalid frontmatter: {}", e)))?;
 
+        let rel_path = path.strip_prefix(&self.base_path)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .to_string();
+
         Ok(Note {
             id: frontmatter.id,
             parent_id: frontmatter.parent_id,
@@ -65,12 +100,25 @@ impl VaultService {
             status: frontmatter.status,
             created_at: frontmatter.created_at,
             updated_at: frontmatter.updated_at,
+            file_path: rel_path,
         })
     }
 
     /// Writes a note to disk, serializing properties to YAML frontmatter.
     pub async fn write_note(&self, note: &Note) -> Result<(), NodaError> {
-        let path = self.note_path(note.id);
+        let path = if !note.file_path.is_empty() {
+            self.base_path.join(&note.file_path)
+        } else {
+            self.find_note_path(note.id)
+        };
+
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent).await.map_err(NodaError::Io)?;
+            }
+        }
+
         let frontmatter: Frontmatter = note.into();
         
         let yaml_string = serde_yaml::to_string(&frontmatter)
@@ -84,7 +132,7 @@ impl VaultService {
 
     /// Deletes a note from disk.
     pub async fn delete_note(&self, id: NoteId) -> Result<(), NodaError> {
-        let path = self.note_path(id);
+        let path = self.find_note_path(id);
         if path.exists() {
             fs::remove_file(&path).await.map_err(NodaError::Io)?;
         }
@@ -93,7 +141,7 @@ impl VaultService {
 
     /// Partially updates only the frontmatter of an existing note without modifying the body
     pub async fn update_frontmatter(&self, id: NoteId, frontmatter: &Frontmatter) -> Result<(), NodaError> {
-        let path = self.note_path(id);
+        let path = self.find_note_path(id);
         if !path.exists() {
             return Err(NodaError::Vault(format!("Note not found: {}", id.0)));
         }
@@ -123,7 +171,69 @@ impl VaultService {
             return Err(NodaError::DuplicateFilename(format!("Destination already exists: {:?}", new)));
         }
 
+        // Ensure target parent directory exists
+        if let Some(parent) = new.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent).await.map_err(NodaError::Io)?;
+            }
+        }
+
         fs::rename(old, new).await.map_err(NodaError::Io)?;
+        Ok(())
+    }
+
+    /// Walks the vault directory, filters out hidden paths / `.noda`,
+    /// and returns all existing subfolders as relative paths.
+    pub fn list_folders(&self) -> Result<Vec<String>, NodaError> {
+        let mut folders = Vec::new();
+        
+        for entry in walkdir::WalkDir::new(&self.base_path)
+            .into_iter()
+            .filter_entry(|e| {
+                if e.depth() == 0 {
+                    return true;
+                }
+                e.file_name()
+                    .to_str()
+                    .map(|s| !s.starts_with('.'))
+                    .unwrap_or(false)
+            })
+        {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(err) => {
+                    tracing::warn!("Error reading directory entry in list_folders: {}", err);
+                    continue;
+                }
+            };
+
+            if entry.file_type().is_dir() && entry.depth() > 0 {
+                if let Ok(rel_path) = entry.path().strip_prefix(&self.base_path) {
+                    let rel_str = rel_path.to_string_lossy().to_string();
+                    if !rel_str.is_empty() {
+                        folders.push(rel_str);
+                    }
+                }
+            }
+        }
+
+        // Sort folders alphabetically for consistency
+        folders.sort();
+        Ok(folders)
+    }
+
+    /// Physically creates a subfolder structure under the vault root directory.
+    pub async fn create_folder(&self, rel_path: &str) -> std::io::Result<()> {
+        let path = self.base_path.join(rel_path);
+        fs::create_dir_all(&path).await
+    }
+
+    /// Physically deletes a subfolder under the vault root directory.
+    pub async fn delete_folder(&self, rel_path: &str) -> std::io::Result<()> {
+        let path = self.base_path.join(rel_path);
+        if path.exists() {
+            fs::remove_dir_all(&path).await?;
+        }
         Ok(())
     }
 }
@@ -159,7 +269,7 @@ mod tests {
         let note = Note::new();
         service.write_note(&note).await.expect("Failed to write note");
 
-        let path = service.note_path(note.id);
+        let path = service.find_note_path(note.id);
         assert!(path.exists());
 
         service.delete_note(note.id).await.expect("Failed to delete note");

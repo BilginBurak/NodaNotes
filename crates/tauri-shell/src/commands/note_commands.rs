@@ -43,8 +43,9 @@ pub async fn create_note(
     };
 
     let now = Utc::now();
+    let id = NoteId::new();
     let note = Note {
-        id: NoteId::new(),
+        id,
         parent_id: parsed_parent,
         title,
         body,
@@ -54,13 +55,14 @@ pub async fn create_note(
         status: "active".to_string(),
         created_at: now,
         updated_at: now,
+        file_path: format!("{}.md", id.0.to_string()),
     };
 
     // 1. Write to local disk
     service.write_note(&note).await.map_err(AppError::from)?;
 
     // 2. Write to SQLite database
-    let relative_path = format!("{}.md", note.id.0.to_string());
+    let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
         queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
@@ -168,6 +170,7 @@ pub async fn update_note(
         status: existing_note_full.status.clone(),
         created_at: existing_note_full.created_at,
         updated_at: now,
+        file_path: existing_note_full.file_path.clone(),
     };
 
     // Check if content actually changed
@@ -182,7 +185,7 @@ pub async fn update_note(
     service.write_note(&note).await.map_err(AppError::from)?;
 
     // 2. Update in DB
-    let relative_path = format!("{}.md", note.id.0.to_string());
+    let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
         queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
@@ -236,7 +239,7 @@ pub async fn rename_note(
     service.write_note(&note).await.map_err(AppError::from)?;
 
     // 2. Update DB
-    let relative_path = format!("{}.md", note.id.0.to_string());
+    let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
         queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")

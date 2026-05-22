@@ -86,7 +86,7 @@ pub async fn restore_snapshot(
         })?;
 
     // 2. Core restore (reads file content and frontmatter)
-    let restored_note = core_restore(&vault_path, &target_snap).await
+    let mut restored_note = core_restore(&vault_path, &target_snap).await
         .map_err(AppError::from)?;
 
     // 3. Take a snapshot of the current state before replacing it (auto-save history)
@@ -94,8 +94,18 @@ pub async fn restore_snapshot(
         let conn = db.conn.lock();
         queries::get_note(&conn, parsed_note_id).map_err(AppError::from)?
     };
-    if let Some(current_note) = current_note {
-        let _ = core_snapshot(&vault_path, &current_note).await;
+    
+    // Preserve the current relative file path
+    let relative_path = match &current_note {
+        Some(ref n) => {
+            restored_note.file_path = n.file_path.clone();
+            n.file_path.clone()
+        }
+        None => format!("{}.md", restored_note.id.0.to_string()),
+    };
+
+    if let Some(ref current_note) = current_note {
+        let _ = core_snapshot(&vault_path, current_note).await;
     }
 
     // 4. Overwrite note on disk
@@ -103,7 +113,6 @@ pub async fn restore_snapshot(
         .map_err(AppError::from)?;
 
     // 5. Update SQLite database
-    let relative_path = format!("{}.md", restored_note.id.0.to_string());
     {
         let conn = db.conn.lock();
         queries::upsert_note(&conn, &restored_note, &relative_path, "dummy_hash")

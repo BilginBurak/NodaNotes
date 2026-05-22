@@ -7,6 +7,7 @@ export const notesList      = writable<NoteListItemDto[]>([]);
 export const activeNote     = writable<NoteDto | null>(null);
 export const loadingNote    = writable<boolean>(false);
 export const activeNoteDirty = writable<boolean>(false);
+export const selectedFolder  = writable<string | null>(null);
 export const notesError     = writable<string | null>(null);
 /** Son başarılı kayıt zamanı — status bar için */
 export const lastSavedAt    = writable<Date | null>(null);
@@ -17,6 +18,7 @@ export async function loadNotes() {
     const list = await ipc.listNotes();
     list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     notesList.set(list);
+    await loadFolders();
   } catch (e: any) {
     notesError.set(e.message || 'Failed to load notes');
   }
@@ -78,15 +80,18 @@ export async function saveActiveNote() {
   }
 }
 
-export async function createNewNote() {
+export async function createNewNote(targetDir: string | null = null) {
   notesError.set(null);
   try {
-    // Tauri backend artık title ve diğer alanları bekliyor
     const newNote = await ipc.createNote('Untitled', '', null, null, false, []);
+    if (targetDir) {
+      await ipc.moveNote(newNote.id, targetDir);
+    }
     await loadNotes();
-    activeNote.set(newNote);
+    const noteWithCorrectPath = await ipc.getNote(newNote.id);
+    activeNote.set(noteWithCorrectPath);
     activeNoteDirty.set(false);
-    return newNote;
+    return noteWithCorrectPath;
   } catch (e: any) {
     notesError.set(e.message || 'Failed to create note');
     throw e;
@@ -172,4 +177,136 @@ export function updateActiveNoteTags(tags: string[]) {
     return { ...note, tags };
   });
   activeNoteDirty.set(true);
+}
+
+// ── Folder Stores & Functions ───────────────────────────────
+export const draggedItem = writable<{ type: 'note' | 'folder'; id: string; relPath: string } | null>(null);
+export const renamingFolder = writable<string | null>(null);
+export const renamingNote = writable<string | null>(null);
+export const foldersList = writable<string[]>([]);
+
+export async function loadFolders() {
+  try {
+    const folders = await ipc.listFolders();
+    // Sort directories alphabetically
+    folders.sort((a, b) => a.localeCompare(b));
+    foldersList.set(folders);
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to load folders');
+  }
+}
+
+export async function createFolder(relPath: string) {
+  notesError.set(null);
+  try {
+    await ipc.createFolder(relPath);
+    await loadFolders();
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to create folder');
+    throw e;
+  }
+}
+
+export async function createFolderAndStartRename(parentPath: string | null = null) {
+  notesError.set(null);
+  try {
+    const list = get(foldersList);
+    const normalizedParent = parentPath ? parentPath.trim().replace(/\/+$/, '') : '';
+    const parentPrefix = normalizedParent ? `${normalizedParent}/` : '';
+    
+    let baseName = 'New Folder';
+    let candidate = parentPrefix + baseName;
+    
+    if (list.includes(candidate)) {
+      let counter = 2;
+      while (list.includes(`${parentPrefix}${baseName} ${counter}`)) {
+        counter++;
+      }
+      candidate = `${parentPrefix}${baseName} ${counter}`;
+    }
+    
+    await ipc.createFolder(candidate);
+    await loadFolders();
+    
+    // Set the renaming folder so the tree row instantly transitions into renaming state
+    renamingFolder.set(candidate);
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to create folder');
+    throw e;
+  }
+}
+
+export async function renameFolder(srcDir: string, newName: string) {
+  notesError.set(null);
+  try {
+    await ipc.renameFolder(srcDir, newName);
+    await loadFolders();
+    await loadNotes();
+
+    // If active note was in renamed folder, fetch updated path
+    const active = get(activeNote);
+    if (active && (active.file_path.startsWith(srcDir + '/') || active.file_path === srcDir)) {
+      const updated = await ipc.getNote(active.id);
+      activeNote.set(updated);
+    }
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to rename folder');
+    throw e;
+  }
+}
+
+export async function deleteFolder(relPath: string) {
+  notesError.set(null);
+  try {
+    await ipc.deleteFolder(relPath);
+    await loadFolders();
+    await loadNotes();
+    
+    // If active note was in deleted folder, close active note
+    const active = get(activeNote);
+    if (active && (active.file_path.startsWith(relPath + '/') || active.file_path === relPath)) {
+      activeNote.set(null);
+      activeNoteDirty.set(false);
+    }
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to delete folder');
+    throw e;
+  }
+}
+
+export async function moveNote(id: string, targetDir: string) {
+  notesError.set(null);
+  try {
+    await ipc.moveNote(id, targetDir);
+    await loadNotes();
+    
+    // If active note is the moved note, fetch updated path
+    const active = get(activeNote);
+    if (active && active.id === id) {
+      const updated = await ipc.getNote(id);
+      activeNote.set(updated);
+    }
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to move note');
+    throw e;
+  }
+}
+
+export async function moveFolder(srcDir: string, targetDir: string) {
+  notesError.set(null);
+  try {
+    await ipc.moveFolder(srcDir, targetDir);
+    await loadFolders();
+    await loadNotes();
+    
+    // If active note was inside the moved folder hierarchy, fetch updated path
+    const active = get(activeNote);
+    if (active && (active.file_path.startsWith(srcDir + '/') || active.file_path === srcDir)) {
+      const updated = await ipc.getNote(active.id);
+      activeNote.set(updated);
+    }
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to move folder');
+    throw e;
+  }
 }

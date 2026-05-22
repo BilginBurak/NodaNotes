@@ -9,6 +9,8 @@
   import Toolbar from '../lib/components/toolbar/Toolbar.svelte';
   import SyncReportModal from '../lib/components/sync/SyncReportModal.svelte';
   import SettingsModal from '../lib/components/settings/SettingsModal.svelte';
+  import ContextMenu from '../lib/components/common/ContextMenu.svelte';
+  import PromptModal from '../lib/components/common/PromptModal.svelte';
 
   $: info = $vaultInfo;
   $: error = $vaultError;
@@ -175,6 +177,9 @@
     {#if showSettingsModal}
       <SettingsModal isOpen={showSettingsModal} bind:activeTab={settingsTab} on:close={() => showSettingsModal = false} />
     {/if}
+
+    <ContextMenu />
+    <PromptModal />
   </div>
 {/if}
 

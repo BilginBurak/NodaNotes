@@ -1,14 +1,26 @@
 <script lang="ts">
-  import { notesList, activeNote } from '../../stores/notes';
+  import { notesList, activeNote, selectedFolder } from '../../stores/notes';
   import NoteListItem from './NoteListItem.svelte';
   import VirtualList from '../common/VirtualList.svelte';
+  import { openContextMenu } from '../../stores/contextMenu';
 
   let localFilter = '';
 
   $: notes = $notesList;
   $: activeId = $activeNote ? $activeNote.id : null;
+  $: currentFolder = $selectedFolder;
 
   $: filteredNotes = notes.filter((n) => {
+    // Apply selectedFolder filtering if active
+    if (currentFolder !== null) {
+      // Check if note resides inside selectedFolder (exact match or subdirectory prefix)
+      const lastSlash = n.file_path.lastIndexOf('/');
+      const noteDir = lastSlash !== -1 ? n.file_path.substring(0, lastSlash) : '';
+      if (noteDir !== currentFolder && !noteDir.startsWith(currentFolder + '/')) {
+        return false;
+      }
+    }
+
     if (!localFilter.trim()) return true;
     const term = localFilter.toLowerCase();
     const titleMatch = (n.title || '').toLowerCase().includes(term);
@@ -19,14 +31,23 @@
   function clearFilter() {
     localFilter = '';
   }
+
+  function handlePanelContextMenu(e: MouseEvent) {
+    // Open the folder context menu if a folder is selected, otherwise root
+    if (currentFolder !== null) {
+      openContextMenu(e, 'folder', currentFolder);
+    } else {
+      openContextMenu(e, 'root', '');
+    }
+  }
 </script>
 
-<div class="note-list-panel">
+<div class="note-list-panel" oncontextmenu={handlePanelContextMenu}>
   <!-- Header: başlık + sayaç -->
   <div class="list-header">
     <div class="title-row">
-      <h2 class="panel-title">Notes</h2>
-      <span class="count-badge" aria-label="{notes.length} notes">{notes.length}</span>
+      <h2 class="panel-title">{currentFolder ? currentFolder.split('/').pop() : 'All Notes'}</h2>
+      <span class="count-badge" aria-label="{filteredNotes.length} notes">{filteredNotes.length}</span>
     </div>
 
     <!-- Filtre alanı -->

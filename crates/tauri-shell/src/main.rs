@@ -51,6 +51,12 @@ fn main() {
             commands::attachment_commands::delete_attachment,
             commands::settings_commands::get_settings,
             commands::settings_commands::save_settings,
+            commands::folder_commands::list_folders,
+            commands::folder_commands::create_folder,
+            commands::folder_commands::delete_folder,
+            commands::folder_commands::move_note,
+            commands::folder_commands::move_folder,
+            commands::folder_commands::rename_folder,
         ])
         .setup(|app| {
             // Configure main window

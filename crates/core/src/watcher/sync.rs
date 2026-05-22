@@ -25,9 +25,9 @@ pub async fn sync_batch_with_db<P: AsRef<Path>>(
 
         match state {
             BatchState::Created | BatchState::Modified => {
-                match crate::vault::scan::parse_or_create_note_from_file(&path).await {
+                match crate::vault::scan::parse_or_create_note_from_file(&path, root).await {
                     Ok(note) => {
-                        let new_relative_path = format!("{}.md", note.id.0.to_string());
+                        let new_relative_path = note.file_path.clone();
                         let file_hash = "dummy_hash";
                         let db_conn = conn.lock();
 

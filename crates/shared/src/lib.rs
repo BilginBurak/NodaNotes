@@ -24,6 +24,7 @@ pub mod dtos {
         pub tags: Vec<String>,
         pub created_at: String,
         pub updated_at: String,
+        pub file_path: String,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +36,7 @@ pub mod dtos {
         pub pinned: bool,
         pub tags: Vec<String>,
         pub updated_at: String,
+        pub file_path: String,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

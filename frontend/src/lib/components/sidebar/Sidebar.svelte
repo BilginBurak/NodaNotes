@@ -2,13 +2,125 @@
   import { onMount } from 'svelte';
   import { vaultInfo } from '../../stores/vault';
   import { trashList, loadTrash, recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
+  import { 
+    notesList, 
+    foldersList, 
+    selectedFolder, 
+    activeNote,
+    moveNote, 
+    moveFolder,
+    loadNotes,
+    draggedItem,
+    createFolderAndStartRename
+  } from '../../stores/notes';
+  import FolderTreeItem from './FolderTreeItem.svelte';
+  import type { TreeNode, NoteListItemDto } from '../../types';
+  import * as ipc from '../../services/ipc';
+  import { openContextMenu } from '../../stores/contextMenu';
+  import { get } from 'svelte/store';
 
-  export let onOpenSettings: (tab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault') => void;
+  let { onOpenSettings } = $props<{
+    onOpenSettings: (tab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault') => void;
+  }>();
 
-  $: info = $vaultInfo;
-  $: trash = $trashList;
+  const info = $derived($vaultInfo);
+  const trash = $derived($trashList);
+  const folders = $derived($foldersList);
+  const notes = $derived($notesList);
+  const activeFld = $derived($selectedFolder);
 
-  let activeTab: 'navigation' | 'trash' = 'navigation';
+  let activeTab = $state<'navigation' | 'trash'>('navigation');
+  let expandedFolders = $state<Record<string, boolean>>({});
+
+  // Reactive Tree Generation
+  const tree = $derived(buildTree(folders, notes));
+
+  function buildTree(foldersList: string[], notesList: NoteListItemDto[]): TreeNode {
+    const root: TreeNode = {
+      name: 'Vault Root',
+      type: 'folder',
+      relPath: '',
+      children: []
+    };
+
+    // 1. Add all folders
+    for (const path of foldersList) {
+      if (!path.trim()) continue;
+      const parts = path.split('/');
+      let current = root;
+      let accumulatedPath = '';
+      
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        accumulatedPath = accumulatedPath ? `${accumulatedPath}/${part}` : part;
+        
+        let child = current.children.find(c => c.type === 'folder' && c.name === part);
+        if (!child) {
+          child = {
+            name: part,
+            type: 'folder',
+            relPath: accumulatedPath,
+            children: []
+          };
+          current.children.push(child);
+        }
+        current = child;
+      }
+    }
+
+    // 2. Add all active notes to their corresponding folders
+    for (const note of notesList) {
+      const filePath = note.file_path;
+      const lastSlash = filePath.lastIndexOf('/');
+      const dirPath = lastSlash !== -1 ? filePath.substring(0, lastSlash) : '';
+      
+      let current = root;
+      if (dirPath) {
+        const parts = dirPath.split('/');
+        let accumulatedPath = '';
+        for (const part of parts) {
+          accumulatedPath = accumulatedPath ? `${accumulatedPath}/${part}` : part;
+          let child = current.children.find(c => c.type === 'folder' && c.name === part);
+          if (!child) {
+            child = {
+              name: part,
+              type: 'folder',
+              relPath: accumulatedPath,
+              children: []
+            };
+            current.children.push(child);
+          }
+          current = child;
+        }
+      }
+      
+      current.children.push({
+        name: note.title || 'Untitled',
+        type: 'note',
+        relPath: filePath,
+        id: note.id,
+        children: []
+      });
+    }
+
+    function sortTree(node: TreeNode) {
+      node.children.sort((a, b) => {
+        if (a.type !== b.type) {
+          return a.type === 'folder' ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+      for (const child of node.children) {
+        sortTree(child);
+      }
+    }
+    
+    sortTree(root);
+    return root;
+  }
+
+  // Drag & Drop Root State
+  let rootDragOver = $state(false);
 
   function closeVault() {
     vaultInfo.set(null);
@@ -32,17 +144,50 @@
     }
   }
 
+  // ── Drag & Drop Root ──────────────────────────────────────
+  function handleRootDragOver(e: DragEvent) {
+    e.preventDefault();
+    rootDragOver = true;
+  }
+
+  function handleRootDragLeave() {
+    rootDragOver = false;
+  }
+
+  async function handleRootDrop(e: DragEvent) {
+    e.preventDefault();
+    rootDragOver = false;
+    
+    const item = get(draggedItem);
+    if (!item) return;
+
+    try {
+      if (item.type === 'note') {
+        await moveNote(item.id, '');
+      } else if (item.type === 'folder') {
+        const folderName = item.relPath.split('/').pop() || '';
+        await moveFolder(item.relPath, folderName);
+      }
+      draggedItem.set(null);
+    } catch (err) {
+      console.error('Drop to root failed:', err);
+    }
+  }
+
+  // ── Context Menu Helpers ─────────────────────────────────
+  function handleContextMenu(e: MouseEvent, type: 'folder' | 'note' | 'root', relPath: string, noteId = '') {
+    openContextMenu(e, type, relPath, noteId);
+  }
+
   onMount(() => {
     loadTrash();
   });
 </script>
 
-
-<aside class="sidebar">
-  <!-- Başlık + Tab switcher -->
+<aside class="sidebar" style="position: relative; z-index: 100; overflow: visible;" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>
+  <!-- Header + Tab switcher -->
   <div class="sidebar-header" data-tauri-drag-region>
     <div class="app-brand" data-tauri-drag-region>
-      <!-- Noda logosu — basit N harfi, Apple stili -->
       <div class="brand-icon" aria-hidden="true">
         <svg viewBox="0 0 20 20" fill="none">
           <rect width="20" height="20" rx="5" fill="#0a84ff"/>
@@ -52,7 +197,7 @@
       <span class="brand-name">Noda</span>
     </div>
 
-    <!-- Tab switcher — pill segmented control -->
+    <!-- Tab switcher -->
     <div class="tab-switcher" role="tablist" aria-label="Sidebar sections">
       <button
         class="tab-btn"
@@ -62,7 +207,6 @@
         aria-selected={activeTab === 'navigation'}
         title="Notes"
       >
-        <!-- Notes icon -->
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="2" y="2" width="12" height="12" rx="2"/>
           <line x1="5" y1="6" x2="11" y2="6"/>
@@ -77,7 +221,6 @@
         aria-selected={activeTab === 'trash'}
         title="Trash"
       >
-        <!-- Trash icon -->
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polyline points="2,4 14,4"/>
           <path d="M5 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1M6 7v5M10 7v5"/>
@@ -90,27 +233,81 @@
     </div>
   </div>
 
-  <!-- İçerik alanı -->
+  <!-- Content Area -->
   <div class="sidebar-body scrollbar-thin">
     {#if activeTab === 'navigation'}
-      <!-- Workspace bölümü -->
-      <div class="nav-section">
-        <span class="section-label">Workspace</span>
+      <!-- Workspace Section -->
+      <div 
+        class="nav-section"
+        class:drag-over={rootDragOver}
+        ondragover={handleRootDragOver}
+        ondragleave={handleRootDragLeave}
+        ondrop={handleRootDrop}
+      >
+        <span 
+          class="section-label"
+          oncontextmenu={(e) => handleContextMenu(e, 'root', '')}
+        >
+          Workspace
+        </span>
         <div class="nav-items">
-          <div class="nav-item active-item">
+          <button 
+            class="nav-item nav-btn" 
+            class:active-item={activeFld === null}
+            onclick={() => selectedFolder.set(null)}
+          >
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/>
               <line x1="5" y1="7" x2="11" y2="7"/>
               <line x1="5" y1="10" x2="9" y2="10"/>
             </svg>
             <span>All Notes</span>
-          </div>
+          </button>
         </div>
       </div>
 
-      <!-- Sync bölümü -->
+      <!-- Folders Section -->
+      <div 
+        class="nav-section folders-section"
+        class:drag-over={rootDragOver}
+        ondragover={handleRootDragOver}
+        ondragleave={handleRootDragLeave}
+        ondrop={handleRootDrop}
+      >
+        <div class="section-header-row">
+          <span class="section-label" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>Folders</span>
+          <button 
+            class="add-folder-btn" 
+            onclick={() => createFolderAndStartRename(activeFld)} 
+            title="Create subfolder in active folder"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="8" y1="3" x2="8" y2="13" />
+              <line x1="3" y1="8" x2="13" y2="8" />
+            </svg>
+          </button>
+        </div>
+        
+        <div class="folder-tree scrollbar-thin" role="tree">
+          {#if tree.children.length === 0}
+            <div class="empty-tree-state" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>
+              Right-click or click + to create a folder.
+            </div>
+          {:else}
+            {#each tree.children as child (child.type + '-' + child.relPath)}
+              <FolderTreeItem 
+                node={child} 
+                depth={0} 
+                {expandedFolders} 
+              />
+            {/each}
+          {/if}
+        </div>
+      </div>
+
+      <!-- Preferences & Sync -->
       <div class="nav-section">
-        <span class="section-label">Cloud</span>
+        <span class="section-label">Preferences</span>
         <div class="nav-items">
           <button class="nav-item nav-btn" onclick={() => onOpenSettings('sync')}>
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -119,13 +316,6 @@
             </svg>
             <span>WebDAV Sync</span>
           </button>
-        </div>
-      </div>
-
-      <!-- Preferences bölümü -->
-      <div class="nav-section">
-        <span class="section-label">Preferences</span>
-        <div class="nav-items">
           <button class="nav-item nav-btn" onclick={() => onOpenSettings('appearance')}>
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="8" cy="8" r="3"/>
@@ -137,7 +327,7 @@
       </div>
 
     {:else}
-      <!-- Çöp Kutusu -->
+      <!-- Trash Section -->
       <div class="trash-section">
         <span class="section-label">Trash</span>
 
@@ -189,7 +379,7 @@
     {/if}
   </div>
 
-  <!-- Alt: Vault bilgisi ve kapat -->
+  <!-- Footer -->
   <div class="sidebar-footer">
     {#if info}
       <div class="vault-row">
@@ -206,10 +396,11 @@
       </div>
     {/if}
   </div>
+
 </aside>
 
 <style>
-  /* ── Sidebar kabı ── */
+  /* ── Sidebar Container ── */
   .sidebar {
     width: 220px;
     height: 100%;
@@ -220,10 +411,12 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    overflow: hidden;
+    position: relative;
+    z-index: 100;
+    overflow: visible;
   }
 
-  /* ── Başlık ── */
+  /* ── Header ── */
   .sidebar-header {
     height: 48px;
     padding: 0 12px 0 16px;
@@ -238,7 +431,7 @@
     padding-left: 20px;
   }
 
-  /* Marka alanı */
+  /* Brand */
   .app-brand {
     display: flex;
     align-items: center;
@@ -304,7 +497,7 @@
     background-color: var(--bg-selected);
   }
 
-  /* Çöp kutusu badge */
+  /* Trash badge */
   .tab-badge {
     position: absolute;
     top: 0px;
@@ -323,7 +516,7 @@
     line-height: 1;
   }
 
-  /* ── Gövde ── */
+  /* ── Body ── */
   .sidebar-body {
     flex: 1;
     overflow-y: auto;
@@ -333,11 +526,12 @@
     gap: 16px;
   }
 
-  /* Bölüm */
+  /* Navigation Sections */
   .nav-section {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    transition: background-color 0.15s ease;
   }
 
   .section-label {
@@ -349,6 +543,8 @@
     letter-spacing: 0.5px;
     padding: 0 8px;
     margin-bottom: 2px;
+    cursor: default;
+    user-select: none;
   }
 
   .nav-items {
@@ -357,7 +553,7 @@
     gap: 1px;
   }
 
-  /* Nav item — macOS Finder sidebar stili */
+  /* macOS Finder style items */
   .nav-item {
     display: flex;
     align-items: center;
@@ -382,7 +578,6 @@
     background-color: var(--accent-muted);
   }
 
-  /* Button stili nav item */
   .nav-btn {
     background: transparent;
     border: none;
@@ -397,7 +592,70 @@
     background-color: var(--bg-hover);
   }
 
-  /* ── Trash bölümü ── */
+  /* ── Folders Section ── */
+  .folders-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 160px;
+  }
+
+  .section-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-right: 8px;
+  }
+
+  .add-folder-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    padding: 3px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+  }
+
+  .add-folder-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+  }
+
+  .add-folder-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .folder-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 4px;
+    margin-top: 4px;
+  }
+
+  .empty-tree-state {
+    font-size: 11px;
+    color: var(--text-disabled);
+    padding: 12px 8px;
+    text-align: center;
+    line-height: 1.4;
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-md);
+    cursor: default;
+    user-select: none;
+  }
+
+  .nav-section.drag-over {
+    background-color: var(--accent-muted);
+    border-radius: var(--radius-lg);
+  }
+
+  /* ── Trash ── */
   .trash-section {
     display: flex;
     flex-direction: column;
@@ -579,230 +837,77 @@
     background-color: var(--color-red-muted);
   }
 
-  /* ── Modal ── */
-  .modal-backdrop {
+  /* ── Custom Context Menu ── */
+  .custom-context-menu {
     position: fixed;
-    inset: 0;
-    background-color: var(--overlay-bg);
-    backdrop-filter: blur(4px);
-    z-index: 10002;
-  }
-
-  .modal {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 480px;
-    max-width: 90vw;
     background-color: var(--modal-bg);
     border: 1px solid var(--border-normal);
-    border-radius: var(--radius-lg);
-    z-index: 10003;
-    display: flex;
-    flex-direction: column;
-    box-shadow: var(--shadow-xl);
-    animation: zoomIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg), 0 4px 16px rgba(0, 0, 0, 0.15);
+    padding: 4px;
+    z-index: 99999;
+    min-width: 160px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    animation: fadeIn 0.1s ease-out;
   }
 
-  .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 18px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .modal-header h3 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .modal-close {
+  .custom-context-menu button {
+    width: 100%;
     background: transparent;
     border: none;
-    color: var(--text-tertiary);
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    text-align: left;
+    color: var(--text-secondary);
     cursor: pointer;
-    padding: 4px;
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
-    justify-content: center;
-    transition: all 0.12s ease;
-  }
-
-  .modal-close svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  .modal-close:hover {
-    color: var(--text-primary);
-    background-color: var(--bg-hover);
-  }
-
-  .modal-body {
-    padding: 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .modal-desc {
-    font-size: 12px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    margin: 0;
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-
-  .form-row {
-    display: flex;
-    gap: 10px;
-  }
-
-  .form-row .form-group {
-    flex: 1;
-  }
-
-  .form-group label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-  }
-
-  .form-group input,
-  .form-group select {
-    background-color: var(--bg-control);
-    border: 1px solid var(--border-normal);
-    border-radius: var(--radius-md);
-    padding: 7px 10px;
-    color: var(--text-primary);
-    font-size: 13px;
-    font-family: var(--font-sans);
-    outline: none;
-    transition: all 0.12s ease;
-    -webkit-appearance: none;
-  }
-
-  .form-group input:focus,
-  .form-group select:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-muted);
-  }
-
-  /* Uyarı kutuları */
-  .alert {
-    display: flex;
-    align-items: center;
     gap: 8px;
-    padding: 9px 12px;
-    border-radius: var(--radius-md);
-    font-size: 12px;
-    font-weight: 500;
+    font-family: var(--font-sans);
+    transition: all 0.1s ease;
+    box-sizing: border-box;
   }
 
-  .alert svg {
-    width: 14px;
-    height: 14px;
+  .custom-context-menu button svg {
+    width: 13px;
+    height: 13px;
+    color: var(--text-tertiary);
     flex-shrink: 0;
   }
 
-  .alert-success {
-    background-color: var(--color-green-muted);
-    border: 1px solid rgba(48, 209, 88, 0.25);
-    color: var(--color-green);
+  .custom-context-menu button:hover {
+    background-color: var(--accent);
+    color: #ffffff;
   }
 
-  .alert-error {
-    background-color: var(--color-red-muted);
-    border: 1px solid rgba(255, 69, 58, 0.25);
+  .custom-context-menu button:hover svg {
+    color: #ffffff;
+  }
+
+  .custom-context-menu button.danger {
     color: var(--color-red);
   }
 
-  /* Modal footer */
-  .modal-footer {
-    padding: 12px 18px;
-    border-top: 1px solid var(--border-subtle);
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 8px;
-  }
-
-  /* Genel buton stilleri */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    border-radius: var(--radius-md);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: var(--font-sans);
-    transition: all 0.12s ease;
-    border: 1px solid transparent;
-    white-space: nowrap;
-  }
-
-  .btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-
-  .btn-primary {
-    background-color: var(--accent);
+  .custom-context-menu button.danger:hover {
+    background-color: var(--color-red);
     color: #ffffff;
-    border-color: var(--accent);
   }
 
-  .btn-primary:hover:not(:disabled) {
-    background-color: var(--accent-hover);
-    border-color: var(--accent-hover);
+  .custom-context-menu button.danger:hover svg {
+    color: #ffffff;
   }
 
-  .btn-secondary {
-    background-color: var(--bg-control);
-    color: var(--text-secondary);
-    border-color: var(--border-normal);
+  .custom-context-menu hr {
+    border: none;
+    border-top: 1px solid var(--border-subtle);
+    margin: 4px 0;
   }
 
-  .btn-secondary:hover:not(:disabled) {
-    background-color: var(--bg-control-hover);
-    color: var(--text-primary);
-  }
-
-  .btn-ghost {
-    background-color: transparent;
-    color: var(--accent);
-    border-color: var(--accent-border);
-  }
-
-  .btn-ghost:hover:not(:disabled) {
-    background-color: var(--accent-muted);
-  }
-
-  /* Küçük spinner */
-  .spinner-sm {
-    width: 12px;
-    height: 12px;
-    border: 1.5px solid rgba(255, 255, 255, 0.25);
-    border-top-color: currentColor;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-
-  .verify-btn {
-    margin-right: auto;
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
   }
 </style>
