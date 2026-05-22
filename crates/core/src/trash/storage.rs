@@ -10,9 +10,13 @@ use tracing::info;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TrashEntry {
     pub note_id: NoteId,
+    #[serde(default)]
+    pub id: Option<NoteId>,
     pub original_path: String,
     pub deleted_at: DateTime<Utc>,
     pub filename: String,
+    #[serde(default)]
+    pub title: String,
 }
 
 pub async fn move_to_trash<P: AsRef<Path>, P2: AsRef<Path>>(
@@ -68,9 +72,11 @@ pub async fn move_to_trash<P: AsRef<Path>, P2: AsRef<Path>>(
 
     let entry = TrashEntry {
         note_id,
+        id: Some(note_id),
         original_path: original_path_str,
         deleted_at: Utc::now(),
         filename: md_filename,
+        title: frontmatter.title.clone(),
     };
 
     // Write sidecar
@@ -147,7 +153,30 @@ pub async fn list_trash<P: AsRef<Path>>(vault_path: P) -> Result<Vec<TrashEntry>
         let path = file.path();
         if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
             let content = tokio::fs::read_to_string(&path).await.map_err(NodaError::Io)?;
-            if let Ok(entry) = serde_json::from_str::<TrashEntry>(&content) {
+            if let Ok(mut entry) = serde_json::from_str::<TrashEntry>(&content) {
+                if entry.id.is_none() {
+                    entry.id = Some(entry.note_id);
+                }
+                if entry.title.is_empty() {
+                    let md_path = trash_dir.join(&entry.filename);
+                    if md_path.exists() {
+                        if let Ok(md_content) = tokio::fs::read_to_string(&md_path).await {
+                            use gray_matter::Matter;
+                            use gray_matter::engine::YAML;
+                            use crate::models::note::Frontmatter;
+                            let matter = Matter::<YAML>::new();
+                            let parsed = matter.parse(&md_content);
+                            if let Some(fm_any) = parsed.data {
+                                if let Ok(frontmatter) = fm_any.deserialize::<Frontmatter>() {
+                                    entry.title = frontmatter.title;
+                                }
+                            }
+                        }
+                    }
+                    if entry.title.is_empty() {
+                        entry.title = "Untitled".to_string();
+                    }
+                }
                 entries.push(entry);
             }
         }

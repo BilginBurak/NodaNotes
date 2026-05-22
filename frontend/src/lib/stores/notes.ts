@@ -11,6 +11,12 @@ export const selectedFolder  = writable<string | null>(null);
 export const notesError     = writable<string | null>(null);
 /** Son başarılı kayıt zamanı — status bar için */
 export const lastSavedAt    = writable<Date | null>(null);
+/** Özel görünüm modu: normal, trash ya da conflicts */
+export const activeViewMode = writable<'normal' | 'trash' | 'conflicts'>('normal');
+/** Silinen not olarak görüntüleniyor mu */
+export const viewingTrashNote = writable<boolean>(false);
+/** Çakışma notu olarak görüntüleniyor mu (archivedPath bilgisi ile) */
+export const viewingConflictNote = writable<{ noteId: string; archivedPath: string } | null>(null);
 
 export async function loadNotes() {
   notesError.set(null);
@@ -37,6 +43,8 @@ export async function selectNote(id: string) {
     const note = await ipc.getNote(id);
     activeNote.set(note);
     activeNoteDirty.set(false);
+    viewingTrashNote.set(false);
+    viewingConflictNote.set(null);
     
     // Explicitly load snapshots if the panel is open
     if (get(showSnapshots)) {
@@ -44,6 +52,40 @@ export async function selectNote(id: string) {
     }
   } catch (e: any) {
     notesError.set(e.message || 'Failed to load note content');
+    activeNote.set(null);
+  } finally {
+    loadingNote.set(false);
+  }
+}
+
+export async function selectTrashNote(id: string) {
+  loadingNote.set(true);
+  notesError.set(null);
+  try {
+    const note = await ipc.getTrashNote(id);
+    activeNote.set(note);
+    activeNoteDirty.set(false);
+    viewingTrashNote.set(true);
+    viewingConflictNote.set(null);
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to load trash note');
+    activeNote.set(null);
+  } finally {
+    loadingNote.set(false);
+  }
+}
+
+export async function selectConflictNote(noteId: string, archivedPath: string) {
+  loadingNote.set(true);
+  notesError.set(null);
+  try {
+    const note = await ipc.getConflictNote(archivedPath);
+    activeNote.set(note);
+    activeNoteDirty.set(false);
+    viewingTrashNote.set(false);
+    viewingConflictNote.set({ noteId, archivedPath });
+  } catch (e: any) {
+    notesError.set(e.message || 'Failed to load conflict note');
     activeNote.set(null);
   } finally {
     loadingNote.set(false);

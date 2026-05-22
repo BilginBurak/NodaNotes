@@ -103,3 +103,34 @@ export async function stopBackgroundSync() {
 export function dismissSyncReport() {
   showSyncReport.set(false);
 }
+
+/** Çakışma listesini backend'den yükler */
+export async function loadConflicts() {
+  try {
+    const list = await ipc.listConflicts();
+    syncConflicts.set(list);
+  } catch (e: any) {
+    console.error('Failed to load conflicts:', e);
+  }
+}
+
+export async function resolveKeepLocal(archivedPath: string) {
+  try {
+    await ipc.resolveConflictKeepLocal(archivedPath);
+    await loadConflicts();
+  } catch (e: any) {
+    console.error('Failed to resolve conflict (keep local):', e);
+    throw e;
+  }
+}
+
+export async function resolveKeepRemote(noteId: string, archivedPath: string) {
+  try {
+    await ipc.resolveConflictKeepRemote(noteId, archivedPath);
+    await loadConflicts();
+  } catch (e: any) {
+    console.error('Failed to resolve conflict (keep remote):', e);
+    throw e;
+  }
+}
+

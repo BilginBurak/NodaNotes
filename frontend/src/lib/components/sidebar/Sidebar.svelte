@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { slide } from 'svelte/transition';
   import { vaultInfo } from '../../stores/vault';
-  import { trashList, loadTrash, recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
-  import { syncConflicts } from '../../stores/sync';
+  import { trashList, loadTrash } from '../../stores/editor';
+  import { syncConflicts, loadConflicts } from '../../stores/sync';
   import { 
     notesList, 
     foldersList, 
@@ -14,7 +13,8 @@
     loadNotes,
     draggedItem,
     createFolderAndStartRename,
-    renamingFolder
+    renamingFolder,
+    activeViewMode
   } from '../../stores/notes';
   import FolderTreeItem from './FolderTreeItem.svelte';
   import type { TreeNode, NoteListItemDto } from '../../types';
@@ -33,9 +33,24 @@
   const activeFld = $derived($selectedFolder);
   const conflicts = $derived($syncConflicts);
 
-  let trashExpanded = $state(false);
-  let conflictsExpanded = $state(false);
   let expandedFolders = $state<Record<string, boolean>>({});
+
+  function selectTrash() {
+    selectedFolder.set('__trash__');
+    activeViewMode.set('trash');
+    loadTrash();
+  }
+
+  function selectConflicts() {
+    selectedFolder.set('__conflicts__');
+    activeViewMode.set('conflicts');
+    loadConflicts();
+  }
+
+  function selectAllNotes() {
+    selectedFolder.set(null);
+    activeViewMode.set('normal');
+  }
 
   // Reactive Tree Generation
   const tree = $derived(buildTree(folders, notes));
@@ -198,6 +213,7 @@
 
   onMount(() => {
     loadTrash();
+    loadConflicts();
   });
 </script>
 
@@ -222,7 +238,7 @@
         <button 
           class="nav-item nav-btn" 
           class:active-item={activeFld === null}
-          onclick={() => selectedFolder.set(null)}
+          onclick={selectAllNotes}
         >
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M2 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/>
@@ -280,8 +296,8 @@
         <!-- Settings Toggle -->
         <button class="nav-item nav-btn" onclick={() => onOpenSettings('appearance')}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="8" cy="8" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 0 1-.7-.7 2 2 0 0 1-.3-1.54l.1-.38A1.65 1.65 0 0 0 17 8.5h-.08a2 2 0 0 1-1.26-.64 2 2 0 0 1-.54-1.18l-.1-.47a1.65 1.65 0 0 0-1.3-1.2h-.08a2 2 0 0 1-1.18-.54 2 2 0 0 1-.64-1.26l-.08-.08a1.65 1.65 0 0 0-1.82-.33l-.06.06a2 2 0 0 1-.7.7 2 2 0 0 1-1.54.3l-.38-.1a1.65 1.65 0 0 0-2 1.34V5a2 2 0 0 1-.64 1.26 2 2 0 0 1-1.18.54l-.47.1a1.65 1.65 0 0 0-1.2 1.3v.08a2 2 0 0 1-.54 1.18 2 2 0 0 1-1.26.64l-.08.08a1.65 1.65 0 0 0-.33 1.82l.06.06a2 2 0 0 1 .7.7 2 2 0 0 1 .3 1.54l-.1.38A1.65 1.65 0 0 0 3 11.5h.08a2 2 0 0 1 1.26.64 2 2 0 0 1 .54 1.18l.1.47a1.65 1.65 0 0 0 1.3 1.2h.08a2 2 0 0 1 1.18.54 2 2 0 0 1 .64 1.26l.08.08a1.65 1.65 0 0 0 1.82.33l.06-.06a2 2 0 0 1 .7-.7 2 2 0 0 1 1.54-.3l.38.1a1.65 1.65 0 0 0 2-1.34v-.08a2 2 0 0 1 .64-1.26 2 2 0 0 1 1.18-.54l.47-.1a1.65 1.65 0 0 0 1.2-1.3v-.08a2 2 0 0 1 .54-1.18 2 2 0 0 1 1.26-.64l.08-.08z"/>
+            <circle cx="8" cy="8" r="2.5"/>
+            <path d="M8 2v1.5M8 12.5V14M2 8H3.5M12.5 8H14M4.05 4.05l1.06 1.06M10.88 10.88l1.06 1.06M4.05 11.95l1.06-1.06M10.88 5.12l1.06-1.06"/>
           </svg>
           <span>Settings</span>
         </button>
@@ -295,16 +311,13 @@
           <span>WebDAV Sync</span>
         </button>
 
-        <!-- Deleted Notes Accordion -->
+        <!-- Deleted Notes — navigates to __trash__ folder mode -->
         <button 
-          class="nav-item nav-btn accordion-trigger" 
-          class:expanded={trashExpanded}
-          onclick={() => { trashExpanded = !trashExpanded; if (trashExpanded) loadTrash(); }}
-          aria-expanded={trashExpanded}
+          class="nav-item nav-btn"
+          class:active-item={activeFld === '__trash__'}
+          onclick={selectTrash}
+          aria-label="View deleted notes"
         >
-          <svg class="chevron-icon" class:rotated={trashExpanded} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="6 12 10 8 6 4"/>
-          </svg>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="2,4 14,4"/>
             <path d="M5 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1M6 7v5M10 7v5"/>
@@ -316,88 +329,23 @@
           {/if}
         </button>
 
-        {#if trashExpanded}
-          <div class="accordion-content" transition:slide={{ duration: 180 }}>
-            {#if trash.length === 0}
-              <div class="accordion-empty">Trash is empty</div>
-            {:else}
-              <div class="accordion-list">
-                {#each trash as note (note.id)}
-                  <div class="accordion-item inline-item">
-                    <div class="item-text" title={note.title || 'Untitled'}>
-                      <span class="item-title">{note.title || 'Untitled'}</span>
-                      <span class="item-subtitle">{note.original_path.split('/').pop()}</span>
-                    </div>
-                    <div class="item-actions">
-                      <button
-                        class="action-mini-btn restore"
-                        onclick={() => handleRestoreTrash(note.id)}
-                        title="Restore"
-                        aria-label="Restore note"
-                      >
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                          <path d="M2 8a6 6 0 1 1 1.2 3.6"/>
-                          <polyline points="2,4 2,8 6,8"/>
-                        </svg>
-                      </button>
-                      <button
-                        class="action-mini-btn delete"
-                        onclick={() => handlePermanentDelete(note.id)}
-                        title="Delete permanently"
-                        aria-label="Permanently delete note"
-                      >
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                          <line x1="4" y1="4" x2="12" y2="12"/>
-                          <line x1="12" y1="4" x2="4" y2="12"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          </div>
-        {/if}
-
-        <!-- Conflicts Accordion -->
+        <!-- Sync Conflicts — navigates to __conflicts__ folder mode -->
         <button 
-          class="nav-item nav-btn accordion-trigger" 
-          class:expanded={conflictsExpanded}
-          onclick={() => conflictsExpanded = !conflictsExpanded}
-          aria-expanded={conflictsExpanded}
+          class="nav-item nav-btn"
+          class:active-item={activeFld === '__conflicts__'}
+          onclick={selectConflicts}
+          aria-label="View sync conflicts"
         >
-          <svg class="chevron-icon" class:rotated={conflictsExpanded} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="6 12 10 8 6 4"/>
-          </svg>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M8 1.5L14 12.5H2L8 1.5z"/>
             <line x1="8" y1="6" x2="8" y2="9"/>
-            <line x1="8" y1="11" x2="8" y2="11" stroke-width="2"/>
+            <circle cx="8" cy="11" r="0.5" fill="currentColor"/>
           </svg>
           <span class="flex-grow">Sync Conflicts</span>
           {#if conflicts.length > 0}
             <span class="badge badge-orange">{conflicts.length}</span>
           {/if}
         </button>
-
-        {#if conflictsExpanded}
-          <div class="accordion-content" transition:slide={{ duration: 180 }}>
-            {#if conflicts.length === 0}
-              <div class="accordion-empty">No sync conflicts</div>
-            {:else}
-              <div class="accordion-list">
-                {#each conflicts as conflict}
-                  <div class="accordion-item inline-item no-hover">
-                    <div class="item-text" title={conflict.filename}>
-                      <span class="item-title color-orange">{conflict.filename}</span>
-                      <span class="item-subtitle">Archived: {conflict.remote_path.split('/').pop()}</span>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          </div>
-        {/if}
 
       </div>
     </div>

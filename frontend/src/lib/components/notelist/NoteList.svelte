@@ -1,26 +1,37 @@
 <script lang="ts">
-  import { notesList, activeNote, selectedFolder, draggedItem, moveNote } from '../../stores/notes';
+  import { notesList, activeNote, selectedFolder, draggedItem, moveNote, activeViewMode, selectTrashNote, selectConflictNote } from '../../stores/notes';
+  import { trashList } from '../../stores/editor';
+  import { syncConflicts } from '../../stores/sync';
   import NoteListItem from './NoteListItem.svelte';
   import VirtualList from '../common/VirtualList.svelte';
   import { openContextMenu } from '../../stores/contextMenu';
+  import type { TrashEntry, ConflictEntry, NoteListItemDto } from '../../types';
 
   let localFilter = $state('');
 
   const notes = $derived($notesList);
   const activeId = $derived($activeNote ? $activeNote.id : null);
   const currentFolder = $derived($selectedFolder);
+  const viewMode = $derived($activeViewMode);
+  const trashItems = $derived($trashList);
+  const conflictItems = $derived($syncConflicts);
 
-  const filteredNotes = $derived(notes.filter((n) => {
-    // Apply selectedFolder filtering if active
-    if (currentFolder !== null) {
-      // Check if note resides inside selectedFolder (exact match or subdirectory prefix)
+  // Panel title based on view mode
+  const panelTitle = $derived(
+    viewMode === 'trash' ? 'Deleted Notes' :
+    viewMode === 'conflicts' ? 'Sync Conflicts' :
+    currentFolder ? currentFolder.split('/').pop() ?? 'Folder' : 'All Notes'
+  );
+
+  // Filtered notes only used in normal mode
+  const filteredNotes = $derived(viewMode !== 'normal' ? [] : notes.filter((n) => {
+    if (currentFolder !== null && currentFolder !== '__trash__' && currentFolder !== '__conflicts__') {
       const lastSlash = n.file_path.lastIndexOf('/');
       const noteDir = lastSlash !== -1 ? n.file_path.substring(0, lastSlash) : '';
       if (noteDir !== currentFolder && !noteDir.startsWith(currentFolder + '/')) {
         return false;
       }
     }
-
     if (!localFilter.trim()) return true;
     const term = localFilter.toLowerCase();
     const titleMatch = (n.title || '').toLowerCase().includes(term);
@@ -28,12 +39,31 @@
     return titleMatch || tagMatch;
   }));
 
+  // Filtered trash items
+  const filteredTrash = $derived(viewMode !== 'trash' ? [] : trashItems.filter((n) => {
+    if (!localFilter.trim()) return true;
+    return (n.title || '').toLowerCase().includes(localFilter.toLowerCase());
+  }));
+
+  // Filtered conflict items
+  const filteredConflicts = $derived(viewMode !== 'conflicts' ? [] : conflictItems.filter((n) => {
+    if (!localFilter.trim()) return true;
+    return (n.title || '').toLowerCase().includes(localFilter.toLowerCase());
+  }));
+
+  // Total count for badge
+  const totalCount = $derived(
+    viewMode === 'trash' ? filteredTrash.length :
+    viewMode === 'conflicts' ? filteredConflicts.length :
+    filteredNotes.length
+  );
+
   function clearFilter() {
     localFilter = '';
   }
 
   function handlePanelContextMenu(e: MouseEvent) {
-    // Open the folder context menu if a folder is selected, otherwise root
+    if (viewMode !== 'normal') return;
     if (currentFolder !== null) {
       openContextMenu(e, 'folder', currentFolder);
     } else {
@@ -44,6 +74,7 @@
   let dragOverActive = $state(false);
 
   function handleDragOver(e: DragEvent) {
+    if (viewMode !== 'normal') return;
     e.preventDefault();
     e.stopPropagation();
     dragOverActive = true;
@@ -55,6 +86,7 @@
   }
 
   async function handleDrop(e: DragEvent) {
+    if (viewMode !== 'normal') return;
     e.preventDefault();
     e.stopPropagation();
     dragOverActive = false;
@@ -85,6 +117,7 @@
   }
 </script>
 
+
 <div 
   class="note-list-panel" 
   class:drag-over={dragOverActive}
@@ -96,8 +129,23 @@
   <!-- Header: başlık + sayaç -->
   <div class="list-header">
     <div class="title-row">
-      <h2 class="panel-title">{currentFolder ? currentFolder.split('/').pop() : 'All Notes'}</h2>
-      <span class="count-badge" aria-label="{filteredNotes.length} notes">{filteredNotes.length}</span>
+      <h2 class="panel-title" class:title-trash={viewMode === 'trash'} class:title-conflict={viewMode === 'conflicts'}>
+        {#if viewMode === 'trash'}
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="panel-title-icon" aria-hidden="true">
+            <polyline points="2,4 14,4"/>
+            <path d="M5 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1M6 7v5M10 7v5"/>
+            <path d="M3 4l1 9a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-9"/>
+          </svg>
+        {:else if viewMode === 'conflicts'}
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="panel-title-icon" aria-hidden="true">
+            <path d="M8 1.5L14 12.5H2L8 1.5z"/>
+            <line x1="8" y1="6" x2="8" y2="9"/>
+            <circle cx="8" cy="11" r="0.5" fill="currentColor"/>
+          </svg>
+        {/if}
+        {panelTitle}
+      </h2>
+      <span class="count-badge" aria-label="{totalCount} notes">{totalCount}</span>
     </div>
 
     <!-- Filtre alanı -->
@@ -127,30 +175,109 @@
 
   <!-- Not listesi -->
   <div class="list-body">
-    {#if filteredNotes.length === 0}
-      <div class="empty-state">
-        {#if localFilter}
+    {#if viewMode === 'trash'}
+      {#if filteredTrash.length === 0}
+        <div class="empty-state">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true">
-            <circle cx="14" cy="14" r="9"/>
-            <line x1="21" y1="21" x2="28" y2="28"/>
+            <polyline points="4,8 28,8"/>
+            <path d="M10 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2M12 14v8M20 14v8"/>
+            <path d="M6 8l2 18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2l2-18"/>
           </svg>
-          <p>No results for "{localFilter}"</p>
-        {:else}
-          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M6 10a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V10z"/>
-            <line x1="11" y1="14" x2="21" y2="14"/>
-            <line x1="11" y1="18" x2="17" y2="18"/>
+          <p>Trash is empty</p>
+        </div>
+      {:else}
+        <ul class="special-list" role="listbox">
+          {#each filteredTrash as entry (entry.id)}
+            <li>
+              <button 
+                class="special-item trash-item" 
+                class:active={$activeNote?.id === entry.id}
+                onclick={() => selectTrashNote(entry.id)}
+                role="option" 
+                aria-selected={$activeNote?.id === entry.id}
+              >
+                <div class="special-item-icon trash-icon" aria-hidden="true">
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                    <polyline points="2,3.5 12,3.5"/>
+                    <path d="M4.5 3.5V3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v.5M5 6v3.5M9 6v3.5"/>
+                    <path d="M3 3.5l.75 7.5a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75L10.5 3.5"/>
+                  </svg>
+                </div>
+                <div class="special-item-content">
+                  <span class="special-item-title">{entry.title || 'Untitled'}</span>
+                  <span class="special-item-meta">{entry.deleted_at ? new Date(entry.deleted_at).toLocaleDateString() : ''}</span>
+                </div>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+    {:else if viewMode === 'conflicts'}
+      {#if filteredConflicts.length === 0}
+        <div class="empty-state">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true">
+            <path d="M16 4L28 24H4L16 4z"/>
+            <line x1="16" y1="12" x2="16" y2="19"/>
+            <circle cx="16" cy="22" r="1"/>
           </svg>
-          <p>No notes yet.<br/>Create one from the toolbar.</p>
-        {/if}
-      </div>
+          <p>No sync conflicts</p>
+        </div>
+      {:else}
+        <ul class="special-list" role="listbox">
+          {#each filteredConflicts as entry (entry.id)}
+            <li>
+              <button 
+                class="special-item conflict-item"
+                class:active={$activeNote?.id === entry.id}
+                onclick={() => selectConflictNote(entry.id, entry.archived_path)}
+                role="option"
+                aria-selected={$activeNote?.id === entry.id}
+              >
+                <div class="special-item-icon conflict-icon" aria-hidden="true">
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                    <path d="M7 1.5L13 11.5H1L7 1.5z"/>
+                    <line x1="7" y1="5" x2="7" y2="8"/>
+                    <circle cx="7" cy="9.5" r="0.4" fill="currentColor"/>
+                  </svg>
+                </div>
+                <div class="special-item-content">
+                  <span class="special-item-title">{entry.title || entry.file_path.split('/').pop()}</span>
+                  <span class="special-item-meta conflict-date">{entry.detected_at ? new Date(entry.detected_at).toLocaleDateString() : ''}</span>
+                </div>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
     {:else}
-      <VirtualList items={filteredNotes} itemHeight={62} let:item>
-        <NoteListItem {item} active={item.id === activeId} />
-      </VirtualList>
+      {#if filteredNotes.length === 0}
+        <div class="empty-state">
+          {#if localFilter}
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true">
+              <circle cx="14" cy="14" r="9"/>
+              <line x1="21" y1="21" x2="28" y2="28"/>
+            </svg>
+            <p>No results for "{localFilter}"</p>
+          {:else}
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 10a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V10z"/>
+              <line x1="11" y1="14" x2="21" y2="14"/>
+              <line x1="11" y1="18" x2="17" y2="18"/>
+            </svg>
+            <p>No notes yet.<br/>Create one from the toolbar.</p>
+          {/if}
+        </div>
+      {:else}
+        <VirtualList items={filteredNotes} itemHeight={62} let:item>
+          <NoteListItem {item} active={item.id === activeId} />
+        </VirtualList>
+      {/if}
     {/if}
   </div>
 </div>
+
 
 <style>
   .note-list-panel {
@@ -304,4 +431,128 @@
     margin: 0;
     line-height: 1.5;
   }
+
+  /* ── Panel Title ── */
+  .panel-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .panel-title-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .title-trash {
+    color: var(--color-red, #ff453a);
+  }
+
+  .title-conflict {
+    color: var(--color-orange, #ff9f0a);
+  }
+
+  /* ── Special Lists (Trash / Conflicts) ── */
+  .special-list {
+    list-style: none;
+    margin: 0;
+    padding: 6px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
+  }
+
+  .special-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-sans);
+    transition: all 0.1s ease;
+  }
+
+  .special-item:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--border-subtle);
+  }
+
+  .special-item.active {
+    background-color: var(--bg-selected);
+    border-color: var(--border-normal);
+  }
+
+  .special-item-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .special-item-icon svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .trash-icon {
+    background-color: var(--color-red-muted, rgba(255, 69, 58, 0.15));
+    color: var(--color-red, #ff453a);
+  }
+
+  .conflict-icon {
+    background-color: var(--color-orange-muted, rgba(255, 159, 10, 0.15));
+    color: var(--color-orange, #ff9f0a);
+  }
+
+  .special-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  .special-item-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.1s ease;
+  }
+
+  .special-item:hover .special-item-title,
+  .special-item.active .special-item-title {
+    color: var(--text-primary);
+  }
+
+  .special-item-meta {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .conflict-date {
+    color: var(--color-orange, #ff9f0a);
+    opacity: 0.8;
+  }
+
+  .list-body {
+    overflow-y: auto;
+  }
 </style>
+

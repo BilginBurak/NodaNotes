@@ -104,6 +104,41 @@ impl VaultService {
         })
     }
 
+    /// Reads and parses a markdown note from an arbitrary absolute path.
+    /// Used to load notes from `.noda/trash` or `.noda/conflicts`.
+    pub async fn read_note_from_absolute_path<P: AsRef<Path>>(abs_path: P, rel_path_override: &str) -> Result<Note, NodaError> {
+        let path = abs_path.as_ref();
+        if !path.exists() {
+            return Err(NodaError::Vault(format!("File not found: {:?}", path)));
+        }
+
+        let content = fs::read_to_string(path).await.map_err(NodaError::Io)?;
+
+        let matter = Matter::<YAML>::new();
+        let parsed = matter.parse(&content);
+
+        let frontmatter: Frontmatter = parsed
+            .data
+            .as_ref()
+            .ok_or_else(|| NodaError::Vault("Missing frontmatter".to_string()))?
+            .deserialize()
+            .map_err(|e| NodaError::Vault(format!("Invalid frontmatter: {}", e)))?;
+
+        Ok(Note {
+            id: frontmatter.id,
+            parent_id: frontmatter.parent_id,
+            title: frontmatter.title,
+            body: parsed.content,
+            color: frontmatter.color,
+            pinned: frontmatter.pinned,
+            tags: frontmatter.tags,
+            status: frontmatter.status,
+            created_at: frontmatter.created_at,
+            updated_at: frontmatter.updated_at,
+            file_path: rel_path_override.to_string(),
+        })
+    }
+
     /// Writes a note to disk, serializing properties to YAML frontmatter.
     pub async fn write_note(&self, note: &Note) -> Result<(), NodaError> {
         let path = if !note.file_path.is_empty() {

@@ -112,8 +112,15 @@ export const compareSnapshot  = (noteId: string, timestamp: string) => call<Snap
 // ── Trash Commands ──────────────────────────────────────────
 export const listTrash        = ()            => call<TrashEntry[]>('list_trash');
 export const trashNote        = (id: string)  => call<void>('trash_note',          { id });
-export const restoreFromTrash = (id: string)  => call<void>('restore_from_trash',  { id });
-export const permanentDelete  = (id: string)  => call<void>('permanent_delete',    { id });
+export const restoreFromTrash = (id: string)  => call<void>('restore_from_trash',  { noteId: id });
+export const permanentDelete  = (id: string)  => call<void>('permanent_delete',    { noteId: id });
+export const getTrashNote     = (id: string)  => call<import('../types').NoteDto>('get_trash_note', { id });
+
+// ── Conflict Commands ────────────────────────────────────────
+export const listConflicts            = ()                                          => call<import('../types').ConflictEntry[]>('list_conflicts');
+export const getConflictNote          = (archivedPath: string)                      => call<import('../types').NoteDto>('get_conflict_note', { archivedPath });
+export const resolveConflictKeepLocal = (archivedPath: string)                      => call<void>('resolve_conflict_keep_local', { archivedPath });
+export const resolveConflictKeepRemote = (noteId: string, archivedPath: string)     => call<void>('resolve_conflict_keep_remote', { noteId, archivedPath });
 
 // ── Attachment Commands ─────────────────────────────────────
 export const addAttachment    = (sourcePath: string) => call<string>('add_attachment',    { sourcePath });
@@ -131,5 +138,6 @@ export const deleteFolder = (relPath: string) => call<void>('delete_folder', { r
 export const moveNote     = (id: string, targetDir: string) => call<void>('move_note', { id, targetDir });
 export const moveFolder   = (srcDir: string, targetDir: string) => call<void>('move_folder', { srcDir, targetDir });
 export const renameFolder = (srcDir: string, newName: string) => call<void>('rename_folder', { srcDir, newName });
+
 
 

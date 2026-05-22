@@ -77,10 +77,14 @@ export interface SyncStatus {
 }
 
 export interface ConflictEntry {
-  filename: string;
-  local_path: string;
-  remote_path: string;
+  id: string;
+  title: string;
+  file_path: string;
+  archived_path: string;
+  detected_at: string;
 }
+
+export type SpecialFolder = '__trash__' | '__conflicts__';
 
 /**
  * SyncReport — Rust backend'deki SyncReport struct'ının frontend karşılığı

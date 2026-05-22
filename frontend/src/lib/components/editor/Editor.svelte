@@ -6,8 +6,11 @@
   import DiffViewer from '../history/DiffViewer.svelte';
   import {
     activeNote, updateActiveNoteBody, saveActiveNote, renameActiveNote,
-    activeNoteDirty, lastSavedAt, updateActiveNoteTags, notesList
+    activeNoteDirty, lastSavedAt, updateActiveNoteTags, notesList,
+    viewingTrashNote, viewingConflictNote, activeViewMode, selectedFolder
   } from '../../stores/notes';
+  import { recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
+  import { resolveKeepLocal, resolveKeepRemote } from '../../stores/sync';
   import {
     editorViewMode, snapshotsList, showSnapshots,
     loadNoteSnapshots, restoreNoteSnapshot, loadingEditorMetadata
@@ -31,6 +34,9 @@
   $: displaySnapshots = $showSnapshots;
   $: isDirty    = $activeNoteDirty;
   $: savedAt    = currentNote ? new Date(currentNote.updated_at) : null;
+  $: isTrash     = $viewingTrashNote;
+  $: isConflict  = $viewingConflictNote;
+  $: isReadOnly  = isTrash || isConflict !== null;
 
   let tagInput = '';
   let showSuggestions = false;
@@ -263,37 +269,85 @@
       <div class="editor-area">
         <!-- Başlık bar — not adı + aksiyon butonları -->
         <div class="note-titlebar">
-          <div class="title-spacer"></div> <!-- Sol tarafta flex boşluğu -->
-          
-          <input
-            type="text"
-            class="note-title-input"
-            value={currentNote.title || ''}
-            placeholder="Untitled"
-            onblur={handleTitleChange}
-            onkeydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-            title={currentNote.file_path}
-          />
-
-          <div class="note-actions">
-            {#if isDirty}
-              <span class="unsaved-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
-            {/if}
-            <button
-              class="action-btn"
-              class:accent={isDirty}
-              onclick={handleManualSave}
-              title="Save (⌘S)"
-              disabled={!isDirty}
-            >
-              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M2 12V4.5L4.5 2h7a.5.5 0 0 1 .5.5V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
-                <rect x="4" y="2" width="5" height="4" rx=".5"/>
-                <rect x="3.5" y="8" width="7" height="5" rx=".5"/>
+          <!-- Trash / Conflict Banner (overrides normal titlebar content when in special mode) -->
+          {#if isTrash && currentNote}
+            <div class="special-mode-banner trash-banner">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="banner-icon" aria-hidden="true">
+                <polyline points="2,3.5 12,3.5"/>
+                <path d="M5 3.5V3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v.5M5.5 6.5v3.5M8.5 6.5v3.5"/>
+                <path d="M3 3.5l.75 7.5a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75L10.5 3.5"/>
               </svg>
-              Save
-            </button>
-          </div>
+              <span class="banner-label">Deleted Note <span class="banner-title">{currentNote.title || 'Untitled'}</span></span>
+              <div class="banner-actions">
+                <button class="banner-btn restore-btn" onclick={async () => { await recoverFromTrash(currentNote.id); selectedFolder.set(null); activeViewMode.set('normal'); }} title="Restore note">
+                  <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                    <path d="M1 6a5 5 0 1 0 1-2.9"/>
+                    <polyline points="1,2 1,6 5,6"/>
+                  </svg>
+                  Restore
+                </button>
+                <button class="banner-btn delete-btn" onclick={async () => { if(confirm('Permanently delete this note?')) { await emptyTrashPermanently(currentNote.id); selectedFolder.set('__trash__'); } }} title="Delete permanently">
+                  <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                    <line x1="2" y1="2" x2="10" y2="10"/>
+                    <line x1="10" y1="2" x2="2" y2="10"/>
+                  </svg>
+                  Delete Forever
+                </button>
+              </div>
+            </div>
+
+          {:else if isConflict && currentNote}
+            <div class="special-mode-banner conflict-banner">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="banner-icon" aria-hidden="true">
+                <path d="M7 1.5L13 11.5H1L7 1.5z"/>
+                <line x1="7" y1="5" x2="7" y2="8"/>
+                <circle cx="7" cy="9.5" r="0.4" fill="currentColor"/>
+              </svg>
+              <span class="banner-label">Sync Conflict <span class="banner-title">{currentNote.title || 'Untitled'}</span></span>
+              <div class="banner-actions">
+                <button class="banner-btn keep-local-btn" onclick={async () => { await resolveKeepLocal(isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); }} title="Keep your local version">
+                  Keep Local
+                </button>
+                <button class="banner-btn keep-remote-btn" onclick={async () => { await resolveKeepRemote(isConflict.noteId, isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); }} title="Use the synced (remote) version">
+                  Use Remote
+                </button>
+              </div>
+            </div>
+
+          {:else}
+            <!-- Normal titlebar -->
+            <div class="title-spacer"></div>
+
+            <input
+              type="text"
+              class="note-title-input"
+              value={currentNote.title || ''}
+              placeholder="Untitled"
+              onblur={handleTitleChange}
+              onkeydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+              title={currentNote.file_path}
+            />
+
+            <div class="note-actions">
+              {#if isDirty}
+                <span class="unsaved-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
+              {/if}
+              <button
+                class="action-btn"
+                class:accent={isDirty}
+                onclick={handleManualSave}
+                title="Save (⌘S)"
+                disabled={!isDirty}
+              >
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2 12V4.5L4.5 2h7a.5.5 0 0 1 .5.5V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+                  <rect x="4" y="2" width="5" height="4" rx=".5"/>
+                  <rect x="3.5" y="8" width="7" height="5" rx=".5"/>
+                </svg>
+                Save
+              </button>
+            </div>
+          {/if}
         </div>
 
         <!-- Panel alanı -->
@@ -522,6 +576,121 @@
   .title-spacer {
     flex: 1;
   }
+
+  /* ── Special Mode Banner ── */
+  .special-mode-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+  }
+
+  .banner-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  .trash-banner .banner-icon { color: var(--color-red, #ff453a); }
+  .conflict-banner .banner-icon { color: var(--color-orange, #ff9f0a); }
+
+  .banner-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .banner-title {
+    color: var(--text-secondary);
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .trash-banner .banner-title { color: var(--color-red, #ff453a); }
+  .conflict-banner .banner-title { color: var(--color-orange, #ff9f0a); }
+
+  .banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .banner-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    white-space: nowrap;
+  }
+
+  .banner-btn svg {
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+  }
+
+  .restore-btn {
+    background-color: var(--accent-muted);
+    border-color: var(--accent-border);
+    color: var(--accent);
+  }
+  .restore-btn:hover {
+    background-color: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .delete-btn {
+    background-color: rgba(255, 69, 58, 0.1);
+    border-color: rgba(255, 69, 58, 0.25);
+    color: var(--color-red, #ff453a);
+  }
+  .delete-btn:hover {
+    background-color: var(--color-red, #ff453a);
+    color: white;
+    border-color: var(--color-red, #ff453a);
+  }
+
+  .keep-local-btn {
+    background-color: var(--accent-muted);
+    border-color: var(--accent-border);
+    color: var(--accent);
+  }
+  .keep-local-btn:hover {
+    background-color: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .keep-remote-btn {
+    background-color: rgba(255, 159, 10, 0.1);
+    border-color: rgba(255, 159, 10, 0.25);
+    color: var(--color-orange, #ff9f0a);
+  }
+  .keep-remote-btn:hover {
+    background-color: var(--color-orange, #ff9f0a);
+    color: white;
+    border-color: var(--color-orange, #ff9f0a);
+  }
+
+
 
   .note-title-input {
     flex: 2;

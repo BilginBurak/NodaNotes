@@ -170,3 +170,43 @@ pub async fn permanent_delete(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_trash_note(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<NoteDto, AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let parsed_note_id = NoteId(Ulid::from_string(&id).map_err(|e| AppError {
+        code: "INVALID_ID".to_string(),
+        message: format!("Invalid NoteId: {}", e),
+    })?);
+
+    let trash_dir = vault_path.join(".noda").join("trash");
+    let md_filename = format!("{}.md", parsed_note_id.0.to_string());
+    let trash_md_path = trash_dir.join(&md_filename);
+
+    if !trash_md_path.exists() {
+        return Err(AppError {
+            code: "NOT_FOUND".to_string(),
+            message: format!("Note not found in trash: {}", id),
+        });
+    }
+
+    Ok(NoteDto::from(
+        noda_core::vault::service::VaultService::read_note_from_absolute_path(
+            &trash_md_path,
+            &format!(".noda/trash/{}", md_filename),
+        )
+        .await
+        .map_err(AppError::from)?
+    ))
+}
+
