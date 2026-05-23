@@ -111,6 +111,12 @@ impl AppState {
             crate::events::emit_sync_status(&app_handle_clone2, status);
         });
 
+        // Hook sync finished callbacks to emit sync report to frontend
+        let app_handle_clone3 = app_handle.clone();
+        sync_engine.set_sync_finished_callback(move |report| {
+            crate::events::emit_sync_finished(&app_handle_clone3, report);
+        });
+
         // 6. Update AppState fields
         *self.vault_path.write() = Some(canonical_path);
         *self.database.write() = Some(db);

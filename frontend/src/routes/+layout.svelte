@@ -3,13 +3,14 @@
   import { get } from 'svelte/store';
   import { checkActiveVault, vaultInfo } from '../lib/stores/vault';
   import { loadNotes } from '../lib/stores/notes';
-  import { syncStatus, syncConflicts } from '../lib/stores/sync';
-  import { listenToVaultUpdated, listenToSyncStatus, listenToSyncConflict } from '../lib/services/events';
+  import { syncStatus, syncConflicts, lastSyncReport, showSyncReport } from '../lib/stores/sync';
+  import { listenToVaultUpdated, listenToSyncStatus, listenToSyncConflict, listenToSyncFinished } from '../lib/services/events';
   import '../lib/styles/app.css'; // Let's create a beautiful global styles file!
 
   let unlistenUpdated: (() => void) | null = null;
   let unlistenSync: (() => void) | null = null;
   let unlistenConflicts: (() => void) | null = null;
+  let unlistenSyncFinished: (() => void) | null = null;
 
   $: info = $vaultInfo;
 
@@ -49,6 +50,17 @@
         });
       });
 
+      // 5. Listen for background sync finished reports
+      unlistenSyncFinished = await listenToSyncFinished((report) => {
+        const enriched = {
+          ...report,
+          total: report.uploads + report.downloads + report.deletes_local + report.deletes_remote + report.conflicts,
+          completed_at: new Date().toISOString(),
+        };
+        lastSyncReport.set(enriched);
+        showSyncReport.set(true);
+      });
+
       // 4. Auto-restore last open vault
       await checkActiveVault();
     } catch (e) {
@@ -60,6 +72,7 @@
     if (unlistenUpdated) unlistenUpdated();
     if (unlistenSync) unlistenSync();
     if (unlistenConflicts) unlistenConflicts();
+    if (unlistenSyncFinished) unlistenSyncFinished();
   });
 </script>
 

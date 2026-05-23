@@ -99,6 +99,7 @@ pub struct SyncEngine {
     shutdown_tx: Arc<RwLock<Option<oneshot::Sender<()>>>>,
     background_task: Arc<RwLock<Option<JoinHandle<()>>>>,
     status_callback: Arc<RwLock<Option<Arc<dyn Fn(SyncStatus) + Send + Sync + 'static>>>>,
+    sync_finished_callback: Arc<RwLock<Option<Arc<dyn Fn(SyncReport) + Send + Sync + 'static>>>>,
 }
 
 impl SyncEngine {
@@ -110,6 +111,7 @@ impl SyncEngine {
             shutdown_tx: Arc::new(RwLock::new(None)),
             background_task: Arc::new(RwLock::new(None)),
             status_callback: Arc::new(RwLock::new(None)),
+            sync_finished_callback: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -134,6 +136,14 @@ impl SyncEngine {
         F: Fn(SyncStatus) + Send + Sync + 'static,
     {
         *self.status_callback.write() = Some(Arc::new(callback));
+    }
+
+    /// Sets a sync finished callback to be notified when a sync cycle completes successfully
+    pub fn set_sync_finished_callback<F>(&self, callback: F)
+    where
+        F: Fn(SyncReport) + Send + Sync + 'static,
+    {
+        *self.sync_finished_callback.write() = Some(Arc::new(callback));
     }
 
     /// Helper to update the internal status and invoke callbacks
@@ -473,6 +483,9 @@ impl SyncEngine {
         save_remote_state(vault_path, &remote_state).await?;
 
         self.update_status(SyncStatus::Idle);
+        if let Some(cb) = &*self.sync_finished_callback.read() {
+            cb(report.clone());
+        }
         Ok(report)
     }
 }
