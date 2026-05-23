@@ -45,7 +45,7 @@
       unlistenConflicts = await listenToSyncConflict((conflict) => {
         syncConflicts.update(c => {
           // Prevent duplicates
-          if (c.some(item => item.remote_path === conflict.remote_path)) return c;
+          if (c.some(item => item.archived_path === conflict.archived_path)) return c;
           return [...c, conflict];
         });
       });

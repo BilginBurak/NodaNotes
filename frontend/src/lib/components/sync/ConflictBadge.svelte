@@ -50,9 +50,9 @@
             {#each conflicts as conflict}
               <div class="conflict-item">
                 <div class="conflict-info">
-                  <span class="conflict-name">{conflict.filename}</span>
+                  <span class="conflict-name">{conflict.title}</span>
                   <span class="conflict-detail">Archived as:</span>
-                  <span class="conflict-path">{getFilename(conflict.remote_path)}</span>
+                  <span class="conflict-path">{getFilename(conflict.archived_path)}</span>
                 </div>
               </div>
             {/each}

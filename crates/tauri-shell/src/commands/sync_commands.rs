@@ -215,14 +215,7 @@ pub async fn get_sync_config(
     Ok(sync_engine.get_config())
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-pub struct ConflictEntryDto {
-    pub id: String,
-    pub title: String,
-    pub file_path: String,
-    pub archived_path: String,
-    pub detected_at: String,
-}
+use shared::dtos::ConflictEntryDto;
 
 #[tauri::command]
 pub async fn list_conflicts(

@@ -397,7 +397,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 440px;
+    /* width: 440px; */
     max-width: 92vw;
     background-color: var(--modal-bg);
     border: 1px solid var(--border-normal);

@@ -11,12 +11,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::NodaError;
 use crate::database::connection::Database;
-use crate::sync::client::WebDavClient;
+use crate::sync::client::{WebDavClient, RemoteEntry};
 use crate::sync::traversal::list_remote_tree;
 use crate::sync::delta::{calculate_delta, SyncAction};
 use crate::sync::remote_state::{load_remote_state, save_remote_state, RemoteFileMetadata};
 use crate::sync::queue::SyncQueue;
-use crate::sync::conflict::handle_conflict;
+use crate::sync::conflict::{handle_conflict, ConflictEntry};
 use crate::vault::scan::scan_vault;
 use crate::vault::service::VaultService;
 use crate::models::note::Note;
@@ -100,6 +100,7 @@ pub struct SyncEngine {
     background_task: Arc<RwLock<Option<JoinHandle<()>>>>,
     status_callback: Arc<RwLock<Option<Arc<dyn Fn(SyncStatus) + Send + Sync + 'static>>>>,
     sync_finished_callback: Arc<RwLock<Option<Arc<dyn Fn(SyncReport) + Send + Sync + 'static>>>>,
+    conflict_callback: Arc<RwLock<Option<Arc<dyn Fn(ConflictEntry) + Send + Sync + 'static>>>>,
 }
 
 impl SyncEngine {
@@ -112,6 +113,7 @@ impl SyncEngine {
             background_task: Arc::new(RwLock::new(None)),
             status_callback: Arc::new(RwLock::new(None)),
             sync_finished_callback: Arc::new(RwLock::new(None)),
+            conflict_callback: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -130,6 +132,11 @@ impl SyncEngine {
         self.status.read().clone()
     }
 
+    /// Checks if the periodic background sync task is currently active/running
+    pub fn is_background_sync_running(&self) -> bool {
+        self.background_task.read().is_some()
+    }
+
     /// Sets a status callback to be notified when status changes
     pub fn set_status_callback<F>(&self, callback: F)
     where
@@ -144,6 +151,14 @@ impl SyncEngine {
         F: Fn(SyncReport) + Send + Sync + 'static,
     {
         *self.sync_finished_callback.write() = Some(Arc::new(callback));
+    }
+
+    /// Sets a conflict callback to be notified when a sync conflict is detected and archived
+    pub fn set_conflict_callback<F>(&self, callback: F)
+    where
+        F: Fn(ConflictEntry) + Send + Sync + 'static,
+    {
+        *self.conflict_callback.write() = Some(Arc::new(callback));
     }
 
     /// Helper to update the internal status and invoke callbacks
@@ -172,6 +187,7 @@ impl SyncEngine {
         
         let handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             
             loop {
                 tokio::select! {
@@ -296,12 +312,14 @@ impl SyncEngine {
                                     etag: remote_entry.etag,
                                     last_modified: lm,
                                     size: remote_entry.size.unwrap_or(markdown.len() as u64),
+                                    local_updated_at: Some(note.updated_at),
                                 });
                             } else {
                                 remote_state.files.insert(relative_path.clone(), RemoteFileMetadata {
                                     etag: None,
                                     last_modified: Some(note.updated_at),
                                     size: markdown.len() as u64,
+                                    local_updated_at: Some(note.updated_at),
                                 });
                             }
 
@@ -363,6 +381,7 @@ impl SyncEngine {
                                             etag: remote_entry.etag.clone(),
                                             last_modified: lm,
                                             size: remote_entry.size.unwrap_or(bytes.len() as u64),
+                                            local_updated_at: Some(note.updated_at),
                                         });
 
                                         report.downloads += 1;
@@ -448,13 +467,20 @@ impl SyncEngine {
                                             etag: entry.etag,
                                             last_modified: lm,
                                             size: entry.size.unwrap_or(markdown.len() as u64),
+                                            local_updated_at: Some(local_note.updated_at),
                                         });
                                     } else {
                                         remote_state.files.insert(relative_path.clone(), RemoteFileMetadata {
                                             etag: None,
                                             last_modified: Some(local_note.updated_at),
                                             size: markdown.len() as u64,
+                                            local_updated_at: Some(local_note.updated_at),
                                         });
+                                    }
+
+                                    // Notify conflict callback if registered
+                                    if let Some(cb) = &*self.conflict_callback.read() {
+                                        cb(conflict_entry.clone());
                                     }
 
                                     tracing::info!("Conflict archived and resolved: {:?}", conflict_entry);
@@ -473,6 +499,35 @@ impl SyncEngine {
                             self.update_status(SyncStatus::Error(format!("Failed to retrieve remote conflicting file {}: {}", relative_path, e)));
                             return Err(e);
                         }
+                    }
+                }
+            }
+        }
+
+        // For any files that were already identical and had no action, ensure they are in remote_state
+        let local_map: std::collections::HashMap<String, &Note> = local_notes
+            .iter()
+            .map(|n| (format!("{}.md", n.id.0.to_string()), n))
+            .collect();
+
+        let remote_map: std::collections::HashMap<String, &RemoteEntry> = remote_entries
+            .iter()
+            .filter(|e| !e.is_collection)
+            .map(|e| (crate::sync::delta::get_relative_path(&e.href, ""), e))
+            .collect();
+
+        for (path, local_note) in &local_map {
+            if !remote_state.files.contains_key(path) {
+                if let Some(remote_entry) = remote_map.get(path) {
+                    if crate::sync::delta::is_local_remote_identical(local_note, remote_entry) {
+                        let lm = remote_entry.last_modified.as_ref()
+                            .and_then(|s| crate::sync::delta::parse_last_modified(s));
+                        remote_state.files.insert(path.clone(), RemoteFileMetadata {
+                            etag: remote_entry.etag.clone(),
+                            last_modified: lm,
+                            size: remote_entry.size.unwrap_or(0),
+                            local_updated_at: Some(local_note.updated_at),
+                        });
                     }
                 }
             }

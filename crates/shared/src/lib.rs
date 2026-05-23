@@ -57,4 +57,14 @@ pub mod dtos {
         pub timestamp: String,
         pub body_chunks: Vec<DiffChunk>,
     }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ConflictEntryDto {
+        pub id: String,
+        pub title: String,
+        pub file_path: String,
+        pub archived_path: String,
+        pub detected_at: String,
+    }
 }
+

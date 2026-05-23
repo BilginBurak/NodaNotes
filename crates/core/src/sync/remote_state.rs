@@ -15,6 +15,8 @@ pub struct RemoteFileMetadata {
     pub etag: Option<String>,
     pub last_modified: Option<DateTime<Utc>>,
     pub size: u64,
+    #[serde(default)]
+    pub local_updated_at: Option<DateTime<Utc>>,
 }
 
 /// The local cache of remote file states used to calculate three-way sync deltas
@@ -78,6 +80,7 @@ mod tests {
                 etag: Some("12345".to_string()),
                 last_modified: Some(now),
                 size: 100,
+                local_updated_at: Some(now),
             },
         );
 

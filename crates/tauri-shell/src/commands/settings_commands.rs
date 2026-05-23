@@ -32,9 +32,27 @@ pub async fn save_settings(
     // Save to settings.json
     config.save(&vault_path).await.map_err(AppError::from)?;
     
-    // If sync config was updated, update the sync engine
-    if let Some(engine) = state.sync_engine.read().clone() {
-        engine.set_config(config.sync);
+    // Extract the engine clone first inside a short block to release the lock guard immediately!
+    let engine_opt = {
+        let guard = state.sync_engine.read();
+        guard.clone()
+    };
+
+    if let Some(engine) = engine_opt {
+        let was_running = engine.is_background_sync_running();
+        if was_running {
+            let _ = engine.stop_sync().await;
+        }
+        engine.set_config(config.sync.clone());
+        if was_running {
+            let db_opt = {
+                let guard = state.database.read();
+                guard.clone()
+            };
+            if let Some(db) = db_opt {
+                let _ = engine.start_sync(&vault_path, db);
+            }
+        }
     }
     
     Ok(())

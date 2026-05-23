@@ -117,6 +117,12 @@ impl AppState {
             crate::events::emit_sync_finished(&app_handle_clone3, report);
         });
 
+        // Hook conflict callback to emit conflicts to frontend
+        let app_handle_clone4 = app_handle.clone();
+        sync_engine.set_conflict_callback(move |conflict| {
+            crate::events::emit_sync_conflict(&app_handle_clone4, conflict);
+        });
+
         // 6. Update AppState fields
         *self.vault_path.write() = Some(canonical_path);
         *self.database.write() = Some(db);

@@ -15,17 +15,13 @@ pub fn emit_sync_status(app_handle: &AppHandle, status: SyncStatus) {
     let _ = app_handle.emit("sync_status_changed", status);
 }
 
-/// Emits metadata when a sync conflict is detected.
-#[derive(serde::Serialize, Clone)]
-pub struct ConflictPayload {
-    pub filename: String,
-    pub archived_path: String,
-}
-
-pub fn emit_sync_conflict(app_handle: &AppHandle, filename: &str, archived_path: &str) {
-    let payload = ConflictPayload {
-        filename: filename.to_string(),
-        archived_path: archived_path.to_string(),
+pub fn emit_sync_conflict(app_handle: &AppHandle, conflict: noda_core::sync::ConflictEntry) {
+    let payload = shared::dtos::ConflictEntryDto {
+        id: conflict.note_id.0.to_string(),
+        title: conflict.local_title,
+        file_path: conflict.relative_path,
+        archived_path: conflict.archived_path,
+        detected_at: conflict.detected_at.to_rfc3339(),
     };
     let _ = app_handle.emit("sync_conflict", payload);
 }
