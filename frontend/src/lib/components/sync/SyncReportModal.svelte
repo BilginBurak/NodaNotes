@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { lastSyncReport, showSyncReport, dismissSyncReport, triggerSyncNow } from '../../stores/sync';
+  import { lastSyncReport, showSyncReport, dismissSyncReport, triggerSyncNow, syncStatus } from '../../stores/sync';
 
   $: report = $lastSyncReport;
   $: visible = $showSyncReport;
+  $: status = $syncStatus;
 
   let showDetail = false;
 
@@ -37,11 +38,102 @@
 
   // Raporun "ilgi çekici" olup olmadığını belirle (0'dan fazla işlem varsa)
   $: hasActivity = report ? (report.uploads + report.downloads + report.deletes_local + report.deletes_remote + report.conflicts) > 0 : false;
-  $: hasErrors   = report ? report.conflicts > 0 : false;
+  $: hasErrors   = status.status === 'Error' || (report ? report.conflicts > 0 : false);
 </script>
 
-{#if visible && report}
-  <!-- Sağ alt toast bildirimi -->
+{#if visible}
+  {#if status.status === 'Error'}
+    <!-- Sağ alt toast bildirimi (Hata) -->
+    <div
+      class="sync-toast has-errors"
+      role="status"
+      aria-live="polite"
+      aria-label="Sync failed"
+    >
+      <div class="toast-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 2L14 13H2L8 2z"/>
+          <line x1="8" y1="7" x2="8" y2="9.5"/>
+          <line x1="8" y1="11.5" x2="8" y2="11.5" stroke-width="2.4"/>
+        </svg>
+      </div>
+
+      <div class="toast-content">
+        <div class="toast-title">Sync failed</div>
+        <div class="toast-summary">
+          {status.error_message || 'An unexpected error occurred'}
+        </div>
+      </div>
+
+      <div class="toast-actions">
+        <button class="toast-btn-detail" onclick={handleBadgeClick} title="View details">
+          Details
+        </button>
+        <button class="toast-btn-close" onclick={handleDismiss} title="Dismiss" aria-label="Dismiss notification">
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <line x1="2" y1="2" x2="10" y2="10"/>
+            <line x1="10" y1="2" x2="2" y2="10"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Hata detay modalı -->
+    {#if showDetail}
+      <div class="modal-backdrop" onclick={closeDetail} role="presentation"></div>
+      <div class="sync-detail-modal" role="dialog" aria-modal="true" aria-label="Sync Error Details">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-icon error-icon" aria-hidden="true">
+              <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 2L16 15H2L9 2z"/>
+                <line x1="9" y1="8" x2="9" y2="11"/>
+                <line x1="9" y1="13.5" x2="9" y2="13.5" stroke-width="2.4"/>
+              </svg>
+            </div>
+            <div>
+              <h3>Sync Error</h3>
+              <span class="modal-subtitle">Senkronizasyon Hatası Detayları</span>
+            </div>
+          </div>
+          <button class="modal-close" onclick={closeDetail} aria-label="Close">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <line x1="2" y1="2" x2="12" y2="12"/>
+              <line x1="12" y1="2" x2="2" y2="12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body" style="width: 380px;">
+          <div class="error-detail-box">
+            <div class="error-detail-title">Hata Mesajı:</div>
+            <div class="error-detail-content">
+              {status.error_message || 'Bilinmeyen bir WebDAV senkronizasyon hatası oluştu.'}
+            </div>
+          </div>
+
+          <div class="error-help-box">
+            <h4>Olası Çözümler:</h4>
+            <ul>
+              <li>Sunucu adresi, kullanıcı adı ve şifreyi Ayarlar sekmesinden doğrulayın.</li>
+              <li>Bulut saklama sağlayıcınızın (örn. InfiniCLOUD) sunucularında bakım çalışması olmadığını kontrol edin.</li>
+              <li>İnternet bağlantınızı kontrol edin.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick={handleSyncAgain}>
+            Sync Again
+          </button>
+          <button class="btn btn-secondary" onclick={handleDismiss}>
+            Dismiss
+          </button>
+        </div>
+      </div>
+    {/if}
+  {:else if report}
+    <!-- Sağ alt toast bildirimi -->
   <div
     class="sync-toast"
     class:has-activity={hasActivity}
@@ -263,6 +355,7 @@
         </button>
       </div>
     </div>
+  {/if}
   {/if}
 {/if}
 
@@ -672,5 +765,55 @@
 
   .btn-ghost:hover {
     background-color: var(--accent-muted);
+  }
+
+  /* Hata Detay Kutuları */
+  .error-detail-box {
+    background-color: var(--color-orange-muted);
+    border: 1px solid rgba(255, 159, 10, 0.25);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    color: var(--color-orange);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .error-detail-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    opacity: 0.85;
+  }
+  .error-detail-content {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.45;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+  .error-help-box {
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+  }
+  .error-help-box h4 {
+    margin: 0 0 6px 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+  }
+  .error-help-box ul {
+    margin: 0;
+    padding-left: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .error-help-box li {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.4;
   }
 </style>

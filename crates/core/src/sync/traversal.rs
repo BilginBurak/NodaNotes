@@ -115,10 +115,15 @@ pub async fn list_remote_tree(
 
             entry.href = relative_path.clone();
 
-            // Ignore anything inside the .noda system folder to prevent syncing internal data
+            // Ignore anything inside the .noda system folder EXCEPT attachments and history
             let normalized_relative = relative_path.trim_start_matches('/');
             if normalized_relative.split('/').any(|s| s == ".noda") {
-                continue;
+                let is_allowed = normalized_relative == ".noda"
+                    || normalized_relative.starts_with(".noda/attachments")
+                    || normalized_relative.starts_with(".noda/history");
+                if !is_allowed {
+                    continue;
+                }
             }
 
             if entry.is_collection {

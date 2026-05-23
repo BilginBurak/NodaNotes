@@ -168,6 +168,10 @@ impl WebDavClient {
             .await
             .map_err(|e| NodaError::Sync(e.to_string()))?;
 
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(NodaError::NotFound(format!("File not found on remote: {}", path)));
+        }
+
         if !response.status().is_success() {
             return Err(NodaError::Sync(format!("GET failed: {}", response.status())));
         }

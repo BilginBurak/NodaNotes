@@ -2,8 +2,6 @@
 
 use crate::errors::NodaError;
 use std::path::Path;
-use ulid::Ulid;
-
 pub async fn store_attachment<P: AsRef<Path>, P2: AsRef<Path>>(
     vault_path: P,
     source_path: P2,
@@ -13,19 +11,26 @@ pub async fn store_attachment<P: AsRef<Path>, P2: AsRef<Path>>(
         return Err(NodaError::NotFound("Attachment source file not found".into()));
     }
 
-    let file_name = source.file_name()
-        .ok_or_else(|| NodaError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid file name")))?
-        .to_string_lossy()
-        .to_string();
+    let bytes = tokio::fs::read(source).await.map_err(NodaError::Io)?;
+    let hash = xxhash_rust::xxh3::xxh3_64(&bytes);
 
-    let id = Ulid::new().to_string();
-    let dest_name = format!("{}_{}", id, file_name);
+    let extension = source.extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("");
+
+    let dest_name = if extension.is_empty() {
+        format!("xxh3_{:016x}", hash)
+    } else {
+        format!("xxh3_{:016x}.{}", hash, extension)
+    };
 
     let attachments_dir = vault_path.as_ref().join(".noda").join("attachments");
     tokio::fs::create_dir_all(&attachments_dir).await.map_err(NodaError::Io)?;
 
     let dest_path = attachments_dir.join(&dest_name);
-    tokio::fs::copy(source, &dest_path).await.map_err(NodaError::Io)?;
+    if !dest_path.exists() {
+        tokio::fs::write(&dest_path, &bytes).await.map_err(NodaError::Io)?;
+    }
 
     // Return the custom protocol URI
     Ok(format!("noda://attachments/{}", dest_name))

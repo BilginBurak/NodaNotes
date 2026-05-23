@@ -43,8 +43,12 @@ mod tests {
 
         // Store
         let uri = store_attachment(vault_dir.path(), &source_file).await.unwrap();
-        assert!(uri.starts_with("noda://attachments/"));
-        assert!(uri.ends_with("_test_image.png"));
+        assert!(uri.starts_with("noda://attachments/xxh3_"));
+        assert!(uri.ends_with(".png"));
+
+        // Store same file again (deduplication)
+        let uri2 = store_attachment(vault_dir.path(), &source_file).await.unwrap();
+        assert_eq!(uri, uri2);
 
         // Resolve
         let resolved = resolve_path(vault_dir.path(), &uri).unwrap();
@@ -52,7 +56,7 @@ mod tests {
         let content = fs::read(&resolved).await.unwrap();
         assert_eq!(content, b"fake image data");
 
-        // List
+        // List (should still be only 1 since it's deduplicated)
         let list = list_attachments(vault_dir.path()).await.unwrap();
         assert_eq!(list.len(), 1);
 

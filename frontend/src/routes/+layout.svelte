@@ -34,6 +34,8 @@
             if (status === 'Idle') return { status: 'Idle', last_sync_time: current.last_sync_time };
             if (status === 'Syncing') return { status: 'Syncing', last_sync_time: current.last_sync_time };
           } else if (typeof status === 'object' && status !== null && status.Error) {
+            // Automatically trigger sync report dialog to show the error
+            showSyncReport.set(true);
             return { status: 'Error', error_message: status.Error, last_sync_time: current.last_sync_time };
           }
           // fallback

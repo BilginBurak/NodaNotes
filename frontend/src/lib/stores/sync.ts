@@ -79,6 +79,7 @@ export async function triggerSyncNow(): Promise<SyncReport | null> {
   } catch (e: any) {
     syncError.set(e.message || 'Failed to trigger sync');
     syncStatus.set({ status: 'Error', error_message: e.message });
+    showSyncReport.set(true);
     throw e;
   }
 }

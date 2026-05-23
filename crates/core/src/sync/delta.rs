@@ -302,6 +302,163 @@ pub fn calculate_delta(
     SyncPlan { actions }
 }
 
+/// Represents a raw/immutable local file (e.g. an attachment or history snapshot)
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocalRawFile {
+    pub relative_path: String,
+    pub size: u64,
+    pub modified: DateTime<Utc>,
+}
+
+/// Calculate synchronization plan for raw/immutable files under `.noda/attachments/` and `.noda/history/`.
+/// Since these files are immutable, they do not experience conflicts. They only get uploaded,
+/// downloaded, or deleted to maintain full consistency across devices.
+pub fn calculate_raw_delta(
+    local_raw: &[LocalRawFile],
+    remote_entries: &[RemoteEntry],
+    previous_state: &RemoteState,
+    root_path: &str,
+) -> SyncPlan {
+    let mut actions = Vec::new();
+    let mut all_paths = HashSet::new();
+
+    let local_map: HashMap<String, &LocalRawFile> = local_raw
+        .iter()
+        .map(|f| (f.relative_path.clone(), f))
+        .collect();
+
+    for path in local_map.keys() {
+        all_paths.insert(path.clone());
+    }
+
+    let remote_map: HashMap<String, &RemoteEntry> = remote_entries
+        .iter()
+        .filter(|e| !e.is_collection)
+        .map(|e| (get_relative_path(&e.href, root_path), e))
+        .filter(|(path, _)| path.starts_with(".noda/attachments/") || path.starts_with(".noda/history/"))
+        .collect();
+
+    for path in remote_map.keys() {
+        all_paths.insert(path.clone());
+    }
+
+    for path in previous_state.files.keys() {
+        if path.starts_with(".noda/attachments/") || path.starts_with(".noda/history/") {
+            all_paths.insert(path.clone());
+        }
+    }
+
+    for path in all_paths {
+        let local = local_map.get(&path);
+        let remote = remote_map.get(&path);
+        let previous = previous_state.files.get(&path);
+
+        match (local, remote, previous) {
+            // Case 1: Exists in both local and remote
+            (Some(loc), Some(rem), Some(prev)) => {
+                let loc_changed = {
+                    if let Some(prev_local_up) = prev.local_updated_at {
+                        (loc.modified - prev_local_up).num_seconds().abs() >= 1 || loc.size != prev.size
+                    } else if let Some(prev_lm) = prev.last_modified {
+                        (loc.modified - prev_lm).num_seconds().abs() >= 1 || loc.size != prev.size
+                    } else {
+                        true
+                    }
+                };
+
+                let rem_changed = is_remote_changed(rem, prev);
+
+                match (loc_changed, rem_changed) {
+                    (true, true) => {
+                        // Conflict on immutable files is extremely rare (they are hash-named or timestamped).
+                        // If they both changed, compare timestamps to determine which is newer and sync that one.
+                        let remote_lm = rem.last_modified.as_ref()
+                            .and_then(|s| parse_last_modified(s))
+                            .unwrap_or(Utc::now());
+                        if loc.modified >= remote_lm {
+                            actions.push(SyncAction::Upload {
+                                relative_path: path.clone(),
+                            });
+                        } else {
+                            actions.push(SyncAction::Download {
+                                relative_path: path.clone(),
+                                remote_entry: (*rem).clone(),
+                            });
+                        }
+                    }
+                    (true, false) => {
+                        actions.push(SyncAction::Upload {
+                            relative_path: path.clone(),
+                        });
+                    }
+                    (false, true) => {
+                        actions.push(SyncAction::Download {
+                            relative_path: path.clone(),
+                            remote_entry: (*rem).clone(),
+                        });
+                    }
+                    (false, false) => {}
+                }
+            }
+            (Some(loc), Some(rem), None) => {
+                // First-time sync, exists on both but no previous state tracking.
+                // Verify sizes. If mismatch, sync whichever has the newer modification time.
+                let remote_size = rem.size.unwrap_or(0);
+                if loc.size != remote_size {
+                    let remote_lm = rem.last_modified.as_ref()
+                        .and_then(|s| parse_last_modified(s))
+                        .unwrap_or(Utc::now());
+                    if loc.modified >= remote_lm {
+                        actions.push(SyncAction::Upload {
+                            relative_path: path.clone(),
+                        });
+                    } else {
+                        actions.push(SyncAction::Download {
+                            relative_path: path.clone(),
+                            remote_entry: (*rem).clone(),
+                        });
+                    }
+                }
+            }
+
+            // Case 2: Exists locally, but not on remote
+            (Some(_loc), None, Some(_prev)) => {
+                // Was present previously, but deleted on remote
+                actions.push(SyncAction::DeleteLocal {
+                    relative_path: path.clone(),
+                });
+            }
+            (Some(_loc), None, None) => {
+                // New local file
+                actions.push(SyncAction::Upload {
+                    relative_path: path.clone(),
+                });
+            }
+
+            // Case 3: Exists on remote, but not locally
+            (None, Some(_rem), Some(_prev)) => {
+                // Was present previously, but deleted locally
+                actions.push(SyncAction::DeleteRemote {
+                    relative_path: path.clone(),
+                });
+            }
+            (None, Some(rem), None) => {
+                // New remote file
+                actions.push(SyncAction::Download {
+                    relative_path: path.clone(),
+                    remote_entry: (*rem).clone(),
+                });
+            }
+
+            // Case 4: Deleted on both sides
+            (None, None, Some(_prev)) => {}
+            (None, None, None) => {}
+        }
+    }
+
+    SyncPlan { actions }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,6 +497,53 @@ mod tests {
             get_relative_path("/vault/.noda/attachments/pic.png", "/vault"),
             ".noda/attachments/pic.png"
         );
+    }
+
+    #[test]
+    fn test_calculate_raw_delta() {
+        let now = Utc::now();
+        let local_raw = vec![
+            LocalRawFile {
+                relative_path: ".noda/attachments/pic.png".to_string(),
+                size: 100,
+                modified: now,
+            },
+        ];
+
+        let remote_entries = vec![
+            RemoteEntry {
+                href: "/vault/.noda/attachments/pic.png".to_string(),
+                is_collection: false,
+                size: Some(100),
+                last_modified: Some(now.to_rfc3339()),
+                etag: Some("hash".to_string()),
+            },
+            RemoteEntry {
+                href: "/vault/.noda/attachments/new_remote.png".to_string(),
+                is_collection: false,
+                size: Some(200),
+                last_modified: Some(now.to_rfc3339()),
+                etag: Some("hash2".to_string()),
+            },
+        ];
+
+        let mut previous_state = RemoteState::default();
+        previous_state.files.insert(".noda/attachments/pic.png".to_string(), RemoteFileMetadata {
+            etag: Some("hash".to_string()),
+            last_modified: Some(now),
+            size: 100,
+            local_updated_at: Some(now),
+        });
+
+        let plan = calculate_raw_delta(&local_raw, &remote_entries, &previous_state, "/vault");
+        
+        assert_eq!(plan.actions.len(), 1);
+        match &plan.actions[0] {
+            SyncAction::Download { relative_path, .. } => {
+                assert_eq!(relative_path, ".noda/attachments/new_remote.png");
+            }
+            _ => panic!("Expected Download action"),
+        }
     }
 
     #[test]
