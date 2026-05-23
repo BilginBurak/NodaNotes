@@ -5,7 +5,7 @@
   import { selectNote } from '../../stores/notes';
   import { debounce } from '../../utils/debounce';
 
-  let inputEl: HTMLInputElement;
+  let inputEl = $state<HTMLInputElement>();
   let localQuery = $state('');
   let activeIndex = $state(-1);
 

@@ -13,6 +13,7 @@
   } from '../../stores/notes';
   import { openContextMenu } from '../../stores/contextMenu';
   import type { TreeNode } from '../../types';
+  import FolderTreeItem from './FolderTreeItem.svelte';
 
   let {
     node,
@@ -96,18 +97,20 @@
     }
 
     if (!data) return;
+    const draggedPath = data.relPath;
+    if (!draggedPath) return;
 
     try {
       if (data.type === 'note') {
         await moveNote(data.id, node.relPath);
       } else if (data.type === 'folder') {
-        if (data.relPath === node.relPath || node.relPath.startsWith(data.relPath + '/')) {
+        if (draggedPath === node.relPath || node.relPath.startsWith(draggedPath + '/')) {
           alert('Cannot move a folder into itself or its subfolder.');
           return;
         }
-        const folderName = data.relPath.split('/').pop();
+        const folderName = draggedPath.split('/').pop() || '';
         const newPath = node.relPath ? `${node.relPath}/${folderName}` : folderName;
-        await moveFolder(data.relPath, newPath);
+        await moveFolder(draggedPath, newPath);
       }
       draggedItem.set(null);
     } catch (err) {
@@ -119,7 +122,7 @@
     (node.type === 'folder' && $renamingFolder === node.relPath) ||
     (node.type === 'note' && node.id && $renamingNote === node.id)
   );
-  let renameValue = $state(node.name);
+  let renameValue = $state('');
 
   $effect(() => {
     if (isRenaming) {
@@ -258,7 +261,7 @@
 {#if node.type === 'folder' && isOpen && node.children.length > 0}
   <div class="tree-children" role="group">
     {#each node.children as child (child.type + '-' + child.relPath)}
-      <svelte:self 
+      <FolderTreeItem 
         node={child} 
         depth={depth + 1} 
         {expandedFolders} 

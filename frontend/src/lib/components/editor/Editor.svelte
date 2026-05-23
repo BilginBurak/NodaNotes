@@ -821,12 +821,6 @@
     pointer-events: none;
   }
 
-  .panel-divider {
-    width: 1px;
-    background-color: var(--border-subtle);
-    flex-shrink: 0;
-  }
-
   /* Geçmiş paneli */
   .snapshots-panel {
     width: 240px;

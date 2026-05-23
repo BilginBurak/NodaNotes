@@ -42,7 +42,7 @@
   }
 
   const isRenaming = $derived($renamingNote === item.id);
-  let renameValue = $state(item.title);
+  let renameValue = $state('');
 
   $effect(() => {
     if ($renamingNote === item.id) {
