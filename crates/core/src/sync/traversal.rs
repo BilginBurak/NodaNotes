@@ -117,6 +117,14 @@ pub async fn list_remote_tree(
 
             // Ignore anything inside the .noda system folder EXCEPT attachments and history
             let normalized_relative = relative_path.trim_start_matches('/');
+            
+            // Exclude hidden files or folders, EXCEPT allowing .noda itself
+            let mut parts = normalized_relative.split('/');
+            let has_hidden = parts.any(|part| part.starts_with('.') && part != ".noda");
+            if has_hidden {
+                continue;
+            }
+
             if normalized_relative.split('/').any(|s| s == ".noda") {
                 let is_allowed = normalized_relative == ".noda"
                     || normalized_relative.starts_with(".noda/attachments")

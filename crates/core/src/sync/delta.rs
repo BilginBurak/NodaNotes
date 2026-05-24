@@ -73,58 +73,35 @@ pub fn get_relative_path(href: &str, root_path: &str) -> String {
 }
 
 /// Returns true if the remote metadata is different from the previous metadata.
-/// Comparison priority: lastModified -> size -> ETag
-/// ETag alone is ignored (never rely on ETag alone).
+/// Comparison priority: ETag -> lastModified -> size
 pub fn is_remote_changed(remote: &RemoteEntry, previous: &RemoteFileMetadata) -> bool {
-    let mut lm_checked = false;
-    let mut lm_changed = false;
-
-    // 1. lastModified
-    if let Some(ref remote_lm_str) = remote.last_modified {
-        if let Some(remote_lm) = parse_last_modified(remote_lm_str) {
-            lm_checked = true;
-            if let Some(prev_lm) = previous.last_modified {
-                if (remote_lm - prev_lm).num_seconds().abs() >= 1 {
-                    lm_changed = true;
-                }
-            } else {
-                lm_changed = true;
-            }
-        }
-    }
-
-    if lm_changed {
-        return true;
-    }
-
-    let mut size_checked = false;
-    let mut size_changed = false;
-
-    // 2. size
-    if let Some(remote_size) = remote.size {
-        size_checked = true;
-        if remote_size != previous.size {
-            size_changed = true;
-        }
-    }
-
-    if size_changed {
-        return true;
-    }
-
-    // 3. ETag (Never rely on ETag alone!)
-    // If lastModified and size were checked and neither changed, we ignore ETag changes.
-    if lm_checked && size_checked {
-        return false;
-    }
-
-    // Fallback: If last_modified or size was missing, check ETag.
+    // 1. ETag
     if let Some(ref remote_etag) = remote.etag {
         if let Some(ref prev_etag) = previous.etag {
             if remote_etag != prev_etag {
                 return true;
             }
         } else {
+            return true;
+        }
+    }
+
+    // 2. lastModified
+    if let Some(ref remote_lm_str) = remote.last_modified {
+        if let Some(remote_lm) = parse_last_modified(remote_lm_str) {
+            if let Some(prev_lm) = previous.last_modified {
+                if (remote_lm - prev_lm).num_seconds().abs() >= 1 {
+                    return true;
+                }
+            } else {
+                return true;
+            }
+        }
+    }
+
+    // 3. size
+    if let Some(remote_size) = remote.size {
+        if remote_size != previous.size {
             return true;
         }
     }
@@ -208,6 +185,7 @@ pub fn calculate_delta(
         .iter()
         .filter(|e| !e.is_collection)
         .map(|e| (get_relative_path(&e.href, root_path), e))
+        .filter(|(path, _)| !path.starts_with(".noda/"))
         .collect();
 
     for path in remote_map.keys() {
@@ -215,7 +193,9 @@ pub fn calculate_delta(
     }
 
     for path in previous_state.files.keys() {
-        all_paths.insert(path.clone());
+        if !path.starts_with(".noda/") {
+            all_paths.insert(path.clone());
+        }
     }
 
     for path in all_paths {
@@ -356,68 +336,36 @@ pub fn calculate_raw_delta(
         match (local, remote, previous) {
             // Case 1: Exists in both local and remote
             (Some(loc), Some(rem), Some(prev)) => {
-                let loc_changed = {
-                    if let Some(prev_local_up) = prev.local_updated_at {
-                        (loc.modified - prev_local_up).num_seconds().abs() >= 1 || loc.size != prev.size
-                    } else if let Some(prev_lm) = prev.last_modified {
-                        (loc.modified - prev_lm).num_seconds().abs() >= 1 || loc.size != prev.size
-                    } else {
-                        true
-                    }
-                };
-
-                let rem_changed = is_remote_changed(rem, prev);
-
-                match (loc_changed, rem_changed) {
-                    (true, true) => {
-                        // Conflict on immutable files is extremely rare (they are hash-named or timestamped).
-                        // If they both changed, compare timestamps to determine which is newer and sync that one.
-                        let remote_lm = rem.last_modified.as_ref()
-                            .and_then(|s| parse_last_modified(s))
-                            .unwrap_or(Utc::now());
-                        if loc.modified >= remote_lm {
-                            actions.push(SyncAction::Upload {
-                                relative_path: path.clone(),
-                            });
-                        } else {
-                            actions.push(SyncAction::Download {
-                                relative_path: path.clone(),
-                                remote_entry: (*rem).clone(),
-                            });
-                        }
-                    }
-                    (true, false) => {
-                        actions.push(SyncAction::Upload {
-                            relative_path: path.clone(),
-                        });
-                    }
-                    (false, true) => {
-                        actions.push(SyncAction::Download {
-                            relative_path: path.clone(),
-                            remote_entry: (*rem).clone(),
-                        });
-                    }
-                    (false, false) => {}
+                // Since attachments and history snapshots are immutable, they do not change.
+                // If they exist on both sides, we only need to sync if there is a real corruption/size mismatch.
+                let remote_size = rem.size.unwrap_or(0);
+                let etag_matches = rem.etag.as_ref()
+                    .zip(prev.etag.as_ref())
+                    .map(|(r, p)| r == p)
+                    .unwrap_or(false);
+                
+                // If ETag matches, or if sizes match, or if remote size is missing (0) -> they are identical
+                if etag_matches || loc.size == remote_size || remote_size == 0 {
+                    // Fully synced, do nothing
+                } else {
+                    // Size mismatch with non-zero remote size: resolve by making local canonical (Upload)
+                    actions.push(SyncAction::Upload {
+                        relative_path: path.clone(),
+                    });
                 }
             }
             (Some(loc), Some(rem), None) => {
                 // First-time sync, exists on both but no previous state tracking.
-                // Verify sizes. If mismatch, sync whichever has the newer modification time.
                 let remote_size = rem.size.unwrap_or(0);
-                if loc.size != remote_size {
-                    let remote_lm = rem.last_modified.as_ref()
-                        .and_then(|s| parse_last_modified(s))
-                        .unwrap_or(Utc::now());
-                    if loc.modified >= remote_lm {
-                        actions.push(SyncAction::Upload {
-                            relative_path: path.clone(),
-                        });
-                    } else {
-                        actions.push(SyncAction::Download {
-                            relative_path: path.clone(),
-                            remote_entry: (*rem).clone(),
-                        });
-                    }
+                
+                // If sizes match, or if remote size is missing (0) -> they are identical
+                if loc.size == remote_size || remote_size == 0 {
+                    // Fully synced, do nothing
+                } else {
+                    // Size mismatch: resolve by making local canonical (Upload)
+                    actions.push(SyncAction::Upload {
+                        relative_path: path.clone(),
+                    });
                 }
             }
 

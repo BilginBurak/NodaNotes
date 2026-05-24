@@ -770,6 +770,11 @@ async fn scan_local_raw_files<P: AsRef<Path>>(vault_path: P) -> Result<Vec<Local
         if dir.exists() {
             for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
                 if entry.file_type().is_file() {
+                    if let Some(file_name) = entry.file_name().to_str() {
+                        if file_name.starts_with('.') {
+                            continue;
+                        }
+                    }
                     if let Ok(rel_path) = entry.path().strip_prefix(vault_ref) {
                         let path_str = rel_path.to_string_lossy().to_string();
                         if let Ok(meta) = entry.metadata() {
