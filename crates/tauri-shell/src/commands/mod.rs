@@ -7,6 +7,7 @@ pub mod trash_commands;
 pub mod attachment_commands;
 pub mod settings_commands;
 pub mod folder_commands;
+pub mod maintenance_commands;
 
 pub use vault_commands::*;
 pub use note_commands::*;
@@ -17,3 +18,4 @@ pub use trash_commands::*;
 pub use attachment_commands::*;
 pub use settings_commands::*;
 pub use folder_commands::*;
+pub use maintenance_commands::*;

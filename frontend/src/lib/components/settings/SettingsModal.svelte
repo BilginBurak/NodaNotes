@@ -1,15 +1,24 @@
 <script lang="ts">
   import { onMount, createEventDispatcher } from 'svelte';
-  import { fade, scale } from 'svelte/transition';
+  import { fade, scale, slide } from 'svelte/transition';
   import { appConfig, saveSettings, loadSettings, loadingSettings, settingsError } from '../../stores/settings';
-  import { validateSyncConfig } from '../../services/ipc';
+  import {
+    validateSyncConfig,
+    rebuildDatabaseCache,
+    vacuumDatabaseCache,
+    getOrphanedAttachments,
+    deleteOrphanedAttachments,
+    clearSyncQueue,
+    clearSyncCache
+  } from '../../services/ipc';
+  import type { OrphanedAttachment } from '../../services/ipc';
   import type { AppConfig } from '../../types';
 
   const dispatch = createEventDispatcher();
 
   export let isOpen = false;
 
-  export let activeTab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' = 'appearance';
+  export let activeTab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' = 'appearance';
 
   // Config copy for editing
   let localConfig: AppConfig = {
@@ -23,6 +32,117 @@
   let webdavPassword = '';
   let validationStatus: 'idle' | 'testing' | 'success' | 'error' = 'idle';
   let validationErrorMessage = '';
+
+  // Maintenance state
+  let loadingAction: 'none' | 'rebuild_db' | 'vacuum_db' | 'scan_attachments' | 'delete_attachments' | 'reset_queue' | 'clear_cache' = 'none';
+  let orphanedAttachments: OrphanedAttachment[] = [];
+  let selectedAttachments: string[] = [];
+  let scannedAttachments = false;
+  let maintenanceSuccessMsg = '';
+  let maintenanceErrorMsg = '';
+
+  function clearMaintenanceMessages() {
+    maintenanceSuccessMsg = '';
+    maintenanceErrorMsg = '';
+  }
+
+  async function handleRebuildDatabase() {
+    if (!confirm('Tüm veritabanı indeksleri sıfırdan yeniden oluşturulacaktır. Notlarınız silinmez, sadece arama ve indeksleme verileri taranır. Devam etmek istiyor musunuz?')) return;
+    clearMaintenanceMessages();
+    loadingAction = 'rebuild_db';
+    try {
+      await rebuildDatabaseCache();
+      maintenanceSuccessMsg = 'Veritabanı indeksi başarıyla yeniden oluşturuldu!';
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Veritabanı derleme başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleVacuumDatabase() {
+    clearMaintenanceMessages();
+    loadingAction = 'vacuum_db';
+    try {
+      await vacuumDatabaseCache();
+      maintenanceSuccessMsg = 'Veritabanı başarıyla sıkıştırıldı ve optimize edildi!';
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Sıkıştırma işlemi başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleScanAttachments() {
+    clearMaintenanceMessages();
+    loadingAction = 'scan_attachments';
+    try {
+      orphanedAttachments = await getOrphanedAttachments();
+      selectedAttachments = orphanedAttachments.map(a => a.filename);
+      scannedAttachments = true;
+      if (orphanedAttachments.length === 0) {
+        maintenanceSuccessMsg = 'Harika! Başıboş veya yetim kalmış hiçbir ek dosya bulunamadı.';
+      }
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Ek taraması başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleDeleteSelectedAttachments() {
+    if (selectedAttachments.length === 0) return;
+    if (!confirm(`Seçilen ${selectedAttachments.length} adet bağımsız ek dosyayı kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`)) return;
+    
+    clearMaintenanceMessages();
+    loadingAction = 'delete_attachments';
+    try {
+      await deleteOrphanedAttachments(selectedAttachments);
+      maintenanceSuccessMsg = `${selectedAttachments.length} adet ek dosya başarıyla silindi ve depolama alanı geri kazanıldı!`;
+      orphanedAttachments = orphanedAttachments.filter(a => !selectedAttachments.includes(a.filename));
+      selectedAttachments = [];
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Silme işlemi başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleResetSyncQueue() {
+    if (!confirm('Senkronizasyon kuyruğu tamamen temizlenecektir. Bekleyen dosya transferleri iptal edilir ve sıfırlanır. Devam etmek istiyor musunuz?')) return;
+    clearMaintenanceMessages();
+    loadingAction = 'reset_queue';
+    try {
+      await clearSyncQueue();
+      maintenanceSuccessMsg = 'Senkronizasyon kuyruğu başarıyla sıfırlandı!';
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Kuyruk sıfırlama başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleClearSyncCache() {
+    if (!confirm('Remote tracking cache sıfırlanacaktır. Bir sonraki eşitlemede tam karşılaştırma (Full Reconciliation) yapılacaktır. Devam etmek istiyor musunuz?')) return;
+    clearMaintenanceMessages();
+    loadingAction = 'clear_cache';
+    try {
+      await clearSyncCache();
+      maintenanceSuccessMsg = 'Senkronizasyon cache verisi başarıyla temizlendi!';
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Eşitleme önbelleği temizleme başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  function formatBytes(bytes: number) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
 
   // Mock Vaults list (visually premium dummy)
   const mockVaults = [
@@ -136,6 +256,14 @@
             <line x1="5" y1="4" x2="11" y2="4"/>
           </svg>
           Vaults
+        </button>
+
+        <button class="nav-tab nav-tab-maintenance" class:active={activeTab === 'maintenance'} on:click={() => { activeTab = 'maintenance'; clearMaintenanceMessages(); }}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0-1.4l-1.4-1.4a1 1 0 0 0-1.4 0L3.7 10.7a1 1 0 0 0 0 1.4l1.4 1.4a1 1 0 0 0 1.4 0l7.2-7.2z"/>
+            <path d="M14.7 6.3 10.2 10.8m0 0a2 2 0 1 0 2.8 2.8m-2.8-2.8a2 2 0 1 1 2.8 2.8"/>
+          </svg>
+          Maintenance
         </button>
       </nav>
 
@@ -416,6 +544,160 @@
                 </div>
               </div>
             {/each}
+          </div>
+        </div>
+
+      {:else if activeTab === 'maintenance'}
+        <div class="content-header">
+          <h2>Maintenance & Self-Healing</h2>
+          <p>Troubleshoot, optimize, and reclaim disk space in your note vault.</p>
+        </div>
+
+        {#if maintenanceSuccessMsg}
+          <div class="maintenance-alert alert-success" transition:fade>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M13.25 4.75L6.75 11.25L2.75 7.25" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>{maintenanceSuccessMsg}</span>
+            <button class="close-alert" on:click={() => maintenanceSuccessMsg = ''}>&times;</button>
+          </div>
+        {/if}
+
+        {#if maintenanceErrorMsg}
+          <div class="maintenance-alert alert-danger" transition:fade>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="8" cy="8" r="6.25"/>
+              <line x1="8" y1="5" x2="8" y2="9" stroke-linecap="round"/>
+              <circle cx="8" cy="11" r="0.75" fill="currentColor"/>
+            </svg>
+            <span>{maintenanceErrorMsg}</span>
+            <button class="close-alert" on:click={() => maintenanceErrorMsg = ''}>&times;</button>
+          </div>
+        {/if}
+
+        <div class="settings-section">
+          <h3>Database Administration</h3>
+          <p class="section-desc">Maintain search performance and clean index metadata.</p>
+          
+          <div class="maintenance-card">
+            <div class="card-info">
+              <span class="action-title">Rebuild Database Cache</span>
+              <span class="action-desc">Fully re-scans vault note files and rebuilds the SQLite search and tag index from scratch. Useful if some notes are missing from list or search.</span>
+            </div>
+            <button class="btn btn-warning" on:click={handleRebuildDatabase} disabled={loadingAction !== 'none'}>
+              {#if loadingAction === 'rebuild_db'}
+                <div class="spinner-sm"></div>Processing...
+              {:else}
+                Rebuild Cache
+              {/if}
+            </button>
+          </div>
+
+          <div class="maintenance-card">
+            <div class="card-info">
+              <span class="action-title">Vacuum Database</span>
+              <span class="action-desc">Defragments the database file, cleans unused cache spaces, and optimizes internal query performance. Safe to run anytime.</span>
+            </div>
+            <button class="btn btn-secondary" on:click={handleVacuumDatabase} disabled={loadingAction !== 'none'}>
+              {#if loadingAction === 'vacuum_db'}
+                <div class="spinner-sm"></div>Processing...
+              {:else}
+                Vacuum DB
+              {/if}
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Attachments Diagnostics</h3>
+          <p class="section-desc">Reclaim local storage space by purging unreferenced media files.</p>
+          
+          <div class="maintenance-card">
+            <div class="card-info">
+              <span class="action-title">Scan Orphaned Attachments</span>
+              <span class="action-desc">Scans `.noda/attachments/` to identify images and files that are no longer linked or used inside any active note.</span>
+            </div>
+            <button class="btn btn-primary" on:click={handleScanAttachments} disabled={loadingAction !== 'none'}>
+              {#if loadingAction === 'scan_attachments'}
+                <div class="spinner-sm"></div>Scanning...
+              {:else}
+                Scan Files
+              {/if}
+            </button>
+          </div>
+
+          {#if scannedAttachments}
+            <div class="orphaned-box" transition:slide>
+              <div class="box-header">
+                <span class="box-title">Found {orphanedAttachments.length} Orphaned Files</span>
+                {#if orphanedAttachments.length > 0}
+                  <span class="box-total-size">Total: {formatBytes(orphanedAttachments.reduce((sum, a) => sum + a.size_bytes, 0))}</span>
+                {/if}
+              </div>
+
+              {#if orphanedAttachments.length === 0}
+                <div class="empty-orphaned">
+                  <span class="success-indicator">🎉</span>
+                  <span class="empty-text">Your vault is fully optimized! No orphaned attachments found.</span>
+                </div>
+              {:else}
+                <div class="orphaned-list scrollbar-thin">
+                  {#each orphanedAttachments as att}
+                    <label class="orphaned-item">
+                      <input type="checkbox" bind:group={selectedAttachments} value={att.filename} />
+                      <div class="item-details">
+                        <span class="item-name">{att.filename}</span>
+                        <span class="item-size">{formatBytes(att.size_bytes)}</span>
+                      </div>
+                    </label>
+                  {/each}
+                </div>
+                
+                <div class="orphaned-actions">
+                  <span class="selected-count">{selectedAttachments.length} files selected</span>
+                  <button class="btn btn-danger btn-sm" on:click={handleDeleteSelectedAttachments} disabled={selectedAttachments.length === 0 || loadingAction !== 'none'}>
+                    {#if loadingAction === 'delete_attachments'}
+                      <div class="spinner-sm"></div>Deleting...
+                    {:else}
+                      Permanently Delete Selected
+                    {/if}
+                  </button>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+
+        <div class="settings-section">
+          <h3>Synchronization Self-Healing</h3>
+          <p class="section-desc">Troubleshoot sync conflicts, queue blocks, or stale connections.</p>
+          
+          <div class="maintenance-card">
+            <div class="card-info">
+              <span class="action-title">Reset Sync Queue</span>
+              <span class="action-desc">Purges the persistent transaction sync queue. Safe fallback if you have a failing "poison-pill" action blocking synchronization loops.</span>
+            </div>
+            <button class="btn btn-danger" on:click={handleResetSyncQueue} disabled={loadingAction !== 'none'}>
+              {#if loadingAction === 'reset_queue'}
+                <div class="spinner-sm"></div>Resetting...
+              {:else}
+                Reset Queue
+              {/if}
+            </button>
+          </div>
+
+          <div class="maintenance-card">
+            <div class="card-info">
+              <span class="action-title">Clear Remote Tracking Cache</span>
+              <span class="action-desc">Purges `remote_state.json`. Clears out-of-sync local metadata state caches. On the next sync cycle, a complete comparative comparison with WebDAV is run.</span>
+            </div>
+            <button class="btn btn-warning" on:click={handleClearSyncCache} disabled={loadingAction !== 'none'}>
+              {#if loadingAction === 'clear_cache'}
+                <div class="spinner-sm"></div>Clearing...
+              {:else}
+                Clear Cache
+              {/if}
+            </button>
           </div>
         </div>
       {/if}
@@ -1037,5 +1319,241 @@
     border-top-color: currentColor;
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
+  }
+
+  /* Maintenance Page Custom Styles */
+  .nav-tab-maintenance svg {
+    color: #fbbf24;
+  }
+  
+  .maintenance-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    background-color: var(--bg-surface-elevated, #1c1c1e);
+    border: 1px solid var(--border-normal, #2c2c2e);
+    border-radius: var(--radius-md, 8px);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    transition: border-color 0.2s, background-color 0.2s;
+  }
+  
+  .maintenance-card:hover {
+    border-color: var(--border-focus, #3a3a3c);
+    background-color: var(--bg-surface-hover, #242426);
+  }
+  
+  .card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+  }
+  
+  .action-title {
+    font-weight: 500;
+    font-size: 13.5px;
+    color: var(--text-primary);
+  }
+  
+  .action-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  
+  .section-desc {
+    font-size: 12.5px;
+    color: var(--text-tertiary, #8e8e93);
+    margin-top: -6px;
+    margin-bottom: 16px;
+  }
+  
+  .btn-warning {
+    background-color: rgba(245, 158, 11, 0.12) !important;
+    color: #fbbf24 !important;
+    border: 1.2px solid rgba(245, 158, 11, 0.35) !important;
+  }
+  
+  .btn-warning:hover:not(:disabled) {
+    background-color: rgba(245, 158, 11, 0.22) !important;
+    border-color: rgba(245, 158, 11, 0.55) !important;
+  }
+  
+  .btn-danger {
+    background-color: rgba(239, 68, 68, 0.12) !important;
+    color: #f87171 !important;
+    border: 1.2px solid rgba(239, 68, 68, 0.35) !important;
+  }
+  
+  .btn-danger:hover:not(:disabled) {
+    background-color: rgba(239, 68, 68, 0.22) !important;
+    border-color: rgba(239, 68, 68, 0.55) !important;
+  }
+  
+  .maintenance-alert {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: var(--radius-md, 8px);
+    margin-bottom: 20px;
+    font-size: 12.5px;
+    position: relative;
+  }
+  
+  .maintenance-alert svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  
+  .alert-success {
+    background-color: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #34d399;
+  }
+  
+  .alert-danger {
+    background-color: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #f87171;
+  }
+  
+  .close-alert {
+    background: none;
+    border: none;
+    color: currentColor;
+    font-size: 18px;
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }
+  
+  .close-alert:hover {
+    opacity: 1;
+  }
+  
+  .orphaned-box {
+    background-color: var(--bg-surface-elevated, #1c1c1e);
+    border: 1px solid var(--border-normal, #2c2c2e);
+    border-radius: var(--radius-md, 8px);
+    margin-top: -4px;
+    margin-bottom: 20px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .box-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-normal, #2c2c2e);
+    padding-bottom: 10px;
+  }
+  
+  .box-title {
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+  
+  .box-total-size {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  
+  .empty-orphaned {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 24px;
+    text-align: center;
+  }
+  
+  .success-indicator {
+    font-size: 28px;
+  }
+  
+  .empty-text {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  
+  .orphaned-list {
+    max-height: 180px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 4px;
+  }
+  
+  .orphaned-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background-color: var(--bg-main, #141415);
+    border: 1.2px solid var(--border-normal, #2c2c2e);
+    border-radius: var(--radius-sm, 6px);
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+  }
+  
+  .orphaned-item:hover {
+    background-color: var(--bg-control-hover, #1e1e1f);
+    border-color: var(--border-focus, #3a3a3c);
+  }
+  
+  .orphaned-item input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  
+  .item-details {
+    display: flex;
+    justify-content: space-between;
+    flex: 1;
+    font-size: 12px;
+  }
+  
+  .item-name {
+    color: var(--text-primary);
+    word-break: break-all;
+    padding-right: 12px;
+  }
+  
+  .item-size {
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  
+  .orphaned-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--border-normal, #2c2c2e);
+    padding-top: 12px;
+    margin-top: 4px;
+  }
+  
+  .selected-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  
+  .spinner-sm {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
   }
 </style>

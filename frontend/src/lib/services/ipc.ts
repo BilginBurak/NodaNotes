@@ -131,6 +131,18 @@ export const deleteAttachment = (name: string)       => call<void>('delete_attac
 export const getSettings      = ()                   => call<AppConfig>('get_settings');
 export const saveSettings     = (config: AppConfig)  => call<void>('save_settings',       { config });
 
+// ── Maintenance Commands ────────────────────────────────────
+export interface OrphanedAttachment {
+  filename: string;
+  size_bytes: number;
+}
+export const rebuildDatabaseCache      = () => call<void>('rebuild_database_cache');
+export const vacuumDatabaseCache       = () => call<void>('vacuum_database_cache');
+export const getOrphanedAttachments    = () => call<OrphanedAttachment[]>('get_orphaned_attachments');
+export const deleteOrphanedAttachments  = (filenames: string[]) => call<void>('delete_orphaned_attachments', { filenames });
+export const clearSyncQueue            = () => call<void>('clear_sync_queue');
+export const clearSyncCache            = () => call<void>('clear_sync_cache');
+
 // ── Folder Commands ─────────────────────────────────────────
 export const listFolders  = () => call<string[]>('list_folders');
 export const createFolder = (relPath: string) => call<void>('create_folder', { relPath });

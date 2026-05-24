@@ -13,3 +13,4 @@ pub mod trash;
 pub mod settings;
 pub mod vault;
 pub mod watcher;
+pub mod diagnostics;
