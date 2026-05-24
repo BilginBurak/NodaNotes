@@ -47,6 +47,13 @@
     }
   }
 
+  function handleRowDblClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (node.type === 'folder') {
+      expandedFolders[node.relPath] = !isOpen;
+    }
+  }
+
   function toggleExpand(e: MouseEvent) {
     e.stopPropagation();
     expandedFolders[node.relPath] = !isOpen;
@@ -191,13 +198,14 @@
   class="tree-item-row"
   class:selected={isSelected}
   class:drag-over={dragOverActive}
-  style="padding-left: {depth * 12 + 8}px"
+  style="padding-left: {depth * 12 + 12}px"
   draggable="true"
   ondragstart={handleDragStart}
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}
   onclick={handleRowClick}
+  ondblclick={handleRowDblClick}
   oncontextmenu={(e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -206,6 +214,9 @@
   role="treeitem"
   aria-selected={isSelected}
 >
+  {#each Array(depth) as _, i}
+    <span class="indent-guide" style="left: {i * 12 + 22}px;"></span>
+  {/each}
   {#if node.type === 'folder'}
     <!-- Folder Row -->
     <button 
@@ -278,18 +289,19 @@
 
 <style>
   .tree-item-row {
+    position: relative;
     display: flex;
     align-items: center;
-    padding: 4px 6px;
-    margin: 1px 0;
-    border-radius: var(--radius-md);
+    padding: 5px 12px;
+    margin: 0;
+    border-radius: 0;
     color: var(--text-secondary);
     font-size: 13px;
     font-weight: 500;
     user-select: none;
     cursor: pointer;
     transition: all 0.12s ease;
-    border: 2px dashed transparent;
+    border-left: 3px solid transparent;
     -webkit-user-drag: element;
   }
 
@@ -299,13 +311,27 @@
   }
 
   .tree-item-row.selected {
-    color: var(--accent);
-    background-color: var(--accent-muted);
+    color: var(--text-primary);
+    background-color: var(--bg-selected, rgba(255, 255, 255, 0.08));
+    border-left-color: var(--accent);
   }
 
   .tree-item-row.drag-over {
-    border-color: var(--accent);
     background-color: var(--accent-muted);
+  }
+
+  .indent-guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: transparent;
+    transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+  }
+
+  :global(.folders-section:hover) .indent-guide {
+    background-color: rgba(255, 255, 255, 0.08);
   }
 
   .chevron-btn {

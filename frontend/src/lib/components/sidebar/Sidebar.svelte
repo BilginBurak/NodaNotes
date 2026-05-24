@@ -32,6 +32,7 @@
   const notes = $derived($notesList);
   const activeFld = $derived($selectedFolder);
   const conflicts = $derived($syncConflicts);
+  const activeNt = $derived($activeNote);
 
   let expandedFolders = $state<Record<string, boolean>>({});
 
@@ -211,6 +212,18 @@
     }
   });
 
+  $effect(() => {
+    const active = activeNt;
+    if (active && active.file_path) {
+      const parts = active.file_path.split('/');
+      let accumulated = '';
+      for (let i = 0; i < parts.length - 1; i++) {
+        accumulated = accumulated ? `${accumulated}/${parts[i]}` : parts[i];
+        expandedFolders[accumulated] = true;
+      }
+    }
+  });
+
   onMount(() => {
     loadTrash();
     loadConflicts();
@@ -259,7 +272,7 @@
       ondrop={handleRootDrop}
     >
       <div class="section-header-row">
-        <span class="section-label" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>Folders</span>
+        <span class="section-label" oncontextmenu={(e) => handleContextMenu(e, 'root', '')}>{info?.name || 'Folders'}</span>
         <button 
           class="add-folder-btn" 
           onclick={() => createFolderAndStartRename(activeFld)} 
@@ -539,14 +552,14 @@
   .folder-tree {
     flex: 1;
     overflow-y: auto;
-    padding-right: 4px;
-    margin-top: 4px;
+    margin: 4px -8px 0 -8px;
   }
 
   .empty-tree-state {
     font-size: 11px;
     color: var(--text-disabled);
     padding: 12px 8px;
+    margin: 8px;
     text-align: center;
     line-height: 1.4;
     border: 1px dashed var(--border-subtle);
