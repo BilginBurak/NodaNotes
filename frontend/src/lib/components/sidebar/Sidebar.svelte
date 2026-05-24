@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { vaultInfo } from '../../stores/vault';
-  import { trashList, loadTrash } from '../../stores/editor';
+  import { trashList, loadTrash, recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
   import { syncConflicts, loadConflicts } from '../../stores/sync';
   import { 
     notesList, 

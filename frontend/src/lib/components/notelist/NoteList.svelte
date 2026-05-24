@@ -2,6 +2,7 @@
   import { notesList, activeNote, selectedFolder, draggedItem, moveNote, activeViewMode, selectTrashNote, selectConflictNote } from '../../stores/notes';
   import { trashList } from '../../stores/editor';
   import { syncConflicts } from '../../stores/sync';
+  import { vaultInfo } from '../../stores/vault';
   import NoteListItem from './NoteListItem.svelte';
   import VirtualList from '../common/VirtualList.svelte';
   import { openContextMenu } from '../../stores/contextMenu';
@@ -15,11 +16,13 @@
   const viewMode = $derived($activeViewMode);
   const trashItems = $derived($trashList);
   const conflictItems = $derived($syncConflicts);
+  const info = $derived($vaultInfo);
 
   // Panel title based on view mode
   const panelTitle = $derived(
     viewMode === 'trash' ? 'Deleted Notes' :
     viewMode === 'conflicts' ? 'Sync Conflicts' :
+    currentFolder === '' ? (info?.name ?? 'Vault Root') :
     currentFolder ? currentFolder.split('/').pop() ?? 'Folder' : 'All Notes'
   );
 

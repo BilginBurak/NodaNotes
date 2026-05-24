@@ -9,7 +9,8 @@
     renamingFolder,
     renameFolder,
     renamingNote,
-    renameNoteById
+    renameNoteById,
+    activeViewMode
   } from '../../stores/notes';
   import { openContextMenu } from '../../stores/contextMenu';
   import type { TreeNode } from '../../types';
@@ -36,8 +37,13 @@
     e.stopPropagation();
     if (node.type === 'folder') {
       selectedFolder.set(node.relPath);
+      activeViewMode.set('normal');
     } else if (node.type === 'note' && node.id) {
       selectNote(node.id);
+      activeViewMode.set('normal');
+      const lastSlash = node.relPath.lastIndexOf('/');
+      const parentFolder = lastSlash !== -1 ? node.relPath.substring(0, lastSlash) : '';
+      selectedFolder.set(parentFolder);
     }
   }
 

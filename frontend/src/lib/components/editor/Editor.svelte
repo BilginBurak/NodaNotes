@@ -29,6 +29,26 @@
   let currentDiff: import('../../types').SnapshotDiffDto | null = null;
   let isDiffOpen = false;
 
+  let remoteNote: import('../../types').NoteDto | null = null;
+  let loadingRemote = false;
+
+  $: if (isConflict) {
+    loadRemoteConflictNote(isConflict.archivedPath);
+  } else {
+    remoteNote = null;
+  }
+
+  async function loadRemoteConflictNote(archivedPath: string) {
+    loadingRemote = true;
+    try {
+      remoteNote = await ipc.getConflictNote(archivedPath);
+    } catch (e) {
+      console.error('Failed to load remote conflict note:', e);
+    } finally {
+      loadingRemote = false;
+    }
+  }
+
   $: currentNote = $activeNote;
   $: viewMode    = $editorViewMode;
   $: displaySnapshots = $showSnapshots;
@@ -351,82 +371,151 @@
         </div>
 
         <!-- Panel alanı -->
-        <div class="editor-panels">
-          <div
-            class="panel-editor"
-            class:panel-hidden={viewMode === 'preview'}
-            use:editorAction
-            aria-hidden={viewMode === 'preview'}
-          ></div>
-
-          <div
-            class="panel-preview"
-            class:panel-hidden={viewMode !== 'preview'}
-            aria-hidden={viewMode !== 'preview'}
-          >
-            <Preview content={currentNote.body} />
-          </div>
-        </div>
-
-        <!-- Tag management panel -->
-        <div class="tag-manager">
-          <div class="tag-label">
-            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="tag-icon">
-              <path d="M11 2.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z M2.5 7.5L8 2l4.5 4.5L7 12H2.5V7.5z"/>
-            </svg>
-            <span>Tags:</span>
-          </div>
-
-          <div class="tags-container">
-            {#each currentNoteTags as tag}
-              <span class="tag-pill">
-                #{tag}
-                <button class="remove-tag-btn" onclick={() => removeTag(tag)} aria-label="Remove {tag}">
-                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                    <line x1="4" y1="4" x2="10" y2="10"/>
-                    <line x1="10" y1="4" x2="4" y2="10"/>
-                  </svg>
-                </button>
-              </span>
-            {/each}
-
-            <div class="tag-input-wrapper">
-              <input
-                type="text"
-                class="tag-input"
-                placeholder={currentNoteTags.length === 0 ? "Add tags..." : "Add tag..."}
-                bind:value={tagInput}
-                onkeydown={handleTagInputKeyDown}
-                onfocus={() => { showSuggestions = true; }}
-                onblur={() => {
-                  setTimeout(() => { showSuggestions = false; }, 200);
-                }}
-              />
-              
-              {#if showSuggestions && suggestions.length > 0}
-                <div class="tag-suggestions" bind:this={suggestionEl}>
-                  {#each suggestions as sug, i}
-                    <button
-                      class="suggestion-item"
-                      class:active={i === activeSuggestionIndex}
-                      onclick={() => addTag(sug)}
-                    >
-                      #{sug}
+        {#if isConflict}
+          <div class="conflict-compare-container">
+            {#if loadingRemote}
+              <div class="compare-loading">
+                <div class="spinner"></div>
+                <span>Loading remote version...</span>
+              </div>
+            {:else if remoteNote && currentNote}
+              <div class="compare-split">
+                <!-- Left Pane: Local Version -->
+                <div class="compare-pane pane-local">
+                  <div class="pane-header">
+                    <span class="pane-badge badge-local">Local Version</span>
+                    <span class="pane-date">Last modified: {formatDate(currentNote.updated_at)}</span>
+                  </div>
+                  <div class="pane-content scrollbar-thin">
+                    <h1 class="pane-title">{currentNote.title || 'Untitled'}</h1>
+                    <div class="pane-tags">
+                      {#each currentNoteTags as tag}
+                        <span class="tag-pill">#{tag}</span>
+                      {/each}
+                    </div>
+                    <div class="pane-body">
+                      <Preview content={currentNote.body} />
+                    </div>
+                  </div>
+                  <div class="pane-footer">
+                    <button class="btn-keep btn-keep-local" onclick={async () => { await resolveKeepLocal(isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); }}>
+                      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:12px; height:12px; margin-right:4px;">
+                        <polyline points="1.5,6 4.5,9 10.5,3"/>
+                      </svg>
+                      Keep Local Version
                     </button>
-                  {/each}
+                  </div>
                 </div>
-              {/if}
+
+                <!-- Right Pane: Remote Version -->
+                <div class="compare-pane pane-remote">
+                  <div class="pane-header">
+                    <span class="pane-badge badge-remote">Remote Version</span>
+                    <span class="pane-date">Last modified: {formatDate(remoteNote.updated_at)}</span>
+                  </div>
+                  <div class="pane-content scrollbar-thin">
+                    <h1 class="pane-title">{remoteNote.title || 'Untitled'}</h1>
+                    <div class="pane-tags">
+                      {#each remoteNote.tags || [] as tag}
+                        <span class="tag-pill">#{tag}</span>
+                      {/each}
+                    </div>
+                    <div class="pane-body">
+                      <Preview content={remoteNote.body} />
+                    </div>
+                  </div>
+                  <div class="pane-footer">
+                    <button class="btn-keep btn-keep-remote" onclick={async () => { await resolveKeepRemote(isConflict.noteId, isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); }}>
+                      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:12px; height:12px; margin-right:4px;">
+                        <polyline points="1.5,6 4.5,9 10.5,3"/>
+                      </svg>
+                      Use Remote Version
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {:else}
+          <div class="editor-panels">
+            <div
+              class="panel-editor"
+              class:panel-hidden={viewMode === 'preview'}
+              use:editorAction
+              aria-hidden={viewMode === 'preview'}
+            ></div>
+
+            <div
+              class="panel-preview"
+              class:panel-hidden={viewMode !== 'preview'}
+              aria-hidden={viewMode !== 'preview'}
+            >
+              <Preview content={currentNote.body} />
             </div>
           </div>
-        </div>
+        {/if}
 
-        <!-- Status bar -->
-        <StatusBar
-          {wordCount}
-          {charCount}
-          {isDirty}
-          {savedAt}
-        />
+        <!-- Tag management panel -->
+        {#if !isConflict}
+          <div class="tag-manager">
+            <div class="tag-label">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="tag-icon">
+                <path d="M11 2.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z M2.5 7.5L8 2l4.5 4.5L7 12H2.5V7.5z"/>
+              </svg>
+              <span>Tags:</span>
+            </div>
+
+            <div class="tags-container">
+              {#each currentNoteTags as tag}
+                <span class="tag-pill">
+                  #{tag}
+                  <button class="remove-tag-btn" onclick={() => removeTag(tag)} aria-label="Remove {tag}">
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                      <line x1="4" y1="4" x2="10" y2="10"/>
+                      <line x1="10" y1="4" x2="4" y2="10"/>
+                    </svg>
+                  </button>
+                </span>
+              {/each}
+
+              <div class="tag-input-wrapper">
+                <input
+                  type="text"
+                  class="tag-input"
+                  placeholder={currentNoteTags.length === 0 ? "Add tags..." : "Add tag..."}
+                  bind:value={tagInput}
+                  onkeydown={handleTagInputKeyDown}
+                  onfocus={() => { showSuggestions = true; }}
+                  onblur={() => {
+                    setTimeout(() => { showSuggestions = false; }, 200);
+                  }}
+                />
+                
+                {#if showSuggestions && suggestions.length > 0}
+                  <div class="tag-suggestions" bind:this={suggestionEl}>
+                    {#each suggestions as sug, i}
+                      <button
+                        class="suggestion-item"
+                        class:active={i === activeSuggestionIndex}
+                        onclick={() => addTag(sug)}
+                      >
+                        #{sug}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          </div>
+
+          <!-- Status bar -->
+          <StatusBar
+            {wordCount}
+            {charCount}
+            {isDirty}
+            {savedAt}
+          />
+        {/if}
       </div>
 
       <!-- Geçmiş paneli -->
@@ -1102,5 +1191,167 @@
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Conflict Comparison split pane styles */
+  .conflict-compare-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--bg-main, #141415);
+  }
+
+  .compare-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex: 1;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  .compare-split {
+    display: flex;
+    gap: 16px;
+    flex: 1;
+    height: 100%;
+    padding: 16px;
+    overflow: hidden;
+  }
+
+  .compare-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--bg-surface, #1e1e1f);
+    border: 1px solid var(--border-normal, #2c2c2e);
+    border-radius: var(--radius-md, 8px);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .pane-local {
+    border-color: rgba(0, 122, 255, 0.25);
+  }
+  .pane-local:hover {
+    border-color: rgba(0, 122, 255, 0.5);
+    box-shadow: 0 0 12px rgba(0, 122, 255, 0.15);
+  }
+
+  .pane-remote {
+    border-color: rgba(245, 158, 11, 0.25);
+  }
+  .pane-remote:hover {
+    border-color: rgba(245, 158, 11, 0.5);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+  }
+
+  .pane-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-subtle, #2c2c2e);
+    background-color: var(--bg-elevated, #181819);
+  }
+
+  .pane-badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  .badge-local {
+    background-color: rgba(0, 122, 255, 0.12);
+    color: #38bdf8;
+  }
+
+  .badge-remote {
+    background-color: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+  }
+
+  .pane-date {
+    font-size: 11px;
+    color: var(--text-tertiary, #8e8e93);
+  }
+
+  .pane-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .pane-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  .pane-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .pane-body {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    padding-top: 8px;
+  }
+
+  .pane-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-subtle, #2c2c2e);
+    background-color: var(--bg-elevated, #181819);
+  }
+
+  .btn-keep {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    padding: 8px 16px;
+    border-radius: var(--radius-sm, 6px);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-keep-local {
+    background-color: var(--accent, #007aff);
+    color: #ffffff;
+    border-color: var(--accent);
+  }
+  .btn-keep-local:hover {
+    background-color: var(--accent-hover, #0062cc);
+    border-color: var(--accent-hover);
+  }
+
+  .btn-keep-remote {
+    background-color: #fbbf24;
+    color: #141415;
+    border-color: #fbbf24;
+  }
+  .btn-keep-remote:hover {
+    background-color: #f59e0b;
+    border-color: #f59e0b;
+    color: #141415;
   }
 </style>
