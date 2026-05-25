@@ -86,7 +86,7 @@ pub async fn restore_snapshot(
         })?;
 
     // 2. Core restore (reads file content and frontmatter)
-    let mut restored_note = core_restore(&vault_path, &target_snap).await
+    let restored_note_from_snap = core_restore(&vault_path, &target_snap).await
         .map_err(AppError::from)?;
 
     // 3. Take a snapshot of the current state before replacing it (auto-save history)
@@ -95,31 +95,46 @@ pub async fn restore_snapshot(
         queries::get_note(&conn, parsed_note_id).map_err(AppError::from)?
     };
     
-    // Preserve the current relative file path
-    let relative_path = match &current_note {
-        Some(ref n) => {
-            restored_note.file_path = n.file_path.clone();
-            n.file_path.clone()
-        }
-        None => format!("{}.md", restored_note.id.0.to_string()),
-    };
-
     if let Some(ref current_note) = current_note {
         let _ = core_snapshot(&vault_path, current_note).await;
     }
 
+    // Merge past content with current metadata and set updated_at to Utc::now() to prevent sync issues
+    let merged_note = match &current_note {
+        Some(current) => noda_core::models::note::Note {
+            id: current.id,
+            parent_id: current.parent_id.clone(),
+            title: restored_note_from_snap.title,
+            body: restored_note_from_snap.body,
+            color: current.color.clone(),
+            pinned: current.pinned,
+            tags: current.tags.clone(),
+            status: current.status.clone(),
+            created_at: current.created_at,
+            updated_at: Utc::now(),
+            file_path: current.file_path.clone(),
+        },
+        None => {
+            let mut note = restored_note_from_snap;
+            note.updated_at = Utc::now();
+            note
+        }
+    };
+
+    let relative_path = merged_note.file_path.clone();
+
     // 4. Overwrite note on disk
-    service.write_note(&restored_note).await
+    service.write_note(&merged_note).await
         .map_err(AppError::from)?;
 
     // 5. Update SQLite database
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &restored_note, &relative_path, "dummy_hash")
+        queries::upsert_note(&conn, &merged_note, &relative_path, "dummy_hash")
             .map_err(AppError::from)?;
     }
 
-    Ok(NoteDto::from(restored_note))
+    Ok(NoteDto::from(merged_note))
 }
 
 #[tauri::command]
