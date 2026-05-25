@@ -767,37 +767,44 @@
             </button>
           </div>
 
-          {#if scannedDuplicates && duplicateNotes.length > 0}
+          {#if scannedDuplicates}
             <div class="orphaned-box" transition:slide>
-              <div class="box-header">
-                <span class="box-title">Found {duplicateNotes.length} Duplicate Note Groups</span>
-              </div>
+              {#if duplicateNotes.length === 0}
+                <div class="empty-orphaned">
+                  <span class="success-indicator">🎉</span>
+                  <span class="empty-text">Harika! Vault klasöründe hiçbir mükerrer not bulunamadı.</span>
+                </div>
+              {:else}
+                <div class="box-header">
+                  <span class="box-title">Found {duplicateNotes.length} Duplicate Note Groups</span>
+                </div>
 
-              <div class="duplicate-groups-list scrollbar-thin">
-                {#each duplicateNotes as group}
-                  <div class="duplicate-group-card">
-                    <div class="group-header">
-                      <span class="group-note-title">📝 {group.title || 'Untitled'}</span>
-                      <span class="group-note-id">ID: {group.note_id}</span>
-                    </div>
-                    <div class="group-files-list">
-                      {#each group.files as file}
-                        <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
-                          <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, group.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, group.title)}>
-                            <span class="file-path">{file.relative_path}</span>
-                            <span class="file-meta">
-                              Size: {formatBytes(file.size_bytes)} • Modified: {new Date(file.last_modified).toLocaleString()}
-                            </span>
+                <div class="duplicate-groups-list scrollbar-thin">
+                  {#each duplicateNotes as group}
+                    <div class="duplicate-group-card">
+                      <div class="group-header">
+                        <span class="group-note-title">📝 {group.title || 'Untitled'}</span>
+                        <span class="group-note-id">ID: {group.note_id}</span>
+                      </div>
+                      <div class="group-files-list">
+                        {#each group.files as file}
+                          <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
+                            <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, group.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, group.title)}>
+                              <span class="file-path">{file.relative_path}</span>
+                              <span class="file-meta">
+                                Size: {formatBytes(file.size_bytes)} • Modified: {new Date(file.last_modified).toLocaleString()}
+                              </span>
+                            </div>
+                            <button class="btn btn-danger btn-xs" on:click={() => handleDeleteDuplicate(file.relative_path)} disabled={loadingAction !== 'none'}>
+                              Delete
+                            </button>
                           </div>
-                          <button class="btn btn-danger btn-xs" on:click={() => handleDeleteDuplicate(file.relative_path)} disabled={loadingAction !== 'none'}>
-                            Delete
-                          </button>
-                        </div>
-                      {/each}
+                        {/each}
+                      </div>
                     </div>
-                  </div>
-                {/each}
-              </div>
+                  {/each}
+                </div>
+              {/if}
             </div>
           {/if}
 
