@@ -148,3 +148,10 @@ export interface TreeNode {
   isOpen?: boolean;
 }
 
+export interface AttachmentInfoDto {
+  name: string;
+  modified_at: number; // Epoch millis
+  size: number; // Bytes
+}
+
+

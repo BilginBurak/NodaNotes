@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createNewNote, activeNote, selectedFolder } from '../../stores/notes';
-  import { editorViewMode, showSnapshots, loadNoteSnapshots } from '../../stores/editor';
+  import { editorViewMode, showSnapshots, loadNoteSnapshots, showAttachments, loadAttachments } from '../../stores/editor';
   import { vaultInfo } from '../../stores/vault';
   import { get } from 'svelte/store';
   import SyncStatus from '../sync/SyncStatus.svelte';
@@ -9,6 +9,7 @@
   $: info = $vaultInfo;
   $: viewMode = $editorViewMode;
   $: snapshotsVisible = $showSnapshots;
+  $: attachmentsVisible = $showAttachments;
   $: hasActiveNote = $activeNote !== null;
 
   async function handleNewNote() {
@@ -33,6 +34,16 @@
           // Explicitly load snapshots when panel is opened, rather than relying on reactive blocks
           loadNoteSnapshots(current.id).catch(console.error);
         }
+      }
+      return newVal;
+    });
+  }
+
+  function toggleAttachments() {
+    showAttachments.update(v => {
+      const newVal = !v;
+      if (newVal) {
+        loadAttachments().catch(console.error);
       }
       return newVal;
     });

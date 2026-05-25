@@ -1,12 +1,14 @@
 import { writable, get } from 'svelte/store';
-import type { Snapshot, TrashEntry } from '../types';
+import type { Snapshot, TrashEntry, AttachmentInfoDto } from '../types';
 import * as ipc from '../services/ipc';
 import { activeNote, loadNotes, selectNote } from './notes';
 
 export const snapshotsList = writable<Snapshot[]>([]);
 export const attachmentsList = writable<string[]>([]);
+export const attachmentsWithMetadataList = writable<AttachmentInfoDto[]>([]);
 export const trashList = writable<TrashEntry[]>([]);
 export const showSnapshots = writable<boolean>(false);
+export const showAttachments = writable<boolean>(false);
 export const editorViewMode = writable<'edit' | 'preview' | 'live'>('live');
 export const loadingEditorMetadata = writable<boolean>(false);
 
@@ -62,10 +64,21 @@ export async function loadAttachments() {
   }
 }
 
+export async function loadAttachmentsWithMetadata() {
+  try {
+    const list = await ipc.listAttachmentsWithMetadata();
+    attachmentsWithMetadataList.set(list);
+    // Keep attachmentsList in sync for backwards compatibility
+    attachmentsList.set(list.map(a => a.name));
+  } catch (e) {
+    console.error('Failed to load attachments with metadata:', e);
+  }
+}
+
 export async function uploadAttachment(sourcePath: string) {
   try {
     const uri = await ipc.addAttachment(sourcePath);
-    await loadAttachments();
+    await loadAttachmentsWithMetadata();
     return uri;
   } catch (e) {
     console.error('Failed to upload attachment:', e);
@@ -76,7 +89,7 @@ export async function uploadAttachment(sourcePath: string) {
 export async function removeAttachment(name: string) {
   try {
     await ipc.deleteAttachment(name);
-    await loadAttachments();
+    await loadAttachmentsWithMetadata();
   } catch (e) {
     console.error('Failed to delete attachment:', e);
     throw e;

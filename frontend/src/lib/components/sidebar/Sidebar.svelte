@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { vaultInfo } from '../../stores/vault';
-  import { trashList, loadTrash, recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
+  import { trashList, loadTrash, recoverFromTrash, emptyTrashPermanently, attachmentsWithMetadataList, loadAttachmentsWithMetadata } from '../../stores/editor';
   import { syncConflicts, loadConflicts } from '../../stores/sync';
   import { 
     notesList, 
@@ -33,6 +33,7 @@
   const activeFld = $derived($selectedFolder);
   const conflicts = $derived($syncConflicts);
   const activeNt = $derived($activeNote);
+  const attachmentsWithMetadata = $derived($attachmentsWithMetadataList);
 
   let expandedFolders = $state<Record<string, boolean>>({});
 
@@ -46,6 +47,12 @@
     selectedFolder.set('__conflicts__');
     activeViewMode.set('conflicts');
     loadConflicts();
+  }
+
+  function selectAttachments() {
+    selectedFolder.set('__attachments__');
+    activeViewMode.set('attachments' as any);
+    loadAttachmentsWithMetadata();
   }
 
   function selectAllNotes() {
@@ -227,6 +234,7 @@
   onMount(() => {
     loadTrash();
     loadConflicts();
+    loadAttachmentsWithMetadata();
   });
 </script>
 
@@ -315,13 +323,21 @@
           <span>Settings</span>
         </button>
 
-        <!-- WebDAV Sync Link -->
-        <button class="nav-item nav-btn" onclick={() => onOpenSettings('sync')}>
+        <!-- Attachments Link -->
+        <button 
+          class="nav-item nav-btn"
+          class:active-item={activeFld === '__attachments__'}
+          onclick={selectAttachments}
+          aria-label="View attachments"
+        >
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M13 10a4 4 0 0 0-4-4H6a4 4 0 0 0 0 8h3"/>
-            <polyline points="10,7 13,10 10,13"/>
+            <path d="M2 13V3a1 1 0 0 1 1-1h6l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+            <polyline points="8 2 8 6 12 6"/>
           </svg>
-          <span>WebDAV Sync</span>
+          <span class="flex-grow">Attachments</span>
+          {#if attachmentsWithMetadata.length > 0}
+            <span class="badge badge-blue">{attachmentsWithMetadata.length}</span>
+          {/if}
         </button>
 
         <!-- Deleted Notes — navigates to __trash__ folder mode -->
@@ -501,6 +517,11 @@
   .badge-red {
     background-color: var(--color-red-muted);
     color: var(--color-red);
+  }
+
+  .badge-blue {
+    background-color: var(--accent-muted);
+    color: var(--accent);
   }
 
   .badge-orange {

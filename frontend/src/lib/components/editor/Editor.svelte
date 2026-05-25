@@ -14,7 +14,8 @@
   import { resolveKeepLocal, resolveKeepRemote } from '../../stores/sync';
   import {
     editorViewMode, snapshotsList, showSnapshots,
-    loadNoteSnapshots, restoreNoteSnapshot, deleteNoteSnapshot, loadingEditorMetadata
+    loadNoteSnapshots, restoreNoteSnapshot, deleteNoteSnapshot, loadingEditorMetadata,
+    showAttachments, attachmentsList, removeAttachment, attachmentsWithMetadataList, loadAttachmentsWithMetadata
   } from '../../stores/editor';
   import * as ipc from '../../services/ipc';
   import { appConfig } from '../../stores/settings';
@@ -53,6 +54,8 @@
   $: currentNote = $activeNote;
   $: viewMode    = $editorViewMode;
   $: displaySnapshots = $showSnapshots;
+  $: displayAttachments = $showAttachments;
+  $: attachments = $attachmentsList;
   $: isDirty    = $activeNoteDirty;
   $: savedAt    = currentNote ? new Date(currentNote.updated_at) : null;
   $: isTrash     = $viewingTrashNote;
@@ -239,13 +242,307 @@
     };
   }
 
+  // ── RICH EDITOR FUNCTIONALITY ──
+  
+  function insertFormatting(type: string) {
+    if (!editorView) return;
+    const state = editorView.state;
+    const mainSelection = state.selection.main;
+    const { from, to } = mainSelection;
+    const selectedText = state.doc.sliceString(from, to);
+
+    let replacement = '';
+    let cursorOffset = 0;
+
+    switch (type) {
+      case 'bold':
+        replacement = `**${selectedText || 'bold'}**`;
+        cursorOffset = selectedText ? replacement.length : 2;
+        break;
+      case 'italic':
+        replacement = `*${selectedText || 'italic'}*`;
+        cursorOffset = selectedText ? replacement.length : 1;
+        break;
+      case 'inline-code':
+        replacement = `\`${selectedText || 'code'}\``;
+        cursorOffset = selectedText ? replacement.length : 1;
+        break;
+      case 'code-block':
+        replacement = `\n\`\`\`\n${selectedText || 'code'}\n\`\`\`\n`;
+        cursorOffset = selectedText ? replacement.length + 5 : 5;
+        break;
+      case 'link':
+        replacement = `[${selectedText || 'link text'}](https://)`;
+        cursorOffset = selectedText ? replacement.length - 1 : 1;
+        break;
+      case 'blockquote':
+        return toggleLinePrefix('> ');
+      case 'h1':
+        return toggleLinePrefix('# ');
+      case 'h2':
+        return toggleLinePrefix('## ');
+      case 'h3':
+        return toggleLinePrefix('### ');
+      case 'bullet-list':
+        return toggleLinePrefix('- ');
+      case 'number-list':
+        return toggleLinePrefix('1. ');
+      case 'todo-list':
+        return toggleLinePrefix('- [ ] ');
+    }
+
+    editorView.dispatch({
+      changes: { from, to, insert: replacement },
+      selection: { anchor: from + cursorOffset },
+      scrollIntoView: true
+    });
+    editorView.focus();
+  }
+
+  function toggleLinePrefix(prefix: string) {
+    if (!editorView) return;
+    const state = editorView.state;
+    const mainSelection = state.selection.main;
+    const from = mainSelection.from;
+    const line = state.doc.lineAt(from);
+    
+    const lineText = line.text;
+    let newText = '';
+    let changeOffset = 0;
+
+    if (lineText.startsWith(prefix)) {
+      newText = lineText.slice(prefix.length);
+      changeOffset = -prefix.length;
+    } else {
+      newText = prefix + lineText;
+      changeOffset = prefix.length;
+    }
+
+    editorView.dispatch({
+      changes: { from: line.from, to: line.to, insert: newText },
+      selection: { anchor: mainSelection.anchor + changeOffset },
+      scrollIntoView: true
+    });
+    editorView.focus();
+  }
+
+  async function handleImportMarkdown() {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        filters: [{ name: 'Markdown / Text', extensions: ['md', 'txt'] }],
+        multiple: false
+      });
+      if (selected) {
+        const currentFolder = $selectedFolder;
+        const { loadNotes, selectNote } = await import('../../stores/notes');
+        const importedNote = await ipc.importNote(selected, currentFolder);
+        await loadNotes();
+        await selectNote(importedNote.id);
+      }
+    } catch (err: any) {
+      console.error('Failed to import markdown file:', err);
+      alert('Markdown import failed: ' + (err.message || err));
+    }
+  }
+
+  async function handleAddAttachment() {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        filters: [{ name: 'Images & Files', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf', 'md', 'txt'] }],
+        multiple: false
+      });
+      if (selected) {
+        const uri = await ipc.addAttachment(selected);
+        await loadAttachmentsWithMetadata(); // Reload attachments panel list!
+        const fileName = uri.split('/').pop() || 'file';
+        const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(fileName);
+        
+        let markdownMarkup = '';
+        if (isImage) {
+          markdownMarkup = `![${fileName}](${uri})`;
+        } else {
+          markdownMarkup = `[${fileName}](${uri})`;
+        }
+
+        if (editorView) {
+          const mainSelection = editorView.state.selection.main;
+          const { from, to } = mainSelection;
+          editorView.dispatch({
+            changes: { from, to, insert: markdownMarkup },
+            selection: { anchor: from + markdownMarkup.length },
+            scrollIntoView: true
+          });
+          editorView.focus();
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to add attachment:', err);
+      alert('Failed to add attachment: ' + (err.message || err));
+    }
+  }
+
+  function handleInsertAttachmentMarkup(name: string) {
+    if (!editorView) return;
+    const uri = `noda://attachments/${name}`;
+    const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(name);
+    
+    let markdownMarkup = '';
+    if (isImage) {
+      markdownMarkup = `![${name}](${uri})`;
+    } else {
+      markdownMarkup = `[${name}](${uri})`;
+    }
+
+    const mainSelection = editorView.state.selection.main;
+    const { from, to } = mainSelection;
+    editorView.dispatch({
+      changes: { from, to, insert: markdownMarkup },
+      selection: { anchor: from + markdownMarkup.length },
+      scrollIntoView: true
+    });
+    editorView.focus();
+  }
+
+  async function handleDeleteAttachment(name: string) {
+    if (confirm(`Are you sure you want to permanently delete the attachment "${name}"? This cannot be undone.`)) {
+      try {
+        await removeAttachment(name);
+      } catch (err) {
+        console.error('Failed to delete attachment:', err);
+        alert('Failed to delete attachment.');
+      }
+    }
+  }
+
+  // ── Drag & Drop variables and handlers ──
+  let isDraggingFile = false;
+  let showRecentDropdown = false;
+
+  function toggleRecentDropdown(e: MouseEvent) {
+    e.stopPropagation();
+    showRecentDropdown = !showRecentDropdown;
+    if (showRecentDropdown) {
+      loadAttachmentsWithMetadata();
+    }
+  }
+
+  function handleWindowClick() {
+    showRecentDropdown = false;
+  }
+
+  function handleInsertMarkupEvent(e: Event) {
+    const detail = (e as CustomEvent).detail;
+    if (detail && detail.markup && editorView) {
+      const mainSelection = editorView.state.selection.main;
+      const { from, to } = mainSelection;
+      editorView.dispatch({
+        changes: { from, to, insert: detail.markup },
+        selection: { anchor: from + detail.markup.length },
+        scrollIntoView: true
+      });
+      editorView.focus();
+    }
+  }
+
+  function handleEditorDragOver(e: DragEvent) {
+    if (isReadOnly) return;
+    if (e.dataTransfer && (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('text/noda-attachment'))) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer.types.includes('Files')) {
+        isDraggingFile = true;
+      }
+    }
+  }
+
+  function handleEditorDragLeave(e: DragEvent) {
+    e.stopPropagation();
+    isDraggingFile = false;
+  }
+
+  async function handleEditorDrop(e: DragEvent) {
+    if (isReadOnly) return;
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingFile = false;
+
+    if (e.dataTransfer) {
+      const internalAttachment = e.dataTransfer.getData('text/noda-attachment');
+      if (internalAttachment) {
+        handleInsertAttachmentMarkup(internalAttachment);
+        return;
+      }
+
+      if (e.dataTransfer.files.length > 0) {
+        const files = Array.from(e.dataTransfer.files);
+        const mdFiles = files.filter(f => f.name.endsWith('.md') || f.name.endsWith('.txt'));
+        const otherFiles = files.filter(f => !f.name.endsWith('.md') && !f.name.endsWith('.txt'));
+
+        if (mdFiles.length > 0) {
+          const currentFolder = $selectedFolder;
+          for (const file of mdFiles) {
+            try {
+              const text = await file.text();
+              const originalName = file.name.replace(/\.md$|\.txt$/, '');
+              const imported = await ipc.importNoteFromContent(originalName, text, currentFolder);
+              await saveActiveNote();
+              await selectNote(imported.id);
+            } catch (err) {
+              console.error('Failed to drag-import note:', err);
+              alert('Failed to import dropped note: ' + file.name);
+            }
+          }
+        }
+
+        if (otherFiles.length > 0) {
+          for (const file of otherFiles) {
+            try {
+              const buffer = await file.arrayBuffer();
+              const bytesArray = Array.from(new Uint8Array(buffer));
+              const uri = await ipc.addAttachmentBytes(file.name, bytesArray);
+              await loadAttachmentsWithMetadata(); // Reload attachments panel list!
+            
+            const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name);
+            let markdownMarkup = '';
+            if (isImage) {
+              markdownMarkup = `![${file.name}](${uri})`;
+            } else {
+              markdownMarkup = `[${file.name}](${uri})`;
+            }
+
+            if (editorView) {
+              const mainSelection = editorView.state.selection.main;
+              const { from, to } = mainSelection;
+              editorView.dispatch({
+                changes: { from, to, insert: markdownMarkup },
+                selection: { anchor: from + markdownMarkup.length },
+                scrollIntoView: true
+              });
+              editorView.focus();
+            }
+          } catch (err) {
+            console.error('Failed to drag-upload attachment:', err);
+            alert('Failed to upload attachment: ' + file.name);
+          }
+        }
+      }
+    }
+  }
+  }
+
   onMount(() => {
     window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('click', handleWindowClick);
+    window.addEventListener('noda:insert-markup', handleInsertMarkupEvent);
   });
 
   onDestroy(() => {
     if (saveTimeout) clearTimeout(saveTimeout);
     window.removeEventListener('keydown', handleGlobalKeyDown);
+    window.removeEventListener('click', handleWindowClick);
+    window.removeEventListener('noda:insert-markup', handleInsertMarkupEvent);
   });
 
   async function openDiff(timestamp: string) {
@@ -458,20 +755,196 @@
             {/if}
           </div>
         {:else}
-          <div class="editor-panels">
-            <div
-              class="panel-editor"
-              class:panel-hidden={viewMode === 'preview'}
-              use:editorAction
-              aria-hidden={viewMode === 'preview'}
-            ></div>
+          <!-- Formatlama araç çubuğu -->
+          {#if !isReadOnly && viewMode !== 'preview'}
+            <div class="editor-formatting-toolbar">
+              <div class="toolbar-group">
+                <button class="tool-btn btn-h1" onclick={() => insertFormatting('h1')} title="Heading 1">H1</button>
+                <button class="tool-btn btn-h2" onclick={() => insertFormatting('h2')} title="Heading 2">H2</button>
+                <button class="tool-btn btn-h3" onclick={() => insertFormatting('h3')} title="Heading 3">H3</button>
+              </div>
 
-            <div
-              class="panel-preview"
-              class:panel-hidden={viewMode !== 'preview'}
-              aria-hidden={viewMode !== 'preview'}
-            >
-              <Preview content={currentNote.body} />
+              <div class="toolbar-divider"></div>
+
+              <div class="toolbar-group">
+                <button class="tool-btn" onclick={() => insertFormatting('bold')} title="Bold (⌘B)">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 2h5a3.5 3.5 0 0 1 0 7H4V2z"/>
+                    <path d="M4 9h6a3.5 3.5 0 0 1 0 7H4V9z"/>
+                  </svg>
+                </button>
+                <button class="tool-btn" onclick={() => insertFormatting('italic')} title="Italic (⌘I)">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="11" y1="2" x2="5" y2="14"/>
+                    <line x1="4" y1="2" x2="10" y2="2"/>
+                    <line x1="6" y1="14" x2="12" y2="14"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="toolbar-divider"></div>
+
+              <div class="toolbar-group">
+                <button class="tool-btn" onclick={() => insertFormatting('bullet-list')} title="Bullet List">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="6" y1="3" x2="14" y2="3"/>
+                    <line x1="6" y1="8" x2="14" y2="8"/>
+                    <line x1="6" y1="13" x2="14" y2="13"/>
+                    <circle cx="2" cy="3" r="1" fill="currentColor"/>
+                    <circle cx="2" cy="8" r="1" fill="currentColor"/>
+                    <circle cx="2" cy="13" r="1" fill="currentColor"/>
+                  </svg>
+                </button>
+                <button class="tool-btn" onclick={() => insertFormatting('number-list')} title="Numbered List">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="6" y1="3" x2="14" y2="3"/>
+                    <line x1="6" y1="8" x2="14" y2="8"/>
+                    <line x1="6" y1="13" x2="14" y2="13"/>
+                    <text x="0" y="10" font-size="8" font-weight="bold" fill="currentColor">1.</text>
+                  </svg>
+                </button>
+                <button class="tool-btn" onclick={() => insertFormatting('todo-list')} title="Checklist">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="12" height="12" rx="2"/>
+                    <path d="M5 8l2 2 4-4"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="toolbar-divider"></div>
+
+              <div class="toolbar-group">
+                <button class="tool-btn" onclick={() => insertFormatting('blockquote')} title="Blockquote">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12h3a1.5 1.5 0 0 0 1.5-1.5V7A1.5 1.5 0 0 0 6 5.5H3v6.5zM10 12h3a1.5 1.5 0 0 0 1.5-1.5V7A1.5 1.5 0 0 0 13 5.5h-3v6.5z"/>
+                  </svg>
+                </button>
+                <button class="tool-btn" onclick={() => insertFormatting('inline-code')} title="Inline Code">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 11 1 8 4 5"/>
+                    <polyline points="12 5 15 8 12 11"/>
+                  </svg>
+                </button>
+                <button class="tool-btn" onclick={() => insertFormatting('code-block')} title="Code Block">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="12" height="12" rx="2"/>
+                    <path d="M5 6l2 2-2 2M11 10h-3"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="toolbar-divider"></div>
+
+              <div class="toolbar-group">
+                <button class="tool-btn" onclick={() => insertFormatting('link')} title="Insert Link">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 6.5A2.5 2.5 0 0 0 5.75 3L3.5 5.25a2.5 2.5 0 0 0 0 3.5m2.5 1.75a2.5 2.5 0 0 0 4.25 3.5l2.25-2.25a2.5 2.5 0 0 0 0-3.5"/>
+                    <line x1="6" y1="10" x2="10" y2="6"/>
+                  </svg>
+                </button>
+                <button class="tool-btn btn-accent" onclick={handleAddAttachment} title="Add Image / Attachment">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 13V3a1 1 0 0 1 1-1h6l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+                    <polyline points="8 2 8 6 12 6"/>
+                    <line x1="8" y1="8" x2="8" y2="12"/>
+                    <line x1="6" y1="10" x2="10" y2="10"/>
+                  </svg>
+                </button>
+
+                <div class="toolbar-dropdown-wrapper">
+                  <button class="tool-btn" class:active-btn={showRecentDropdown} onclick={toggleRecentDropdown} title="Recent Attachments">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M2 13V3a1 1 0 0 1 1-1h6l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+                      <polyline points="8 2 8 6 12 6"/>
+                    </svg>
+                    <span class="chevron-arrow">▼</span>
+                  </button>
+
+                  {#if showRecentDropdown}
+                    {@const recentAttachments = $attachmentsWithMetadataList.slice(0, 20)}
+                    <div class="recent-attachments-dropdown scrollbar-thin" onclick={(e) => e.stopPropagation()}>
+                      <div class="dropdown-header">Recent Attachments</div>
+                      {#if recentAttachments.length === 0}
+                        <div class="dropdown-empty">No attachments yet</div>
+                      {:else}
+                        <div class="dropdown-list">
+                          {#each recentAttachments as item (item.name)}
+                            {@const isImg = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(item.name)}
+                            <div 
+                              class="dropdown-item"
+                              onclick={() => { handleInsertAttachmentMarkup(item.name); showRecentDropdown = false; }}
+                              draggable="true"
+                              ondragstart={(e) => e.dataTransfer.setData('text/noda-attachment', item.name)}
+                            >
+                              {#if isImg}
+                                <img class="item-preview" src="noda://attachments/{item.name}" alt={item.name} loading="lazy" />
+                              {:else}
+                                <div class="item-preview doc-preview">
+                                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <path d="M2 13V3a1 1 0 0 1 1-1h6l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+                                  </svg>
+                                </div>
+                              {/if}
+                              <span class="item-name" title={item.name}>{item.name}</span>
+                            </div>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              </div>
+
+              <div style="flex: 1;"></div>
+
+              <div class="toolbar-group">
+                <button class="import-note-btn" onclick={handleImportMarkdown} title="Import Markdown/Text file">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="12" height="12" rx="2"/>
+                    <polyline points="5 8 8 11 11 8"/>
+                    <line x1="8" y1="4" x2="8" y2="11"/>
+                  </svg>
+                  <span>Import File</span>
+                </button>
+              </div>
+            </div>
+          {/if}
+
+          <div 
+            class="editor-panels-container"
+            ondragover={handleEditorDragOver}
+            ondragleave={handleEditorDragLeave}
+            ondrop={handleEditorDrop}
+          >
+            {#if isDraggingFile}
+              <div class="editor-drag-overlay">
+                <div class="drag-message">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="drag-icon">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  <h3>Dosyaları Buraya Bırakın</h3>
+                  <p>Markdown (.md) veya metin (.txt) dosyaları doğrudan not olarak içe aktarılacaktır. Görseller ve diğer dosyalar ise eklenti (Attachment) olarak eklenecektir.</p>
+                </div>
+              </div>
+            {/if}
+
+            <div class="editor-panels">
+              <div
+                class="panel-editor"
+                class:panel-hidden={viewMode === 'preview'}
+                use:editorAction
+                aria-hidden={viewMode === 'preview'}
+              ></div>
+
+              <div
+                class="panel-preview"
+                class:panel-hidden={viewMode !== 'preview'}
+                aria-hidden={viewMode !== 'preview'}
+              >
+                <Preview content={currentNote.body} />
+              </div>
             </div>
           </div>
         {/if}
@@ -591,6 +1064,8 @@
           </div>
         </div>
       {/if}
+
+      <!-- Attachments side-panel is removed as they are now fully integrated in the Left note list panel and editor drop-down! -->
     </div>
   {/if}
 </div>
@@ -1417,5 +1892,312 @@
     background-color: #f59e0b;
     border-color: #f59e0b;
     color: #141415;
+  }
+
+  /* ── Formatting Toolbar Styles ── */
+  .editor-formatting-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: var(--toolbar-bg, rgba(30, 30, 30, 0.7));
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    flex-shrink: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    z-index: 10;
+    opacity: 0.4;
+    transition: opacity 1.5s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  .editor-formatting-toolbar:hover {
+    transition: opacity 0.5s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+
+    opacity: 1;
+  }
+
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background-color: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-sm, 6px);
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 18px;
+    background-color: var(--border-subtle, rgba(255, 255, 255, 0.12));
+    margin: 0 4px;
+  }
+
+  .tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #cccccc);
+    cursor: pointer;
+    transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 11px;
+  }
+
+  .tool-btn:hover {
+    background-color: var(--bg-hover, rgba(255, 255, 255, 0.08));
+    color: var(--text-primary, #ffffff);
+  }
+
+  .tool-btn:active {
+    transform: scale(0.92);
+  }
+
+  .tool-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tool-btn.btn-h1 { font-size: 12px; font-weight: 800; }
+  .tool-btn.btn-h2 { font-size: 11px; font-weight: 700; }
+  .tool-btn.btn-h3 { font-size: 10px; font-weight: 600; }
+
+  .tool-btn.btn-accent {
+    color: var(--accent, #0a84ff);
+  }
+  .tool-btn.btn-accent:hover {
+    background-color: rgba(10, 132, 255, 0.15);
+    color: var(--accent-hover, #2f96ff);
+  }
+
+  .import-note-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    background-color: var(--accent, #0a84ff);
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .import-note-btn:hover {
+    background-color: var(--accent-hover, #2f96ff);
+    box-shadow: 0 0 8px rgba(10, 132, 255, 0.4);
+  }
+
+  .import-note-btn:active {
+    transform: scale(0.95);
+  }
+
+  .import-note-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* ── Drag & Drop Overlay Styles ── */
+  .editor-panels-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  .editor-drag-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(20, 20, 21, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 40px;
+    animation: fadeIn 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .drag-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+    max-width: 440px;
+    padding: 32px;
+    background-color: var(--bg-elevated, #1c1c1e);
+    border: 1.5px dashed var(--accent, #0a84ff);
+    border-radius: var(--radius-lg, 12px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    animation: slideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .drag-icon {
+    width: 48px;
+    height: 48px;
+    color: var(--accent, #0a84ff);
+    animation: bounce 2s infinite ease-in-out;
+  }
+
+  .drag-message h3 {
+    margin: 0;
+    color: var(--text-primary, #ffffff);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+
+  .drag-message p {
+    margin: 0;
+    color: var(--text-secondary, #aaaaaa);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+
+  /* ── Toolbar Dropdown Styles ── */
+  .toolbar-dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+  }
+
+  .chevron-arrow {
+    font-size: 8px;
+    margin-left: 3px;
+    opacity: 0.6;
+  }
+
+  .tool-btn.active-btn {
+    background-color: var(--bg-control-hover);
+    color: var(--accent);
+  }
+
+  .recent-attachments-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 260px;
+    max-height: 320px;
+    background-color: var(--bg-control);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-normal);
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 6px;
+    animation: dropdownSlideDown 0.15s ease;
+  }
+
+  @keyframes dropdownSlideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .dropdown-header {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 4px;
+  }
+
+  .dropdown-empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-disabled);
+    font-size: 11px;
+  }
+
+  .dropdown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+    transition: all 0.1s ease;
+    user-select: none;
+  }
+
+  .dropdown-item:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .item-preview {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid var(--border-subtle);
+  }
+
+  .doc-preview {
+    background-color: var(--bg-control-hover);
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .doc-preview svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .item-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+
+  .dropdown-item:hover .item-name {
+    color: var(--text-primary);
   }
 </style>

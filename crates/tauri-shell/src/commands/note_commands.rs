@@ -307,3 +307,141 @@ pub async fn list_notes(
     let dtos = notes.into_iter().map(NoteListItemDto::from).collect();
     Ok(dtos)
 }
+
+#[tauri::command]
+pub async fn import_note(
+    state: State<'_, AppState>,
+    source_path: String,
+    target_dir: Option<String>,
+) -> Result<NoteDto, AppError> {
+    let service = {
+        let guard = state.vault_service.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    let db = {
+        let guard = state.database.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let source_path_buf = std::path::PathBuf::from(&source_path);
+    if !source_path_buf.exists() {
+        return Err(AppError {
+            code: "FILE_NOT_FOUND".to_string(),
+            message: format!("Source file does not exist: {}", source_path),
+        });
+    }
+
+    // Determine target folder path
+    let vault_root = service.base_path();
+    let folder_path = match &target_dir {
+        Some(dir) if !dir.is_empty() => vault_root.join(dir),
+        _ => vault_root.clone(),
+    };
+
+    // Ensure the folder exists
+    if !folder_path.exists() {
+        tokio::fs::create_dir_all(&folder_path).await.map_err(|e| AppError {
+            code: "IO_ERROR".to_string(),
+            message: format!("Failed to create folder: {}", e),
+        })?;
+    }
+
+    // Determine temp copied file name
+    let filename = source_path_buf.file_name().ok_or_else(|| AppError {
+        code: "INVALID_PATH".to_string(),
+        message: "Invalid source file path".to_string(),
+    })?;
+
+    // To prevent overwriting any existing file with the same name before we convert it, 
+    // let's give it a temporary unique name, e.g. import_xxxx.md
+    let temp_filename = format!("import_{}_{}", ulid::Ulid::new().to_string(), filename.to_string_lossy());
+    let temp_dest_path = folder_path.join(&temp_filename);
+
+    // Copy file to vault folder
+    tokio::fs::copy(&source_path_buf, &temp_dest_path).await.map_err(|e| AppError {
+        code: "IO_ERROR".to_string(),
+        message: format!("Failed to copy source file: {}", e),
+    })?;
+
+    // Now call the core scanner function to convert/import it!
+    // Note: It will parse the content, determine title/dates/id, write standard {ulid}.md file, 
+    // and delete the temp file temp_dest_path!
+    let note = noda_core::vault::parse_or_create_note_from_file(&temp_dest_path, vault_root).await
+        .map_err(|e| AppError {
+            code: "IMPORT_FAILED".to_string(),
+            message: format!("Core import failed: {}", e),
+        })?;
+
+    // Make sure the title is the original file stem if it was empty/defaulted to the temp filename stem
+    let mut final_note = note;
+    let original_stem = source_path_buf.file_stem().and_then(|s| s.to_str()).unwrap_or("Imported Note").to_string();
+    if final_note.title.starts_with("import_") {
+        final_note.title = original_stem;
+        
+        // Write the note again with the corrected title in its frontmatter
+        service.write_note(&final_note).await.map_err(AppError::from)?;
+    }
+
+    // Insert/upsert into SQLite DB cache
+    let rel_path = final_note.file_path.clone();
+    {
+        let conn = db.conn.lock();
+        queries::upsert_note(&conn, &final_note, &rel_path, "dummy_hash")
+            .map_err(AppError::from)?;
+    }
+
+    Ok(NoteDto::from(final_note))
+}
+
+#[tauri::command]
+pub async fn import_note_from_content(
+    state: State<'_, AppState>,
+    title: String,
+    content: String,
+    target_dir: Option<String>,
+) -> Result<NoteDto, AppError> {
+    let service = {
+        let guard = state.vault_service.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    let db = {
+        let guard = state.database.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let target_dir_str = target_dir.unwrap_or_default();
+    
+    // Call the public core parsing function
+    let note = noda_core::vault::parse_or_create_note_from_content(&title, &content, &target_dir_str).await
+        .map_err(|e| AppError {
+            code: "IMPORT_FAILED".to_string(),
+            message: format!("Core import failed: {}", e),
+        })?;
+
+    // 1. Write to vault disk
+    service.write_note(&note).await.map_err(AppError::from)?;
+
+    // 2. Insert into SQLite DB cache
+    let rel_path = note.file_path.clone();
+    {
+        let conn = db.conn.lock();
+        queries::upsert_note(&conn, &note, &rel_path, "dummy_hash")
+            .map_err(AppError::from)?;
+    }
+
+    Ok(NoteDto::from(note))
+}

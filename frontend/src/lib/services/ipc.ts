@@ -11,6 +11,7 @@ import type {
   TrashEntry,
   SnapshotDiffDto,
   AppConfig,
+  AttachmentInfoDto,
 } from '../types';
 
 async function call<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
@@ -124,9 +125,10 @@ export const resolveConflictKeepLocal = (archivedPath: string)                  
 export const resolveConflictKeepRemote = (noteId: string, archivedPath: string)     => call<void>('resolve_conflict_keep_remote', { noteId, archivedPath });
 
 // ── Attachment Commands ─────────────────────────────────────
-export const addAttachment    = (sourcePath: string) => call<string>('add_attachment',    { sourcePath });
-export const listAttachments  = ()                   => call<string[]>('list_attachments');
-export const deleteAttachment = (name: string)       => call<void>('delete_attachment',   { name });
+export const addAttachment             = (sourcePath: string) => call<string>('add_attachment',    { sourcePath });
+export const listAttachments           = ()                   => call<string[]>('list_attachments');
+export const deleteAttachment          = (name: string)       => call<void>('delete_attachment',   { name });
+export const listAttachmentsWithMetadata = ()                   => call<AttachmentInfoDto[]>('list_attachments_with_metadata');
 
 // ── Settings Commands ───────────────────────────────────────
 export const getSettings      = ()                   => call<AppConfig>('get_settings');
@@ -164,6 +166,16 @@ export const deleteFolder = (relPath: string) => call<void>('delete_folder', { r
 export const moveNote     = (id: string, targetDir: string) => call<void>('move_note', { id, targetDir });
 export const moveFolder   = (srcDir: string, targetDir: string) => call<void>('move_folder', { srcDir, targetDir });
 export const renameFolder = (srcDir: string, newName: string) => call<void>('rename_folder', { srcDir, newName });
+
+// ── Added Rich Editor & Import Commands ─────────────────────
+export const importNote = (sourcePath: string, targetDir: string | null) =>
+  call<NoteDto>('import_note', { sourcePath, targetDir });
+
+export const importNoteFromContent = (title: string, content: string, targetDir: string | null) =>
+  call<NoteDto>('import_note_from_content', { title, content, targetDir });
+
+export const addAttachmentBytes = (fileName: string, bytes: number[]) =>
+  call<string>('add_attachment_bytes', { fileName, bytes });
 
 
 

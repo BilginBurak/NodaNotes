@@ -12,9 +12,18 @@ pub async fn store_attachment<P: AsRef<Path>, P2: AsRef<Path>>(
     }
 
     let bytes = tokio::fs::read(source).await.map_err(NodaError::Io)?;
-    let hash = xxhash_rust::xxh3::xxh3_64(&bytes);
+    store_attachment_bytes(vault_path, &bytes, &source.to_string_lossy()).await
+}
 
-    let extension = source.extension()
+pub async fn store_attachment_bytes<P: AsRef<Path>>(
+    vault_path: P,
+    bytes: &[u8],
+    original_filename: &str,
+) -> Result<String, NodaError> {
+    let hash = xxhash_rust::xxh3::xxh3_64(bytes);
+
+    let path = Path::new(original_filename);
+    let extension = path.extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("");
 
@@ -29,7 +38,7 @@ pub async fn store_attachment<P: AsRef<Path>, P2: AsRef<Path>>(
 
     let dest_path = attachments_dir.join(&dest_name);
     if !dest_path.exists() {
-        tokio::fs::write(&dest_path, &bytes).await.map_err(NodaError::Io)?;
+        tokio::fs::write(&dest_path, bytes).await.map_err(NodaError::Io)?;
     }
 
     // Return the custom protocol URI
@@ -72,3 +81,48 @@ pub async fn list_attachments<P: AsRef<Path>>(
 
     Ok(entries)
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct AttachmentInfo {
+    pub name: String,
+    pub modified_at: u64, // Epoch millis
+    pub size: u64, // Bytes
+}
+
+pub async fn list_attachments_with_metadata<P: AsRef<Path>>(
+    vault_path: P,
+) -> Result<Vec<AttachmentInfo>, NodaError> {
+    let attachments_dir = vault_path.as_ref().join(".noda").join("attachments");
+    if !attachments_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    let mut dir = tokio::fs::read_dir(attachments_dir).await.map_err(NodaError::Io)?;
+    
+    while let Some(file) = dir.next_entry().await.map_err(NodaError::Io)? {
+        let path = file.path();
+        if path.is_file() {
+            if let Some(name) = path.file_name() {
+                let metadata = file.metadata().await.map_err(NodaError::Io)?;
+                let modified = metadata.modified().ok()
+                    .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let size = metadata.len();
+                
+                entries.push(AttachmentInfo {
+                    name: name.to_string_lossy().to_string(),
+                    modified_at: modified,
+                    size,
+                });
+            }
+        }
+    }
+
+    // Sort by modified_at descending (latest modified/added first)
+    entries.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+
+    Ok(entries)
+}
+

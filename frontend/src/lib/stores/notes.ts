@@ -12,7 +12,7 @@ export const notesError     = writable<string | null>(null);
 /** Son başarılı kayıt zamanı — status bar için */
 export const lastSavedAt    = writable<Date | null>(null);
 /** Özel görünüm modu: normal, trash ya da conflicts */
-export const activeViewMode = writable<'normal' | 'trash' | 'conflicts'>('normal');
+export const activeViewMode = writable<'normal' | 'trash' | 'conflicts' | 'attachments'>('normal');
 /** Silinen not olarak görüntüleniyor mu */
 export const viewingTrashNote = writable<boolean>(false);
 /** Çakışma notu olarak görüntüleniyor mu (archivedPath bilgisi ile) */

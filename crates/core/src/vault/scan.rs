@@ -196,6 +196,64 @@ pub async fn scan_vault<P: AsRef<Path>>(vault_path: P) -> Result<Vec<Note>, Noda
     Ok(notes)
 }
 
+/// Helper function to parse raw markdown content, handle frontmatter, and create a Note struct.
+pub async fn parse_or_create_note_from_content(
+    title: &str,
+    content: &str,
+    relative_path: &str,
+) -> Result<Note, NodaError> {
+    use crate::models::note::NoteId;
+    use chrono::Utc;
+
+    let matter = Matter::<YAML>::new();
+    let parsed = matter.parse(content);
+
+    // Check if there is valid frontmatter
+    let frontmatter_opt = if let Some(data) = &parsed.data {
+        data.deserialize::<Frontmatter>().ok()
+    } else {
+        None
+    };
+
+    let note_id = NoteId::new(); // Always generate a new ULID
+    let final_title = if let Some(fm) = &frontmatter_opt {
+        if fm.title.is_empty() {
+            title.to_string()
+        } else {
+            fm.title.clone()
+        }
+    } else {
+        title.to_string()
+    };
+
+    let now = Utc::now();
+    let created_at = frontmatter_opt.as_ref().map(|fm| fm.created_at).unwrap_or(now);
+    let updated_at = frontmatter_opt.as_ref().map(|fm| fm.updated_at).unwrap_or(now);
+
+    let filename = format!("{}.md", note_id.0.to_string());
+    let new_rel_path = if relative_path.is_empty() {
+        filename
+    } else {
+        format!("{}/{}", relative_path.trim_end_matches('/'), filename)
+    };
+
+    let note = Note {
+        id: note_id,
+        parent_id: None,
+        title: final_title,
+        body: parsed.content,
+        color: frontmatter_opt.as_ref().and_then(|fm| fm.color.clone()),
+        pinned: frontmatter_opt.as_ref().map(|fm| fm.pinned).unwrap_or(false),
+        tags: frontmatter_opt.as_ref().map(|fm| fm.tags.clone()).unwrap_or_default(),
+        status: frontmatter_opt.as_ref().map(|fm| fm.status.clone()).unwrap_or_else(|| "active".to_string()),
+        created_at,
+        updated_at,
+        file_path: new_rel_path,
+    };
+
+    Ok(note)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

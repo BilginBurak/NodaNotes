@@ -2,7 +2,7 @@
 
 pub mod storage;
 
-pub use storage::{delete_attachment, list_attachments, store_attachment};
+pub use storage::{delete_attachment, list_attachments, store_attachment, store_attachment_bytes, AttachmentInfo, list_attachments_with_metadata};
 
 use crate::errors::NodaError;
 use std::path::{Path, PathBuf};

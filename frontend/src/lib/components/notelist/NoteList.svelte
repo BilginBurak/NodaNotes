@@ -1,6 +1,7 @@
 <script lang="ts">
   import { notesList, activeNote, selectedFolder, draggedItem, moveNote, activeViewMode, selectTrashNote, selectConflictNote } from '../../stores/notes';
-  import { trashList } from '../../stores/editor';
+  import { trashList, attachmentsWithMetadataList, loadAttachmentsWithMetadata, removeAttachment } from '../../stores/editor';
+  import QuickLookModal from '../common/QuickLookModal.svelte';
   import { syncConflicts } from '../../stores/sync';
   import { vaultInfo } from '../../stores/vault';
   import NoteListItem from './NoteListItem.svelte';
@@ -17,11 +18,48 @@
   const trashItems = $derived($trashList);
   const conflictItems = $derived($syncConflicts);
   const info = $derived($vaultInfo);
+  const attachments = $derived($attachmentsWithMetadataList);
+
+  // Quick Look Modal State
+  let quickLookOpen = $state(false);
+  let selectedAttachment = $state<import('../../types').AttachmentInfoDto | null>(null);
+
+  function openQuickLook(attachment: import('../../types').AttachmentInfoDto) {
+    selectedAttachment = attachment;
+    quickLookOpen = true;
+  }
+
+  function insertAttachmentMarkup(name: string) {
+    const uri = `noda://attachments/${name}`;
+    const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(name);
+    const markup = isImage ? `![${name}](${uri})` : `[${name}](${uri})`;
+    window.dispatchEvent(new CustomEvent('noda:insert-markup', { detail: { markup } }));
+  }
+
+  async function handleDeleteAttachment(name: string) {
+    if (confirm(`Are you sure you want to permanently delete the attachment "${name}"? This cannot be undone.`)) {
+      try {
+        await removeAttachment(name);
+      } catch (err) {
+        console.error('Failed to delete attachment:', err);
+        alert('Failed to delete attachment.');
+      }
+    }
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
 
   // Panel title based on view mode
   const panelTitle = $derived(
     viewMode === 'trash' ? 'Deleted Notes' :
     viewMode === 'conflicts' ? 'Sync Conflicts' :
+    viewMode === 'attachments' ? 'Attachments' :
     currentFolder === '' ? (info?.name ?? 'Vault Root') :
     currentFolder ? currentFolder.split('/').pop() ?? 'Folder' : 'All Notes'
   );
@@ -54,10 +92,17 @@
     return (n.title || '').toLowerCase().includes(localFilter.toLowerCase());
   }));
 
+  // Filtered attachments
+  const filteredAttachments = $derived(viewMode !== 'attachments' ? [] : attachments.filter((a) => {
+    if (!localFilter.trim()) return true;
+    return a.name.toLowerCase().includes(localFilter.toLowerCase());
+  }));
+
   // Total count for badge
   const totalCount = $derived(
     viewMode === 'trash' ? filteredTrash.length :
     viewMode === 'conflicts' ? filteredConflicts.length :
+    viewMode === 'attachments' ? filteredAttachments.length :
     filteredNotes.length
   );
 
@@ -254,6 +299,72 @@
         </ul>
       {/if}
 
+    {:else if viewMode === 'attachments'}
+      {#if filteredAttachments.length === 0}
+        <div class="empty-state">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true" style="width: 32px; height: 32px; color: var(--text-disabled); margin-bottom: 8px;">
+            <path d="M2 13V3a1 1 0 0 1 1-1h6l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+            <polyline points="8 2 8 6 12 6"/>
+          </svg>
+          <p>No attachments found</p>
+        </div>
+      {:else}
+        <ul class="special-list attachments-list" role="listbox">
+          {#each filteredAttachments as attachment (attachment.name)}
+            {@const isImg = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(attachment.name)}
+            <li>
+              <div 
+                class="special-item attachment-item"
+                onclick={() => openQuickLook(attachment)}
+                role="option"
+                aria-selected={false}
+                draggable="true"
+                ondragstart={(e) => e.dataTransfer.setData('text/noda-attachment', attachment.name)}
+              >
+                {#if isImg}
+                   <div class="attachment-thumb" aria-hidden="true">
+                     <img src="noda://attachments/{attachment.name}" alt={attachment.name} loading="lazy" />
+                   </div>
+                {:else}
+                   <div class="attachment-thumb doc-icon" aria-hidden="true">
+                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                       <path d="M2 13V3a1 1 0 0 1 1-1h6l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+                       <polyline points="8 2 8 6 12 6"/>
+                     </svg>
+                   </div>
+                {/if}
+                <div class="special-item-content">
+                  <span class="special-item-title" title={attachment.name}>{attachment.name}</span>
+                  <span class="special-item-meta">{formatBytes(attachment.size)}</span>
+                </div>
+                
+                <!-- Hover actions -->
+                <div class="attachment-card-actions">
+                  <button 
+                    class="item-action-btn insert-text-btn" 
+                    onclick={(e) => { e.stopPropagation(); insertAttachmentMarkup(attachment.name); }} 
+                    title="Insert into active note"
+                  >
+                    Insert
+                  </button>
+                  <button 
+                    class="item-action-btn delete-icon-btn" 
+                    onclick={(e) => { e.stopPropagation(); handleDeleteAttachment(attachment.name); }} 
+                    title="Delete attachment"
+                  >
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                      <polyline points="2,3.5 12,3.5"/>
+                      <path d="M5 3.5V3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v.5M5.5 6.5v3.5M8.5 6.5v3.5"/>
+                      <path d="M3 3.5l.75 7.5a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75L10.5 3.5"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
     {:else}
       {#if filteredNotes.length === 0}
         <div class="empty-state">
@@ -280,6 +391,14 @@
     {/if}
   </div>
 </div>
+
+<QuickLookModal
+  bind:isOpen={quickLookOpen}
+  attachment={selectedAttachment}
+  onClose={() => { quickLookOpen = false; selectedAttachment = null; }}
+  onInsert={insertAttachmentMarkup}
+  onDelete={handleDeleteAttachment}
+/>
 
 
 <style>
@@ -556,6 +675,102 @@
 
   .list-body {
     overflow-y: auto;
+  }
+
+  /* ── Attachment Item Styling ── */
+  .attachment-item {
+    position: relative;
+    user-select: none;
+  }
+
+  .attachment-thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    flex-shrink: 0;
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .attachment-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .attachment-thumb.doc-icon svg {
+    width: 14px;
+    height: 14px;
+    color: var(--text-tertiary);
+  }
+
+  /* Action buttons shown on hover */
+  .attachment-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg-notelist);
+    padding-left: 8px;
+    box-shadow: -8px 0 8px var(--bg-notelist);
+  }
+
+  .attachment-item:hover .attachment-card-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .item-action-btn {
+    height: 22px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s ease;
+    font-family: var(--font-sans);
+  }
+
+  .insert-text-btn {
+    background-color: var(--accent);
+    border: none;
+    color: white;
+    padding: 0 8px;
+  }
+
+  .insert-text-btn:hover {
+    background-color: var(--accent-hover);
+  }
+
+  .delete-icon-btn {
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-tertiary);
+    width: 22px;
+  }
+
+  .delete-icon-btn svg {
+    width: 11px;
+    height: 11px;
+    display: block;
+  }
+
+  .delete-icon-btn:hover {
+    color: var(--color-red, #ff453a);
+    background-color: var(--color-red-muted);
+    border-color: rgba(255, 69, 58, 0.2);
   }
 </style>
 

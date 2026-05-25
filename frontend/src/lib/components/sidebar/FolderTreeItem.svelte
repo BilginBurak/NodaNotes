@@ -95,6 +95,29 @@
     e.stopPropagation();
     dragOverActive = false;
 
+    // ── External Finder/OS File Drop ──
+    if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      const { loadNotes, selectNote } = await import('../../stores/notes');
+      const { importNoteFromContent } = await import('../../services/ipc');
+
+      for (const file of files) {
+        if (file.name.endsWith('.md') || file.name.endsWith('.txt')) {
+          try {
+            const text = await file.text();
+            const originalName = file.name.replace(/\.md$|\.txt$/, '');
+            const newNote = await importNoteFromContent(originalName, text, node.relPath);
+            await loadNotes();
+            await selectNote(newNote.id);
+          } catch (err) {
+            console.error('Failed to import dropped note:', err);
+            alert('Failed to import note: ' + file.name);
+          }
+        }
+      }
+      return;
+    }
+
     // Use global draggedItem store for extreme reliability in WKWebView
     let data = $draggedItem;
 
