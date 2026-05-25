@@ -12,6 +12,9 @@ export const showAttachments = writable<boolean>(false);
 export const editorViewMode = writable<'edit' | 'preview' | 'live'>('live');
 export const loadingEditorMetadata = writable<boolean>(false);
 
+export const quickLookOpen = writable<boolean>(false);
+export const quickLookAttachment = writable<AttachmentInfoDto | null>(null);
+
 export async function loadNoteSnapshots(noteId: string) {
   loadingEditorMetadata.set(true);
   try {
@@ -134,5 +137,31 @@ export async function emptyTrashPermanently(id: string) {
   } catch (e) {
     console.error('Failed to delete note permanently:', e);
     throw e;
+  }
+}
+
+export async function triggerQuickLook(name: string) {
+  try {
+    const list = get(attachmentsWithMetadataList);
+    const found = list.find(a => a.name === name);
+    if (found) {
+      quickLookAttachment.set(found);
+      quickLookOpen.set(true);
+    } else {
+      // Fetch fresh list from backend if empty or not fully synced
+      const freshList = await ipc.listAttachmentsWithMetadata();
+      attachmentsWithMetadataList.set(freshList);
+      const freshFound = freshList.find(a => a.name === name);
+      if (freshFound) {
+        quickLookAttachment.set(freshFound);
+        quickLookOpen.set(true);
+      } else {
+        // Fallback placeholder if file still isn't scanned
+        quickLookAttachment.set({ name, modified_at: Date.now(), size: 0 });
+        quickLookOpen.set(true);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to trigger Quick Look:', e);
   }
 }

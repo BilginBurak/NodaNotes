@@ -12,6 +12,8 @@
   import ContextMenu from '../lib/components/common/ContextMenu.svelte';
   import PromptModal from '../lib/components/common/PromptModal.svelte';
   import SearchModal from '../lib/components/search/SearchModal.svelte';
+  import { quickLookOpen, quickLookAttachment, triggerQuickLook, removeAttachment } from '../lib/stores/editor';
+  import QuickLookModal from '../lib/components/common/QuickLookModal.svelte';
 
   $: info = $vaultInfo;
   $: error = $vaultError;
@@ -26,7 +28,42 @@
     } catch (e) {
       console.error('Failed to load settings on startup:', e);
     }
+
+    const handleGlobalLinkClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a');
+      if (anchor) {
+        const href = anchor.getAttribute('href') || '';
+        if (href.startsWith('noda://attachments/')) {
+          e.preventDefault();
+          const name = href.replace('noda://attachments/', '');
+          triggerQuickLook(name);
+        }
+      }
+    };
+    window.addEventListener('click', handleGlobalLinkClick, true);
+
+    return () => {
+      window.removeEventListener('click', handleGlobalLinkClick, true);
+    };
   });
+
+  function handleInsertMarkup(name: string) {
+    const uri = `noda://attachments/${name}`;
+    const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(name);
+    const markup = isImage ? `![${name}](${uri})` : `[${name}](${uri})`;
+    window.dispatchEvent(new CustomEvent('noda:insert-markup', { detail: { markup } }));
+  }
+
+  async function handleDeleteAttachment(name: string) {
+    if (confirm(`Are you sure you want to permanently delete the attachment "${name}"? This cannot be undone.`)) {
+      try {
+        await removeAttachment(name);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to delete attachment.');
+      }
+    }
+  }
 
   async function handleOpenVault() {
     vaultError.set(null);
@@ -182,6 +219,13 @@
     <ContextMenu />
     <PromptModal />
     <SearchModal />
+    <QuickLookModal
+      bind:isOpen={$quickLookOpen}
+      attachment={$quickLookAttachment}
+      onClose={() => { quickLookOpen.set(false); quickLookAttachment.set(null); }}
+      onInsert={handleInsertMarkup}
+      onDelete={handleDeleteAttachment}
+    />
   </div>
 {/if}
 

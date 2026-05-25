@@ -16,8 +16,38 @@
     onDelete: (name: string) => void;
   }>();
 
-  // Determine if it is an image
+  // Determine file formats
   const isImage = $derived(attachment ? /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(attachment.name) : false);
+  const isPdf = $derived(attachment ? /\.pdf$/i.test(attachment.name) : false);
+  const isTextLike = $derived(attachment ? /\.(txt|json|md|js|ts|css|html|xml|toml|yaml|yml|rs|go|py|sh|bat)$/i.test(attachment.name) : false);
+
+  let textContent = $state('');
+  let loadingText = $state(false);
+  let textError = $state<string | null>(null);
+
+  $effect(() => {
+    if (isOpen && attachment && isTextLike) {
+      loadingText = true;
+      textError = null;
+      textContent = '';
+      
+      const attachmentUrl = `noda://attachments/${attachment.name}`;
+      fetch(attachmentUrl)
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+          return res.text();
+        })
+        .then(text => {
+          textContent = text;
+          loadingText = false;
+        })
+        .catch(err => {
+          console.error('Failed to fetch attachment text content:', err);
+          textError = err.message || 'Failed to load file content.';
+          loadingText = false;
+        });
+    }
+  });
 
   // Format bytes
   function formatBytes(bytes: number): string {
@@ -101,6 +131,30 @@
         {#if isImage}
           <div class="image-viewer">
             <img src="noda://attachments/{attachment.name}" alt={attachment.name} />
+          </div>
+        {:else if isPdf}
+          <div class="pdf-viewer">
+            <iframe src="noda://attachments/{attachment.name}" title={attachment.name} class="pdf-iframe"></iframe>
+          </div>
+        {:else if isTextLike}
+          <div class="text-viewer scrollbar-thin">
+            {#if loadingText}
+              <div class="loading-state">
+                <div class="loading-spinner"></div>
+                <span>Loading preview...</span>
+              </div>
+            {:else if textError}
+              <div class="error-state">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <circle cx="8" cy="8" r="6.5"/>
+                  <line x1="8" y1="5" x2="8" y2="8.5"/>
+                  <line x1="8" y1="11" x2="8" y2="11" stroke-width="2.4"/>
+                </svg>
+                <span>{textError}</span>
+              </div>
+            {:else}
+              <pre><code>{textContent}</code></pre>
+            {/if}
           </div>
         {:else}
           <div class="document-viewer">
@@ -348,6 +402,86 @@
     line-height: 1.5;
     color: var(--text-tertiary);
     margin: 8px 0 0;
+  }
+
+  /* ── PDF Viewer ── */
+  .pdf-viewer {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: var(--radius-md, 6px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
+    background-color: var(--bg-control);
+  }
+
+  .pdf-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background-color: #ffffff;
+  }
+
+  /* ── Text/Code Viewer ── */
+  .text-viewer {
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md, 6px);
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    font-family: var(--font-mono, Menlo, Monaco, Consolas, 'Courier New', monospace);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    text-align: left;
+  }
+
+  .text-viewer pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .text-viewer code {
+    font-family: inherit;
+    color: inherit;
+  }
+
+  /* ── Status States ── */
+  .loading-state, .error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 100%;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  .loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-normal);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .error-state {
+    color: var(--color-red, #ff453a);
+  }
+
+  .error-state svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   /* ── Keyframes ── */

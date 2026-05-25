@@ -1,7 +1,6 @@
 <script lang="ts">
   import { notesList, activeNote, selectedFolder, draggedItem, moveNote, activeViewMode, selectTrashNote, selectConflictNote } from '../../stores/notes';
-  import { trashList, attachmentsWithMetadataList, loadAttachmentsWithMetadata, removeAttachment } from '../../stores/editor';
-  import QuickLookModal from '../common/QuickLookModal.svelte';
+  import { trashList, attachmentsWithMetadataList, loadAttachmentsWithMetadata, removeAttachment, triggerQuickLook } from '../../stores/editor';
   import { syncConflicts } from '../../stores/sync';
   import { vaultInfo } from '../../stores/vault';
   import NoteListItem from './NoteListItem.svelte';
@@ -20,14 +19,7 @@
   const info = $derived($vaultInfo);
   const attachments = $derived($attachmentsWithMetadataList);
 
-  // Quick Look Modal State
-  let quickLookOpen = $state(false);
-  let selectedAttachment = $state<import('../../types').AttachmentInfoDto | null>(null);
 
-  function openQuickLook(attachment: import('../../types').AttachmentInfoDto) {
-    selectedAttachment = attachment;
-    quickLookOpen = true;
-  }
 
   function insertAttachmentMarkup(name: string) {
     const uri = `noda://attachments/${name}`;
@@ -315,7 +307,7 @@
             <li>
               <div 
                 class="special-item attachment-item"
-                onclick={() => openQuickLook(attachment)}
+                onclick={() => triggerQuickLook(attachment.name)}
                 role="option"
                 aria-selected={false}
                 draggable="true"
@@ -392,13 +384,6 @@
   </div>
 </div>
 
-<QuickLookModal
-  bind:isOpen={quickLookOpen}
-  attachment={selectedAttachment}
-  onClose={() => { quickLookOpen = false; selectedAttachment = null; }}
-  onInsert={insertAttachmentMarkup}
-  onDelete={handleDeleteAttachment}
-/>
 
 
 <style>

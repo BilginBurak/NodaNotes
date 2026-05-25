@@ -350,7 +350,7 @@
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
       const selected = await open({
-        filters: [{ name: 'Images & Files', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf', 'md', 'txt'] }],
+        filters: [{ name: 'All Files (*.*)', extensions: ['*'] }],
         multiple: false
       });
       if (selected) {
