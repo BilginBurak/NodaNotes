@@ -144,6 +144,19 @@ export const deleteOrphanedAttachments  = (filenames: string[]) => call<void>('d
 export const clearSyncQueue            = () => call<void>('clear_sync_queue');
 export const clearSyncCache            = () => call<void>('clear_sync_cache');
 
+export interface DuplicateFileEntry {
+  relative_path: string;
+  last_modified: string;
+  size_bytes: number;
+}
+export interface DuplicateNoteGroup {
+  note_id: string;
+  title: string;
+  files: DuplicateFileEntry[];
+}
+export const getDuplicateNotes          = () => call<DuplicateNoteGroup[]>('get_duplicate_notes');
+export const deleteDuplicateNoteFile    = (relativePath: string) => call<void>('delete_duplicate_note_file', { relativePath });
+
 // ── Folder Commands ─────────────────────────────────────────
 export const listFolders  = () => call<string[]>('list_folders');
 export const createFolder = (relPath: string) => call<void>('create_folder', { relPath });

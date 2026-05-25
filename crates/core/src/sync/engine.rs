@@ -338,7 +338,8 @@ impl SyncEngine {
                     }
                 }
                 SyncAction::Upload { relative_path } => {
-                    let note_id_str = relative_path.trim_end_matches(".md");
+                    let path_buf = std::path::Path::new(relative_path);
+                    let note_id_str = path_buf.file_stem().and_then(|s| s.to_str()).unwrap_or("");
                     let note_id = if let Ok(ulid) = ulid::Ulid::from_string(note_id_str) {
                         crate::models::note::NoteId(ulid)
                     } else {
@@ -674,7 +675,7 @@ impl SyncEngine {
         // For any files that were already identical and had no action, ensure they are in remote_state
         let local_map: std::collections::HashMap<String, &Note> = local_notes
             .iter()
-            .map(|n| (format!("{}.md", n.id.0.to_string()), n))
+            .map(|n| (n.file_path.clone(), n))
             .collect();
 
         let remote_map: std::collections::HashMap<String, &RemoteEntry> = remote_entries

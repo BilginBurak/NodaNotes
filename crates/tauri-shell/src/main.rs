@@ -63,6 +63,8 @@ fn main() {
             commands::maintenance_commands::delete_orphaned_attachments,
             commands::maintenance_commands::clear_sync_queue,
             commands::maintenance_commands::clear_sync_cache,
+            commands::maintenance_commands::get_duplicate_notes,
+            commands::maintenance_commands::delete_duplicate_note_file,
             commands::folder_commands::list_folders,
             commands::folder_commands::create_folder,
             commands::folder_commands::delete_folder,

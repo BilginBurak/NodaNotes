@@ -174,7 +174,7 @@ pub fn calculate_delta(
 
     let local_map: HashMap<String, &Note> = local_notes
         .iter()
-        .map(|n| (format!("{}.md", n.id.0.to_string()), n))
+        .map(|n| (n.file_path.clone(), n))
         .collect();
 
     for path in local_map.keys() {
@@ -451,6 +451,7 @@ mod tests {
     fn make_test_note(id: NoteId, title: &str, updated_at: DateTime<Utc>) -> Note {
         let mut note = Note::new();
         note.id = id;
+        note.file_path = format!("{}.md", id.0.to_string());
         note.title = title.to_string();
         note.body = "test body".to_string();
         note.updated_at = updated_at;
@@ -701,5 +702,27 @@ mod tests {
             }
             _ => panic!("Expected Conflict action"),
         }
+    }
+
+    #[test]
+    fn test_calculate_delta_in_subfolder() {
+        let id = NoteId::new();
+        let path = format!("work/{}.md", id.0.to_string());
+        
+        let mut local_note = make_test_note(id, "Subfolder Note", Utc::now());
+        local_note.file_path = path.clone();
+        
+        let remote = RemoteEntry {
+            href: format!("/vault/{}", path),
+            is_collection: false,
+            last_modified: Some(Utc::now().to_rfc3339()),
+            size: Some(local_note.to_markdown().unwrap().len() as u64),
+            etag: Some("etag-subfolder".to_string()),
+        };
+
+        let previous = RemoteState::default();
+        let plan = calculate_delta(&[local_note], &[remote], &previous, "/vault");
+        
+        assert_eq!(plan.actions.len(), 0);
     }
 }

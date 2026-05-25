@@ -117,6 +117,83 @@ pub fn vacuum_database(conn: &rusqlite::Connection) -> Result<(), NodaError> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DuplicateFileEntry {
+    pub relative_path: String,
+    pub last_modified: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DuplicateNoteGroup {
+    pub note_id: String,
+    pub title: String,
+    pub files: Vec<DuplicateFileEntry>,
+}
+
+/// Recursively scans the vault and groups notes with identical IDs to discover duplicates
+pub async fn get_duplicate_notes<P: AsRef<Path>>(
+    vault_path: P,
+) -> Result<Vec<DuplicateNoteGroup>, NodaError> {
+    let vault_path = vault_path.as_ref();
+    let notes = crate::vault::scan::scan_vault(vault_path).await?;
+    
+    // Group notes by ID
+    let mut groups: std::collections::HashMap<crate::models::note::NoteId, Vec<crate::models::note::Note>> = std::collections::HashMap::new();
+    for note in notes {
+        groups.entry(note.id).or_default().push(note);
+    }
+    
+    let mut duplicate_groups = Vec::new();
+    for (id, notes_list) in groups {
+        if notes_list.len() > 1 {
+            let title = notes_list[0].title.clone();
+            let mut files = Vec::new();
+            for note in notes_list {
+                let full_path = vault_path.join(&note.file_path);
+                let meta = tokio::fs::metadata(&full_path).await.ok();
+                let last_modified = meta.as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
+                    .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+                let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                
+                files.push(DuplicateFileEntry {
+                    relative_path: note.file_path,
+                    last_modified,
+                    size_bytes,
+                });
+            }
+            duplicate_groups.push(DuplicateNoteGroup {
+                note_id: id.0.to_string(),
+                title,
+                files,
+            });
+        }
+    }
+    
+    // Sort groups alphabetically by title
+    duplicate_groups.sort_by(|a, b| a.title.cmp(&b.title));
+    Ok(duplicate_groups)
+}
+
+/// Safely deletes a specific duplicate note file by its relative path
+pub async fn delete_duplicate_note_file<P: AsRef<Path>>(
+    vault_path: P,
+    relative_path: &str,
+) -> Result<(), NodaError> {
+    let vault_path = vault_path.as_ref();
+    // Prevent path traversal
+    if relative_path.contains("..") || relative_path.contains('\\') {
+        return Err(NodaError::PathTraversal(format!("Invalid relative path: {}", relative_path)));
+    }
+    let full_path = vault_path.join(relative_path);
+    if full_path.exists() && full_path.is_file() {
+        tokio::fs::remove_file(full_path).await.map_err(NodaError::Io)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +253,33 @@ mod tests {
         let db = Database::open(&db_path).unwrap();
         let conn = db.conn.lock();
         vacuum_database(&conn).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_notes_diagnostics_flow() {
+        let dir = tempdir().unwrap();
+        let service = VaultService::new(dir.path()).unwrap();
+
+        let note = Note::new();
+        service.write_note(&note).await.unwrap();
+
+        let sub_dir = dir.path().join("work");
+        tokio::fs::create_dir_all(&sub_dir).await.unwrap();
+        let sub_file_path = sub_dir.join(format!("{}.md", note.id.0.to_string()));
+        let content = tokio::fs::read_to_string(dir.path().join(format!("{}.md", note.id.0.to_string()))).await.unwrap();
+        tokio::fs::write(&sub_file_path, &content).await.unwrap();
+
+        let duplicates = get_duplicate_notes(dir.path()).await.unwrap();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].note_id, note.id.0.to_string());
+        assert_eq!(duplicates[0].files.len(), 2);
+
+        let relative_path = format!("work/{}.md", note.id.0.to_string());
+        delete_duplicate_note_file(dir.path(), &relative_path).await.unwrap();
+
+        assert!(!sub_file_path.exists());
+
+        let duplicates_after = get_duplicate_notes(dir.path()).await.unwrap();
+        assert_eq!(duplicates_after.len(), 0);
     }
 }

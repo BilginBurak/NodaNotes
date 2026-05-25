@@ -9,9 +9,12 @@
     getOrphanedAttachments,
     deleteOrphanedAttachments,
     clearSyncQueue,
-    clearSyncCache
+    clearSyncCache,
+    getDuplicateNotes,
+    deleteDuplicateNoteFile,
+    getConflictNote
   } from '../../services/ipc';
-  import type { OrphanedAttachment } from '../../services/ipc';
+  import type { OrphanedAttachment, DuplicateNoteGroup } from '../../services/ipc';
   import type { AppConfig } from '../../types';
 
   const dispatch = createEventDispatcher();
@@ -34,10 +37,18 @@
   let validationErrorMessage = '';
 
   // Maintenance state
-  let loadingAction: 'none' | 'rebuild_db' | 'vacuum_db' | 'scan_attachments' | 'delete_attachments' | 'reset_queue' | 'clear_cache' = 'none';
+  let loadingAction: 'none' | 'rebuild_db' | 'vacuum_db' | 'scan_attachments' | 'delete_attachments' | 'reset_queue' | 'clear_cache' | 'scan_duplicates' | 'delete_duplicate' = 'none';
   let orphanedAttachments: OrphanedAttachment[] = [];
   let selectedAttachments: string[] = [];
   let scannedAttachments = false;
+
+  let duplicateNotes: DuplicateNoteGroup[] = [];
+  let scannedDuplicates = false;
+  let previewNoteContent: string | null = null;
+  let previewingFile: string | null = null;
+  let previewingTitle: string | null = null;
+  let loadingPreview = false;
+
   let maintenanceSuccessMsg = '';
   let maintenanceErrorMsg = '';
 
@@ -134,6 +145,72 @@
     } finally {
       loadingAction = 'none';
     }
+  }
+
+  async function handleScanDuplicates() {
+    clearMaintenanceMessages();
+    loadingAction = 'scan_duplicates';
+    try {
+      duplicateNotes = await getDuplicateNotes();
+      scannedDuplicates = true;
+      if (duplicateNotes.length === 0) {
+        maintenanceSuccessMsg = 'Harika! Vault klasöründe hiçbir mükerrer not bulunamadı.';
+      }
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Mükerrer not taraması başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleDeleteDuplicate(relativePath: string) {
+    if (!confirm('Bu not kopyasını fiziksel olarak diskten kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) return;
+    
+    clearMaintenanceMessages();
+    loadingAction = 'delete_duplicate';
+    try {
+      await deleteDuplicateNoteFile(relativePath);
+      maintenanceSuccessMsg = 'Mükerrer not kopyası başarıyla silindi!';
+      
+      // Update local duplicateNotes state list
+      duplicateNotes = duplicateNotes.map(group => {
+        return {
+          ...group,
+          files: group.files.filter(f => f.relative_path !== relativePath)
+        };
+      }).filter(group => group.files.length > 1);
+      
+      // Close preview if the previewed file is deleted
+      if (previewingFile === relativePath) {
+        closePreview();
+      }
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Dosya silme işlemi başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handlePreviewNote(relativePath: string, title: string) {
+    loadingPreview = true;
+    previewingFile = relativePath;
+    previewingTitle = title;
+    previewNoteContent = null;
+    try {
+      // Re-use existing getConflictNote FFI command to read note details safely
+      const note = await getConflictNote(relativePath);
+      previewNoteContent = note.body;
+    } catch (e: any) {
+      previewNoteContent = 'İçerik yüklenemedi: ' + (e.message || e.toString());
+    } finally {
+      loadingPreview = false;
+    }
+  }
+
+  function closePreview() {
+    previewingFile = null;
+    previewingTitle = null;
+    previewNoteContent = null;
   }
 
   function formatBytes(bytes: number) {
@@ -668,6 +745,78 @@
                   </button>
                 </div>
               {/if}
+            </div>
+          {/if}
+        </div>
+
+        <div class="settings-section">
+          <h3>Duplicate Notes Diagnostics</h3>
+          <p class="section-desc">Scan for and resolve notes with duplicate physical files (same Note ID) across subfolders.</p>
+          
+          <div class="maintenance-card">
+            <div class="card-info">
+              <span class="action-title">Scan Duplicate Notes</span>
+              <span class="action-desc">Scans the entire vault recursively to locate any files sharing identical internal note IDs.</span>
+            </div>
+            <button class="btn btn-primary" on:click={handleScanDuplicates} disabled={loadingAction !== 'none'}>
+              {#if loadingAction === 'scan_duplicates'}
+                <div class="spinner-sm"></div>Scanning...
+              {:else}
+                Scan Duplicates
+              {/if}
+            </button>
+          </div>
+
+          {#if scannedDuplicates && duplicateNotes.length > 0}
+            <div class="orphaned-box" transition:slide>
+              <div class="box-header">
+                <span class="box-title">Found {duplicateNotes.length} Duplicate Note Groups</span>
+              </div>
+
+              <div class="duplicate-groups-list scrollbar-thin">
+                {#each duplicateNotes as group}
+                  <div class="duplicate-group-card">
+                    <div class="group-header">
+                      <span class="group-note-title">📝 {group.title || 'Untitled'}</span>
+                      <span class="group-note-id">ID: {group.note_id}</span>
+                    </div>
+                    <div class="group-files-list">
+                      {#each group.files as file}
+                        <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
+                          <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, group.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, group.title)}>
+                            <span class="file-path">{file.relative_path}</span>
+                            <span class="file-meta">
+                              Size: {formatBytes(file.size_bytes)} • Modified: {new Date(file.last_modified).toLocaleString()}
+                            </span>
+                          </div>
+                          <button class="btn btn-danger btn-xs" on:click={() => handleDeleteDuplicate(file.relative_path)} disabled={loadingAction !== 'none'}>
+                            Delete
+                          </button>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          {#if previewingFile}
+            <div class="preview-drawer" transition:slide={{ axis: 'x', duration: 200 }}>
+              <div class="drawer-header">
+                <h4>Preview: {previewingTitle || 'Untitled'}</h4>
+                <button class="close-btn" on:click={closePreview}>&times;</button>
+              </div>
+              <div class="drawer-body scrollbar-thin">
+                <span class="drawer-path-sub">{previewingFile}</span>
+                {#if loadingPreview}
+                  <div class="preview-loading">
+                    <div class="spinner-sm"></div> Yükleniyor...
+                  </div>
+                {:else}
+                  <pre class="preview-content">{previewNoteContent || '(Boş Not)'}</pre>
+                {/if}
+              </div>
             </div>
           {/if}
         </div>
@@ -1559,5 +1708,184 @@
     display: inline-block;
     vertical-align: middle;
     margin-right: 6px;
+  }
+
+  /* Duplicate Groups and Cards styling */
+  .duplicate-groups-list {
+    /* max-height: 280px; */
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-right: 4px;
+  }
+
+  .duplicate-group-card {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-md, 6px);
+    overflow: hidden;
+  }
+
+  .group-header {
+    background-color: rgba(255, 255, 255, 0.04);
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .group-note-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .group-note-id {
+    font-size: 10px;
+    font-family: var(--font-mono, monospace);
+    color: var(--text-secondary);
+    opacity: 0.7;
+  }
+
+  .group-files-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .duplicate-file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    transition: background-color 0.2s;
+  }
+
+  .duplicate-file-item:last-child {
+    border-bottom: none;
+  }
+
+  .duplicate-file-item:hover {
+    background-color: rgba(255, 255, 255, 0.02);
+  }
+
+  .duplicate-file-item.previewing {
+    background-color: rgba(10, 132, 255, 0.15);
+  }
+
+  .file-info-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    cursor: pointer;
+    text-align: left;
+    outline: none;
+  }
+
+  .file-path {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--color-blue, #0a84ff);
+    word-break: break-all;
+  }
+
+  .file-info-col:hover .file-path {
+    text-decoration: underline;
+  }
+
+  .file-meta {
+    font-size: 10.5px;
+    color: var(--text-secondary);
+  }
+
+  /* Preview Drawer Styling */
+  .preview-drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 320px;
+    height: 100%;
+    background-color: var(--modal-bg, #2c2c2e);
+    border-left: 1px solid var(--border-normal, #3a3a3c);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+  }
+
+  .drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-normal, #3a3a3c);
+  }
+
+  .drawer-header h4 {
+    margin: 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 18px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  .close-btn:hover {
+    opacity: 1;
+  }
+
+  .drawer-body {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .drawer-path-sub {
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+    word-break: break-all;
+    background-color: rgba(255, 255, 255, 0.03);
+    padding: 4px 6px;
+    border-radius: 4px;
+  }
+
+  .preview-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 40px 0;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+  }
+
+  .preview-content {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    font-family: var(--font-mono, monospace);
+    color: var(--text-primary);
+    background-color: rgba(0, 0, 0, 0.15);
+    padding: 10px;
+    border-radius: var(--radius-sm, 4px);
+    white-space: pre-wrap;
+    word-break: break-word;
+    border: 1px solid rgba(255, 255, 255, 0.03);
   }
 </style>

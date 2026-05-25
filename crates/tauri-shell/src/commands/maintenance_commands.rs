@@ -1,7 +1,7 @@
 use tauri::State;
 use shared::AppError;
 use crate::state::AppState;
-use noda_core::diagnostics::OrphanedAttachment;
+use noda_core::diagnostics::{OrphanedAttachment, DuplicateNoteGroup};
 
 #[tauri::command]
 pub async fn rebuild_database_cache(state: State<'_, AppState>) -> Result<(), AppError> {
@@ -112,4 +112,55 @@ pub async fn clear_sync_cache(state: State<'_, AppState>) -> Result<(), AppError
     noda_core::diagnostics::clear_sync_cache(&vault_path)
         .await
         .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn get_duplicate_notes(
+    state: State<'_, AppState>,
+) -> Result<Vec<DuplicateNoteGroup>, AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    noda_core::diagnostics::get_duplicate_notes(&vault_path)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn delete_duplicate_note_file(
+    state: State<'_, AppState>,
+    relative_path: String,
+) -> Result<(), AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    // 1. Physically delete file
+    noda_core::diagnostics::delete_duplicate_note_file(&vault_path, &relative_path)
+        .await
+        .map_err(AppError::from)?;
+        
+    // 2. Clean from SQLite cache database
+    let db = {
+        let guard = state.database.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "DATABASE_NOT_INITIALIZED".to_string(),
+            message: "Database cache is not initialized".to_string(),
+        })?
+    };
+    
+    let conn = db.conn.lock();
+    noda_core::database::queries::delete_note_by_path(&conn, &relative_path)
+        .map_err(AppError::from)?;
+        
+    Ok(())
 }

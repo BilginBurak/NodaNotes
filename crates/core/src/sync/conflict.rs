@@ -45,7 +45,7 @@ pub async fn handle_conflict<P: AsRef<Path>>(
         .await
         .map_err(NodaError::Io)?;
 
-    let relative_path = format!("{}.md", file_id);
+    let relative_path = local_note.file_path.clone();
     let archived_relative_path = format!(".noda/conflicts/{}", archive_filename);
 
     Ok(ConflictEntry {
@@ -83,7 +83,19 @@ pub async fn list_conflicts<P: AsRef<Path>>(vault_path: P) -> Result<Vec<Conflic
                     let detected_at = DateTime::from_timestamp(timestamp, 0).unwrap_or_else(|| Utc::now());
 
                     let archived_path = format!(".noda/conflicts/{}", filename);
-                    let relative_path = format!("{}.md", parts[0]);
+                    let relative_path = if let Ok(service) = crate::vault::service::VaultService::new(vault) {
+                        let full_path = service.find_note_path(note_id);
+                        if full_path.exists() {
+                            full_path.strip_prefix(&vault_path)
+                                .unwrap_or(&full_path)
+                                .to_string_lossy()
+                                .to_string()
+                        } else {
+                            format!("{}.md", parts[0])
+                        }
+                    } else {
+                        format!("{}.md", parts[0])
+                    };
 
                     // Try to read local title from the active note (if it exists)
                     // If not, parse from the archived file's frontmatter!

@@ -1,6 +1,6 @@
 //! Database rebuild logic
 
-use crate::database::queries::insert_note;
+use crate::database::queries::upsert_note;
 use crate::errors::NodaError;
 use crate::vault::scan::scan_vault;
 use rusqlite::Connection;
@@ -26,7 +26,7 @@ pub fn rebuild_database_sync(
     // Step 4: Batch insert all scanned notes
     for note in notes {
         // For now, we leave file_hash empty during a mass rebuild
-        insert_note(&tx, note, &note.file_path, "")?;
+        upsert_note(&tx, note, &note.file_path, "")?;
     }
 
     // Step 5: Commit transaction
