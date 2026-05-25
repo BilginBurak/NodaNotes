@@ -46,7 +46,7 @@ export interface Snapshot {
 }
 
 export interface DiffChunk {
-  tag: 'Equal' | 'Insert' | 'Delete';
+  tag: 'Equal' | 'Insert' | 'Delete' | 'Separator';
   text: string;
 }
 

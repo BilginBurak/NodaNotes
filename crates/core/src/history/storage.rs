@@ -88,3 +88,22 @@ pub async fn list_snapshots<P: AsRef<Path>>(
     snapshots.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     Ok(snapshots)
 }
+
+/// Deletes a specific snapshot for a given note_id and timestamp from disk
+pub async fn delete_snapshot<P: AsRef<Path>>(
+    vault_path: P,
+    note_id: NoteId,
+    timestamp: DateTime<Utc>,
+) -> Result<(), NodaError> {
+    let snaps = list_snapshots(vault_path, note_id).await?;
+    let target = snaps.into_iter().find(|s| s.timestamp.timestamp_millis() == timestamp.timestamp_millis());
+    if let Some(snap) = target {
+        if snap.absolute_path.exists() {
+            tokio::fs::remove_file(&snap.absolute_path)
+                .await
+                .map_err(NodaError::Io)?;
+        }
+    }
+    Ok(())
+}
+

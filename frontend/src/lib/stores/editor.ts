@@ -40,6 +40,19 @@ export async function restoreNoteSnapshot(noteId: string, timestamp: string) {
   }
 }
 
+export async function deleteNoteSnapshot(noteId: string, timestamp: string) {
+  loadingEditorMetadata.set(true);
+  try {
+    await ipc.deleteSnapshot(noteId, timestamp);
+    await loadNoteSnapshots(noteId);
+  } catch (e) {
+    console.error('Failed to delete snapshot:', e);
+    throw e;
+  } finally {
+    loadingEditorMetadata.set(false);
+  }
+}
+
 export async function loadAttachments() {
   try {
     const list = await ipc.listAttachments();

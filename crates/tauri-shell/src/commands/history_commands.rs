@@ -2,7 +2,7 @@ use tauri::State;
 use shared::AppError;
 use shared::dtos::NoteDto;
 use crate::state::AppState;
-use noda_core::history::{Snapshot, list_snapshots as core_list_snapshots, restore as core_restore, snapshot as core_snapshot, compare as core_compare};
+use noda_core::history::{Snapshot, list_snapshots as core_list_snapshots, restore as core_restore, snapshot as core_snapshot, compare as core_compare, delete_snapshot as core_delete_snapshot};
 use shared::dtos::SnapshotDiffDto;
 use noda_core::models::note::NoteId;
 use noda_core::database::queries;
@@ -187,3 +187,37 @@ pub async fn compare_snapshot(
         body_chunks: diffs,
     })
 }
+
+#[tauri::command]
+pub async fn delete_snapshot(
+    state: State<'_, AppState>,
+    note_id: String,
+    timestamp: String,
+) -> Result<(), AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let parsed_note_id = NoteId(Ulid::from_string(&note_id).map_err(|e| AppError {
+        code: "INVALID_ID".to_string(),
+        message: format!("Invalid NoteId: {}", e),
+    })?);
+
+    let parsed_timestamp = DateTime::parse_from_rfc3339(&timestamp)
+        .map(|d| d.with_timezone(&Utc))
+        .map_err(|e| AppError {
+            code: "INVALID_TIMESTAMP".to_string(),
+            message: format!("Invalid timestamp format: {}", e),
+        })?;
+
+    core_delete_snapshot(&vault_path, parsed_note_id, parsed_timestamp)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(())
+}
+

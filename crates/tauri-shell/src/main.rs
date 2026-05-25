@@ -42,6 +42,7 @@ fn main() {
             commands::history_commands::list_snapshots,
             commands::history_commands::restore_snapshot,
             commands::history_commands::compare_snapshot,
+            commands::history_commands::delete_snapshot,
             commands::trash_commands::list_trash,
             commands::trash_commands::trash_note,
             commands::trash_commands::restore_from_trash,

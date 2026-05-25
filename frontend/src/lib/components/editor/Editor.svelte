@@ -14,7 +14,7 @@
   import { resolveKeepLocal, resolveKeepRemote } from '../../stores/sync';
   import {
     editorViewMode, snapshotsList, showSnapshots,
-    loadNoteSnapshots, restoreNoteSnapshot, loadingEditorMetadata
+    loadNoteSnapshots, restoreNoteSnapshot, deleteNoteSnapshot, loadingEditorMetadata
   } from '../../stores/editor';
   import * as ipc from '../../services/ipc';
   import { appConfig } from '../../stores/settings';
@@ -127,20 +127,28 @@
     }
   }
 
-  // Not değişince editörü güncelle — editor boşluğunu önlemek için
-  // CodeMirror setState kullanıyoruz; hidden/visible değişimi requestMeasure ile handle ediliyor
-  $: if (currentNote && currentNote.id !== lastNoteId) {
-    lastNoteId = currentNote.id;
-    if (editorView) {
+  // Not değişince veya içeriği dışarıdan/snapshot'tan güncellendiğinde editörü güncelle
+  $: if (currentNote) {
+    if (currentNote.id !== lastNoteId) {
+      lastNoteId = currentNote.id;
+      if (editorView) {
+        const state = EditorState.create({
+          doc: currentNote.body,
+          extensions: getEditorExtensions(handleDocChange, viewMode),
+        });
+        editorView.setState(state);
+        // Yeniden ölçüm — hidden durumdan dönülürse boyutları düzeltir
+        setTimeout(() => editorView?.requestMeasure(), 10);
+      }
+      updateStats(currentNote.body);
+    } else if (editorView && editorView.state.doc.toString() !== currentNote.body && !isDirty) {
       const state = EditorState.create({
         doc: currentNote.body,
         extensions: getEditorExtensions(handleDocChange, viewMode),
       });
       editorView.setState(state);
-      // Yeniden ölçüm — hidden durumdan dönülürse boyutları düzeltir
-      setTimeout(() => editorView?.requestMeasure(), 10);
+      updateStats(currentNote.body);
     }
-    updateStats(currentNote.body);
   }
 
   // viewMode değişince CodeMirror Live Preview uzantısını güncelle ve boyutları ölç
@@ -257,6 +265,18 @@
     currentDiff = null;
     if (confirm('Are you sure you want to restore this version? Current unsaved changes will be lost.')) {
       await restoreNoteSnapshot(currentNote.id, timestamp);
+    }
+  }
+
+  async function handleDeleteSnapshot(timestamp: string) {
+    if (!currentNote) return;
+    if (confirm('Are you sure you want to permanently delete this snapshot? This cannot be undone.')) {
+      try {
+        await deleteNoteSnapshot(currentNote.id, timestamp);
+      } catch (e) {
+        console.error('Failed to delete snapshot:', e);
+        alert('Failed to delete snapshot.');
+      }
     }
   }
 
@@ -553,9 +573,18 @@
                     <span class="snap-date">{formatDate(snap.timestamp)}</span>
                     <span class="snap-file">{snap.absolute_path ? snap.absolute_path.split('/').pop() : 'Unknown'}</span>
                   </div>
-                  <button class="restore-btn" onclick={() => openDiff(snap.timestamp)}>
-                    Preview Diff
-                  </button>
+                  <div class="snap-actions">
+                    <button class="restore-btn" onclick={() => openDiff(snap.timestamp)}>
+                      Preview Diff
+                    </button>
+                    <button class="snap-delete-btn" onclick={() => handleDeleteSnapshot(snap.timestamp)} aria-label="Delete snapshot" title="Delete snapshot">
+                      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                        <polyline points="2,3.5 12,3.5"/>
+                        <path d="M5 3.5V3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v.5M5.5 6.5v3.5M8.5 6.5v3.5"/>
+                        <path d="M3 3.5l.75 7.5a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75L10.5 3.5"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               {/each}
             {/if}
@@ -1015,6 +1044,40 @@
     background-color: var(--accent);
     color: #fff;
     border-color: var(--accent);
+  }
+
+  .snap-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .snap-delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 69, 58, 0.08);
+    border: 1px solid rgba(255, 69, 58, 0.18);
+    color: var(--color-red, #ff453a);
+    padding: 3px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    width: 21px;
+    height: 21px;
+  }
+
+  .snap-delete-btn:hover {
+    background-color: var(--color-red, #ff453a);
+    color: white;
+    border-color: var(--color-red, #ff453a);
+    transform: scale(1.05);
+  }
+
+  .snap-delete-btn svg {
+    width: 11px;
+    height: 11px;
   }
 
   .spinner {

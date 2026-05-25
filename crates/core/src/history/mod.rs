@@ -3,7 +3,7 @@
 pub mod storage;
 pub mod retention;
 
-pub use storage::{Snapshot, save_snapshot, list_snapshots};
+pub use storage::{Snapshot, save_snapshot, list_snapshots, delete_snapshot};
 pub use retention::{enforce_retention, RetentionPolicy};
 use shared::dtos::DiffChunk;
 
@@ -74,16 +74,31 @@ pub async fn compare<P: AsRef<Path>>(
     let diff = similar::TextDiff::from_lines(&restored.body, &current_note.body);
     
     let mut chunks = Vec::new();
-    for change in diff.iter_all_changes() {
-        let tag = match change.tag() {
-            similar::ChangeTag::Delete => "Delete",
-            similar::ChangeTag::Insert => "Insert",
-            similar::ChangeTag::Equal => "Equal",
-        };
-        chunks.push(DiffChunk {
-            tag: tag.to_string(),
-            text: change.value().to_string(),
-        });
+    let groups = diff.grouped_ops(3);
+    
+    let mut first = true;
+    for group in groups {
+        if !first {
+            chunks.push(DiffChunk {
+                tag: "Separator".to_string(),
+                text: "...".to_string(),
+            });
+        }
+        first = false;
+        
+        for op in group {
+            for change in diff.iter_changes(&op) {
+                let tag = match change.tag() {
+                    similar::ChangeTag::Delete => "Delete",
+                    similar::ChangeTag::Insert => "Insert",
+                    similar::ChangeTag::Equal => "Equal",
+                };
+                chunks.push(DiffChunk {
+                    tag: tag.to_string(),
+                    text: change.value().to_string(),
+                });
+            }
+        }
     }
     
     Ok(chunks)
@@ -125,5 +140,13 @@ mod tests {
         let restored = restore(dir.path(), &snap1).await.unwrap();
         assert_eq!(restored.title, "V1");
         assert_eq!(restored.body, "Hello");
+        
+        // Delete snapshot 2
+        delete_snapshot(dir.path(), note.id, snap2.timestamp).await.unwrap();
+        
+        // List again, should only have 1 snapshot left
+        let list2 = list_snapshots(dir.path(), note.id).await.unwrap();
+        assert_eq!(list2.len(), 1);
+        assert_eq!(list2[0].absolute_path, snap1.absolute_path);
     }
 }

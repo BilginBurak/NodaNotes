@@ -28,6 +28,7 @@
   function getChunkClass(tag: string): string {
     if (tag === 'Insert') return 'diff-insert';
     if (tag === 'Delete') return 'diff-delete';
+    if (tag === 'Separator') return 'diff-separator';
     return 'diff-equal';
   }
 </script>
@@ -57,6 +58,8 @@
                 <span class="diff-sign">+</span>
               {:else if chunk.tag === 'Delete'}
                 <span class="diff-sign">-</span>
+              {:else if chunk.tag === 'Separator'}
+                <span class="diff-sign">…</span>
               {:else}
                 <span class="diff-sign">&nbsp;</span>
               {/if}
@@ -202,6 +205,21 @@
 
   .diff-equal {
     color: var(--text-secondary);
+  }
+
+  .diff-separator {
+    background-color: var(--bg-secondary);
+    color: var(--text-disabled);
+    font-style: italic;
+    border-top: 1px dashed var(--border-subtle);
+    border-bottom: 1px dashed var(--border-subtle);
+    margin: 8px 0;
+    padding: 4px 0;
+    font-weight: 500;
+  }
+  .diff-separator .diff-sign {
+    color: var(--text-disabled);
+    border-color: var(--border-subtle);
   }
 
   .modal-footer {

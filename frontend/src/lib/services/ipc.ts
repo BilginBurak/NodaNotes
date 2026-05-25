@@ -108,6 +108,7 @@ export const getSyncConfig = ()               => call<SyncConfig>('get_sync_conf
 export const listSnapshots    = (noteId: string)                    => call<Snapshot[]>('list_snapshots',    { noteId });
 export const restoreSnapshot  = (noteId: string, timestamp: string) => call<NoteDto>('restore_snapshot',    { noteId, timestamp });
 export const compareSnapshot  = (noteId: string, timestamp: string) => call<SnapshotDiffDto>('compare_snapshot',    { noteId, timestamp });
+export const deleteSnapshot   = (noteId: string, timestamp: string) => call<void>('delete_snapshot',     { noteId, timestamp });
 
 // ── Trash Commands ──────────────────────────────────────────
 export const listTrash        = ()            => call<TrashEntry[]>('list_trash');
