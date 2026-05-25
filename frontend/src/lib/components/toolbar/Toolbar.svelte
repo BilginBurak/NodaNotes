@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createNewNote, activeNote, selectedFolder } from '../../stores/notes';
-  import { editorViewMode, showSnapshots, loadNoteSnapshots, showAttachments, loadAttachments } from '../../stores/editor';
+  import { editorViewMode, showAttachments, loadAttachments } from '../../stores/editor';
   import { vaultInfo } from '../../stores/vault';
   import { get } from 'svelte/store';
   import SyncStatus from '../sync/SyncStatus.svelte';
@@ -8,7 +8,6 @@
 
   $: info = $vaultInfo;
   $: viewMode = $editorViewMode;
-  $: snapshotsVisible = $showSnapshots;
   $: attachmentsVisible = $showAttachments;
   $: hasActiveNote = $activeNote !== null;
 
@@ -25,19 +24,7 @@
     editorViewMode.set(mode);
   }
 
-  function toggleSnapshots() {
-    showSnapshots.update(v => {
-      const newVal = !v;
-      if (newVal) {
-        const current = get(activeNote);
-        if (current) {
-          // Explicitly load snapshots when panel is opened, rather than relying on reactive blocks
-          loadNoteSnapshots(current.id).catch(console.error);
-        }
-      }
-      return newVal;
-    });
-  }
+
 
   function toggleAttachments() {
     showAttachments.update(v => {
@@ -138,21 +125,6 @@
           </button>
         </div>
 
-        <!-- Geçmiş butonu -->
-        <button
-          class="icon-btn"
-          class:active={snapshotsVisible}
-          onclick={toggleSnapshots}
-          title="Version history"
-          aria-pressed={snapshotsVisible}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="8" cy="8" r="6.5"/>
-            <polyline points="8,4.5 8,8 10.5,10"/>
-          </svg>
-        </button>
-
-        <div class="divider-v" role="separator"></div>
       {/if}
 
       <SyncStatus />

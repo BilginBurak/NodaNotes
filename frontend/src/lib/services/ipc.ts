@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   NoteDto,
+  NoteMetadataDto,
   NoteListItemDto,
   VaultInfoDto,
   SyncStatus,
@@ -57,6 +58,7 @@ export const createNote = (
 });
 
 export const getNote  = (id: string)  => call<NoteDto>('get_note', { id });
+export const getNoteMetadata = (id: string) => call<NoteMetadataDto>('get_note_metadata', { id });
 export const listNotes = ()           => call<NoteListItemDto[]>('list_notes');
 
 /**

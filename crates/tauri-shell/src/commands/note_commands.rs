@@ -445,3 +445,83 @@ pub async fn import_note_from_content(
 
     Ok(NoteDto::from(note))
 }
+
+#[tauri::command]
+pub async fn get_note_metadata(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<shared::dtos::NoteMetadataDto, AppError> {
+    let service = {
+        let guard = state.vault_service.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    let db = {
+        let guard = state.database.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    let note_id = NoteId(Ulid::from_string(&id).map_err(|e| AppError {
+        code: "INVALID_ID".to_string(),
+        message: format!("Invalid NoteId: {}", e),
+    })?);
+
+    let note = {
+        let conn = db.conn.lock();
+        queries::get_note(&conn, note_id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError {
+                code: "NOT_FOUND".to_string(),
+                message: format!("Note not found in DB: {}", id),
+            })?
+    };
+
+    let vault_path = service.base_path().clone();
+    
+    // 1. Get history count
+    let snapshots = history::list_snapshots(&vault_path, note_id).await.unwrap_or_default();
+    let history_count = snapshots.len();
+
+    // 2. Get sync (upload) metadata
+    let remote_state = noda_core::sync::load_remote_state(&vault_path).await.unwrap_or_default();
+    let last_upload_time = remote_state.files.get(&note.file_path)
+        .and_then(|meta| meta.last_modified)
+        .map(|dt| dt.to_rfc3339());
+
+    // 3. Get local file metadata (absolute path, file name, file size)
+    let abs_path = service.find_note_path(note_id);
+    let file_name = abs_path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+        
+    let file_size_bytes = tokio::fs::metadata(&abs_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    // 4. Word count & character count
+    let char_count = note.body.chars().count();
+    let word_count = note.body.split_whitespace().count();
+
+    Ok(shared::dtos::NoteMetadataDto {
+        id: note.id.0.to_string(),
+        title: note.title,
+        file_name,
+        relative_path: note.file_path,
+        absolute_path: abs_path.to_string_lossy().into_owned(),
+        created_at: note.created_at.to_rfc3339(),
+        updated_at: note.updated_at.to_rfc3339(),
+        tags: note.tags,
+        history_count,
+        last_upload_time,
+        file_size_bytes,
+        word_count,
+        char_count,
+    })
+}

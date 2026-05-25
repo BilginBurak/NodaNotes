@@ -22,6 +22,22 @@ export interface NoteDto {
   frontmatter?: Frontmatter; // Keep optional for backwards compatibility
 }
 
+export interface NoteMetadataDto {
+  id: string;
+  title: string;
+  file_name: string;
+  relative_path: string;
+  absolute_path: string;
+  created_at: string;
+  updated_at: string;
+  tags: string[];
+  history_count: number;
+  last_upload_time?: string | null;
+  file_size_bytes: number;
+  word_count: number;
+  char_count: number;
+}
+
 export interface NoteListItemDto {
   id: string;
   parent_id?: string | null;

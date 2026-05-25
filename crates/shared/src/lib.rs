@@ -28,6 +28,23 @@ pub mod dtos {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct NoteMetadataDto {
+        pub id: String,
+        pub title: String,
+        pub file_name: String,
+        pub relative_path: String,
+        pub absolute_path: String,
+        pub created_at: String,
+        pub updated_at: String,
+        pub tags: Vec<String>,
+        pub history_count: usize,
+        pub last_upload_time: Option<String>,
+        pub file_size_bytes: u64,
+        pub word_count: usize,
+        pub char_count: usize,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct NoteListItemDto {
         pub id: String,
         pub parent_id: Option<String>,

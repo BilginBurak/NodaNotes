@@ -31,6 +31,60 @@
   let currentDiff: import('../../types').SnapshotDiffDto | null = null;
   let isDiffOpen = false;
 
+  let showInfoPopover = false;
+  let metadata: import('../../types').NoteMetadataDto | null = null;
+  let loadingMetadata = false;
+
+  function toggleSnapshots() {
+    showSnapshots.update(v => {
+      const newVal = !v;
+      if (newVal && currentNote) {
+        loadNoteSnapshots(currentNote.id).catch(console.error);
+      }
+      return newVal;
+    });
+  }
+
+  function toggleInfoPopover(e: MouseEvent) {
+    e.stopPropagation();
+    showInfoPopover = !showInfoPopover;
+    if (showInfoPopover) {
+      loadNoteMetadata();
+    }
+  }
+
+  async function loadNoteMetadata() {
+    if (!currentNote) return;
+    loadingMetadata = true;
+    try {
+      metadata = await ipc.getNoteMetadata(currentNote.id);
+    } catch (e) {
+      console.error('Failed to load note metadata:', e);
+    } finally {
+      loadingMetadata = false;
+    }
+  }
+
+  $: if (showInfoPopover && currentNote) {
+    loadNoteMetadata();
+  }
+
+  function formatFullDate(isoStr: string): string {
+    if (!isoStr) return '';
+    return new Date(isoStr).toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
   let remoteNote: import('../../types').NoteDto | null = null;
   let loadingRemote = false;
 
@@ -430,6 +484,7 @@
 
   function handleWindowClick() {
     showRecentDropdown = false;
+    showInfoPopover = false;
   }
 
   function handleInsertMarkupEvent(e: Event) {
@@ -684,6 +739,113 @@
                 </svg>
                 Save
               </button>
+
+              <button
+                class="action-btn"
+                class:active-btn={displaySnapshots}
+                onclick={toggleSnapshots}
+                title="Version history"
+                aria-pressed={displaySnapshots}
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="8" cy="8" r="6.5"/>
+                  <polyline points="8,4.5 8,8 10.5,10"/>
+                </svg>
+                History
+              </button>
+
+              <div class="note-info-wrapper">
+                <button
+                  class="action-btn"
+                  class:active-btn={showInfoPopover}
+                  onclick={toggleInfoPopover}
+                  title="Note Info"
+                  aria-pressed={showInfoPopover}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="8" cy="8" r="7"/>
+                    <line x1="8" y1="11" x2="8" y2="8"/>
+                    <line x1="8" y1="5" x2="8.01" y2="5" stroke-width="2"/>
+                  </svg>
+                  Info
+                </button>
+
+                {#if showInfoPopover}
+                  <div class="note-info-popover scrollbar-thin" onclick={(e) => e.stopPropagation()}>
+                    <div class="popover-header">
+                      <h4>Note Information</h4>
+                      <button class="popover-close-btn" onclick={() => showInfoPopover = false} aria-label="Close">✕</button>
+                    </div>
+                    {#if loadingMetadata}
+                      <div class="popover-loading">
+                        <div class="spinner"></div>
+                        <span>Loading metadata…</span>
+                      </div>
+                    {:else if metadata}
+                      <div class="popover-body">
+                        <div class="info-row">
+                          <span class="info-label">Title:</span>
+                          <span class="info-value">{metadata.title || 'Untitled'}</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">File Name:</span>
+                          <span class="info-value code-font">{metadata.file_name}</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">Relative Path:</span>
+                          <span class="info-value code-font">{metadata.relative_path}</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">Absolute Path:</span>
+                          <span class="info-value code-font">{metadata.absolute_path}</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">Created At:</span>
+                          <span class="info-value">{formatFullDate(metadata.created_at)}</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">Last Saved:</span>
+                          <span class="info-value">{formatFullDate(metadata.updated_at)}</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">Sync Status:</span>
+                          <span class="info-value">
+                            {#if metadata.last_upload_time}
+                              Uploaded to Cloud ({formatFullDate(metadata.last_upload_time)})
+                            {:else}
+                              Not yet synced
+                            {/if}
+                          </span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">History Snapshots:</span>
+                          <span class="info-value">{metadata.history_count} versions stored</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">File Size:</span>
+                          <span class="info-value">{formatBytes(metadata.file_size_bytes)}</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">Statistics:</span>
+                          <span class="info-value">{metadata.word_count} words · {metadata.char_count} chars</span>
+                        </div>
+                        {#if metadata.tags && metadata.tags.length > 0}
+                          <div class="info-row tags-row">
+                            <span class="info-label">Tags:</span>
+                            <div class="info-tags">
+                              {#each metadata.tags as t}
+                                <span class="tag-pill">#{t}</span>
+                              {/each}
+                            </div>
+                          </div>
+                        {/if}
+                      </div>
+                    {:else}
+                      <div class="popover-error">Failed to load note details.</div>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
             </div>
           {/if}
         </div>
@@ -2199,5 +2361,154 @@
 
   .dropdown-item:hover .item-name {
     color: var(--text-primary);
+  }
+
+  /* Note Info Wrapper & Popover */
+  .note-info-wrapper {
+    position: relative;
+    display: inline-block;
+  }
+
+  .note-info-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 320px;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-normal);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 12px 14px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    animation: slideDown 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .popover-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 6px;
+  }
+
+  .popover-header h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .popover-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    transition: all 0.12s ease;
+  }
+
+  .popover-close-btn:hover {
+    color: var(--text-secondary);
+    background-color: var(--bg-control);
+  }
+
+  .popover-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    padding: 20px 0;
+    font-size: 12px;
+  }
+
+  .popover-loading .spinner {
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--border-normal);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  .popover-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .info-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--border-subtle);
+  }
+
+  .info-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .info-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .info-value {
+    font-size: 12px;
+    color: var(--text-primary);
+    word-break: break-all;
+  }
+
+  .info-value.code-font {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background-color: rgba(255, 255, 255, 0.04);
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+
+  .tags-row {
+    border-bottom: none;
+  }
+
+  .info-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+  }
+
+  .info-tags .tag-pill {
+    font-size: 10px;
+    padding: 2px 6px;
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill);
+    color: var(--text-secondary);
+  }
+
+  .popover-error {
+    color: var(--color-red);
+    font-size: 12px;
+    text-align: center;
+    padding: 10px 0;
+  }
+
+  .action-btn.active-btn {
+    color: var(--accent) !important;
+    background-color: var(--accent-muted) !important;
+    border-color: var(--accent-border) !important;
   }
 </style>

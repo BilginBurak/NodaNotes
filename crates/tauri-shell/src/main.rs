@@ -27,6 +27,7 @@ fn main() {
             commands::vault_commands::get_vault_info,
             commands::note_commands::create_note,
             commands::note_commands::get_note,
+            commands::note_commands::get_note_metadata,
             commands::note_commands::update_note,
             commands::note_commands::rename_note,
             commands::note_commands::delete_note,
