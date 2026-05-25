@@ -234,13 +234,47 @@ pub fn calculate_delta(
                 }
             }
             (Some(local_note), Some(remote_entry), None) => {
-                // First time sync, present in both but no previous state
+                // First time sync or cache wiped.
                 if !is_local_remote_identical(local_note, remote_entry) {
-                    actions.push(SyncAction::Conflict {
-                        relative_path: path.clone(),
-                        local_note: (*local_note).clone(),
-                        remote_entry: (*remote_entry).clone(),
-                    });
+                    if let Some(ref remote_lm_str) = remote_entry.last_modified {
+                        if let Some(remote_lm) = parse_last_modified(remote_lm_str) {
+                            let diff = (local_note.updated_at - remote_lm).num_seconds();
+                            if diff > 5 {
+                                // Yerel dosya sunucudakinden daha yeni -> Sunucuya yükle (Upload)
+                                actions.push(SyncAction::Upload {
+                                    relative_path: path.clone(),
+                                });
+                            } else if diff < -5 {
+                                // Sunucudaki dosya yereldekinden daha yeni -> Yereli güncelle (Download)
+                                actions.push(SyncAction::Download {
+                                    relative_path: path.clone(),
+                                    remote_entry: (*remote_entry).clone(),
+                                });
+                            } else {
+                                // Tarih damgaları birbirine çok yakın (5 sn içinde) ama içerik/boyut farklı.
+                                // Güvenlik amacıyla manuel karar için Conflict yap.
+                                actions.push(SyncAction::Conflict {
+                                    relative_path: path.clone(),
+                                    local_note: (*local_note).clone(),
+                                    remote_entry: (*remote_entry).clone(),
+                                });
+                            }
+                        } else {
+                            // Tarih parse edilemedi -> Güvenli liman: Conflict
+                            actions.push(SyncAction::Conflict {
+                                relative_path: path.clone(),
+                                local_note: (*local_note).clone(),
+                                remote_entry: (*remote_entry).clone(),
+                                });
+                        }
+                    } else {
+                        // Tarih bilgisi yok -> Güvenli liman: Conflict
+                        actions.push(SyncAction::Conflict {
+                            relative_path: path.clone(),
+                            local_note: (*local_note).clone(),
+                            remote_entry: (*remote_entry).clone(),
+                        });
+                    }
                 }
             }
 
@@ -565,6 +599,99 @@ mod tests {
             },
         );
 
+        let plan = calculate_delta(&[local_note], &[remote], &previous, "/vault");
+        
+        assert_eq!(plan.actions.len(), 1);
+        match &plan.actions[0] {
+            SyncAction::Conflict { relative_path, .. } => {
+                assert_eq!(relative_path, &path);
+            }
+            _ => panic!("Expected Conflict action"),
+        }
+    }
+
+    #[test]
+    fn test_calculate_delta_empty_previous_local_newer() {
+        let id = NoteId::new();
+        let path = format!("{}.md", id.0.to_string());
+        
+        // Local is significantly newer (10 seconds)
+        let local_time = Utc.with_ymd_and_hms(2026, 5, 20, 3, 0, 10).unwrap();
+        let remote_time_str = "2026-05-20T03:00:00Z";
+        
+        let local_note = make_test_note(id, "Modified Local", local_time);
+        
+        let remote = RemoteEntry {
+            href: format!("/vault/{}", path),
+            is_collection: false,
+            last_modified: Some(remote_time_str.to_string()),
+            size: Some(250),
+            etag: Some("etag-remote".to_string()),
+        };
+
+        let previous = RemoteState::default();
+        let plan = calculate_delta(&[local_note], &[remote], &previous, "/vault");
+        
+        assert_eq!(plan.actions.len(), 1);
+        match &plan.actions[0] {
+            SyncAction::Upload { relative_path } => {
+                assert_eq!(relative_path, &path);
+            }
+            _ => panic!("Expected Upload action"),
+        }
+    }
+
+    #[test]
+    fn test_calculate_delta_empty_previous_remote_newer() {
+        let id = NoteId::new();
+        let path = format!("{}.md", id.0.to_string());
+        
+        // Remote is significantly newer (10 seconds)
+        let local_time = Utc.with_ymd_and_hms(2026, 5, 20, 3, 0, 0).unwrap();
+        let remote_time_str = "2026-05-20T03:00:10Z";
+        
+        let local_note = make_test_note(id, "Modified Local", local_time);
+        
+        let remote = RemoteEntry {
+            href: format!("/vault/{}", path),
+            is_collection: false,
+            last_modified: Some(remote_time_str.to_string()),
+            size: Some(250),
+            etag: Some("etag-remote".to_string()),
+        };
+
+        let previous = RemoteState::default();
+        let plan = calculate_delta(&[local_note], &[remote], &previous, "/vault");
+        
+        assert_eq!(plan.actions.len(), 1);
+        match &plan.actions[0] {
+            SyncAction::Download { relative_path, .. } => {
+                assert_eq!(relative_path, &path);
+            }
+            _ => panic!("Expected Download action"),
+        }
+    }
+
+    #[test]
+    fn test_calculate_delta_empty_previous_close_timestamps() {
+        let id = NoteId::new();
+        let path = format!("{}.md", id.0.to_string());
+        
+        // Timestamps are close (within 5 seconds - 3 seconds difference) but size differs
+        let local_time = Utc.with_ymd_and_hms(2026, 5, 20, 3, 0, 3).unwrap();
+        let remote_time_str = "2026-05-20T03:00:00Z";
+        
+        let local_note = make_test_note(id, "Modified Local", local_time);
+        
+        let remote = RemoteEntry {
+            href: format!("/vault/{}", path),
+            is_collection: false,
+            last_modified: Some(remote_time_str.to_string()),
+            size: Some(250), // Sizes differ implicitly as well
+            etag: Some("etag-remote".to_string()),
+        };
+
+        let previous = RemoteState::default();
         let plan = calculate_delta(&[local_note], &[remote], &previous, "/vault");
         
         assert_eq!(plan.actions.len(), 1);
