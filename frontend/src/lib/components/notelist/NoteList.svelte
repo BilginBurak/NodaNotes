@@ -113,6 +113,12 @@
 
   let dragOverActive = $state(false);
 
+  $effect(() => {
+    if ($draggedItem === null) {
+      dragOverActive = false;
+    }
+  });
+
   function handleDragOver(e: DragEvent) {
     if (viewMode !== 'normal') return;
     e.preventDefault();

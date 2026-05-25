@@ -135,6 +135,34 @@ pub async fn permanent_delete<P: AsRef<Path>>(
     let _ = tokio::fs::remove_file(&trash_md_path).await;
     let _ = tokio::fs::remove_file(&trash_json_path).await;
     
+    // 1. Delete history snapshot directory
+    let history_dir = vault_root
+        .join(".noda")
+        .join("history")
+        .join(trash_entry.note_id.0.to_string());
+        
+    if history_dir.exists() {
+        let _ = tokio::fs::remove_dir_all(&history_dir).await;
+    }
+    
+    // 2. Delete conflict files matching the note id
+    let conflicts_dir = vault_root.join(".noda").join("conflicts");
+    if conflicts_dir.exists() {
+        if let Ok(mut dir) = tokio::fs::read_dir(&conflicts_dir).await {
+            let prefix = format!("{}_", trash_entry.note_id.0.to_string());
+            while let Ok(Some(entry)) = dir.next_entry().await {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
+                        if filename.starts_with(&prefix) && filename.ends_with(".md") {
+                            let _ = tokio::fs::remove_file(&path).await;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     Ok(())
 }
 

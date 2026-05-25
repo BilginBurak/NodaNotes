@@ -161,6 +161,22 @@ export interface DuplicateNoteGroup {
 export const getDuplicateNotes          = () => call<DuplicateNoteGroup[]>('get_duplicate_notes');
 export const deleteDuplicateNoteFile    = (relativePath: string) => call<void>('delete_duplicate_note_file', { relativePath });
 
+export interface OrphanedFile {
+  relative_path: string;
+  title: string;
+  size_bytes: number;
+  last_modified: string;
+  file_type: string;
+}
+
+export interface OrphanedRemnants {
+  files: OrphanedFile[];
+  total_recovered_bytes: number;
+}
+export const getOrphanedRemnants       = () => call<OrphanedRemnants>('get_orphaned_remnants');
+export const deleteOrphanedRemnants    = (remnants: OrphanedRemnants) => call<void>('delete_orphaned_remnants', { remnants });
+export const deleteOrphanedFile        = (relativePath: string) => call<void>('delete_orphaned_file', { relativePath });
+
 // ── Folder Commands ─────────────────────────────────────────
 export const listFolders  = () => call<string[]>('list_folders');
 export const createFolder = (relPath: string) => call<void>('create_folder', { relPath });

@@ -235,6 +235,18 @@
     loadTrash();
     loadConflicts();
     loadAttachmentsWithMetadata();
+
+    const handleGlobalDragEnd = () => {
+      rootDragOver = false;
+    };
+
+    window.addEventListener('dragend', handleGlobalDragEnd);
+    window.addEventListener('drop', handleGlobalDragEnd, true);
+
+    return () => {
+      window.removeEventListener('dragend', handleGlobalDragEnd);
+      window.removeEventListener('drop', handleGlobalDragEnd, true);
+    };
   });
 </script>
 

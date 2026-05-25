@@ -12,9 +12,12 @@
     clearSyncCache,
     getDuplicateNotes,
     deleteDuplicateNoteFile,
-    getConflictNote
+    getConflictNote,
+    getOrphanedRemnants,
+    deleteOrphanedRemnants,
+    deleteOrphanedFile
   } from '../../services/ipc';
-  import type { OrphanedAttachment, DuplicateNoteGroup } from '../../services/ipc';
+  import type { OrphanedAttachment, DuplicateNoteGroup, OrphanedRemnants } from '../../services/ipc';
   import type { AppConfig } from '../../types';
 
   const dispatch = createEventDispatcher();
@@ -37,10 +40,12 @@
   let validationErrorMessage = '';
 
   // Maintenance state
-  let loadingAction: 'none' | 'rebuild_db' | 'vacuum_db' | 'scan_attachments' | 'delete_attachments' | 'reset_queue' | 'clear_cache' | 'scan_duplicates' | 'delete_duplicate' = 'none';
+  let loadingAction: 'none' | 'rebuild_db' | 'vacuum_db' | 'scan_attachments' | 'delete_attachments' | 'reset_queue' | 'clear_cache' | 'scan_duplicates' | 'delete_duplicate' | 'scan_remnants' | 'delete_remnants' = 'none';
   let orphanedAttachments: OrphanedAttachment[] = [];
   let selectedAttachments: string[] = [];
   let scannedAttachments = false;
+  let scannedRemnants = false;
+  let orphanedRemnants: OrphanedRemnants | null = null;
 
   let duplicateNotes: DuplicateNoteGroup[] = [];
   let scannedDuplicates = false;
@@ -186,6 +191,71 @@
       }
     } catch (e: any) {
       maintenanceErrorMsg = e.message || 'Dosya silme işlemi başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleScanRemnants() {
+    clearMaintenanceMessages();
+    loadingAction = 'scan_remnants';
+    try {
+      orphanedRemnants = await getOrphanedRemnants();
+      scannedRemnants = true;
+      const count = orphanedRemnants?.files?.length || 0;
+      if (count === 0) {
+        maintenanceSuccessMsg = 'Harika! Vault klasöründe hiçbir sahipsiz geçmiş veya çakışma kalıntısı bulunamadı.';
+      }
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Kalıntı taraması başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleDeleteSelectedRemnants() {
+    if (!orphanedRemnants) return;
+    const count = orphanedRemnants.files?.length || 0;
+    if (count === 0) return;
+    if (!confirm(`Seçilen ${count} adet sahipsiz kalıntıyı (geçmiş ve çakışma dosyaları) kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`)) return;
+
+    clearMaintenanceMessages();
+    loadingAction = 'delete_remnants';
+    try {
+      await deleteOrphanedRemnants(orphanedRemnants);
+      maintenanceSuccessMsg = `Tüm sahipsiz geçmiş sürümleri ve çakışma dosyaları başarıyla temizlendi, depolama alanı geri kazanıldı!`;
+      orphanedRemnants = { files: [], total_recovered_bytes: 0 };
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Kalıntı temizleme başarısız';
+    } finally {
+      loadingAction = 'none';
+    }
+  }
+
+  async function handleDeleteOrphanedFile(relativePath: string) {
+    if (!confirm('Bu kalıntı dosyasını diskten kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) return;
+    
+    clearMaintenanceMessages();
+    loadingAction = 'delete_remnants';
+    try {
+      await deleteOrphanedFile(relativePath);
+      maintenanceSuccessMsg = 'Kalıntı dosya başarıyla silindi!';
+      
+      if (orphanedRemnants) {
+        const fileToDelete = orphanedRemnants.files.find(f => f.relative_path === relativePath);
+        const size = fileToDelete ? fileToDelete.size_bytes : 0;
+        
+        orphanedRemnants = {
+          files: orphanedRemnants.files.filter(f => f.relative_path !== relativePath),
+          total_recovered_bytes: Math.max(0, orphanedRemnants.total_recovered_bytes - size)
+        };
+      }
+      
+      if (previewingFile === relativePath) {
+        closePreview();
+      }
+    } catch (e: any) {
+      maintenanceErrorMsg = e.message || 'Kalıntı silme başarısız';
     } finally {
       loadingAction = 'none';
     }
@@ -824,6 +894,75 @@
                   <pre class="preview-content">{previewNoteContent || '(Boş Not)'}</pre>
                 {/if}
               </div>
+            </div>
+          {/if}
+        </div>
+
+        <div class="settings-section">
+          <h3>Remnants Diagnostics (History & Conflicts)</h3>
+          <p class="section-desc">Reclaim local storage space by purging orphaned history folders and conflict files of deleted notes.</p>
+          
+          <div class="maintenance-card">
+            <div class="card-info">
+              <span class="action-title">Scan Orphaned Remnants</span>
+              <span class="action-desc">Scans `.noda/history/` and `.noda/conflicts/` directories to identify metadata that no longer belongs to any active or trashed note.</span>
+            </div>
+            <button class="btn btn-primary" on:click={handleScanRemnants} disabled={loadingAction !== 'none'}>
+              {#if loadingAction === 'scan_remnants'}
+                <div class="spinner-sm"></div>Scanning...
+              {:else}
+                Scan Remnants
+              {/if}
+            </button>
+          </div>
+
+          {#if scannedRemnants && orphanedRemnants}
+            <div class="orphaned-box" transition:slide>
+              {#if orphanedRemnants.files.length === 0}
+                <div class="empty-orphaned">
+                  <span class="success-indicator">🎉</span>
+                  <span class="empty-text">Harika! Vault klasöründe hiçbir sahipsiz geçmiş veya çakışma kalıntısı bulunamadı.</span>
+                </div>
+              {:else}
+                <div class="box-header">
+                  <span class="box-title">Bulunan Sahipsiz Kalıntılar ({orphanedRemnants.files.length} Dosya)</span>
+                  <span class="box-total-size">Kazanılacak Alan: {formatBytes(orphanedRemnants.total_recovered_bytes)}</span>
+                </div>
+
+                <div class="duplicate-groups-list scrollbar-thin" style="overflow-y: auto;">
+                  <div class="duplicate-group-card" style="border: none; padding: 0; background: transparent; margin-bottom: 0; box-shadow: none;">
+                    <div class="group-files-list">
+                      {#each orphanedRemnants.files as file}
+                        <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
+                          <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, file.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, file.title)}>
+                            <span class="file-path" style="display: flex; align-items: center; gap: 6px;">
+                              <span>{file.file_type === 'history' ? '📁' : '📄'}</span>
+                              <span style="font-weight: 500;">{file.title}</span>
+                            </span>
+                            <span class="file-meta" style="margin-top: 2px;">
+                              Yol: {file.relative_path} • Boyut: {formatBytes(file.size_bytes)} • Değiştirilme: {new Date(file.last_modified).toLocaleString()}
+                            </span>
+                          </div>
+                          <button class="btn btn-danger btn-xs" on:click={() => handleDeleteOrphanedFile(file.relative_path)} disabled={loadingAction !== 'none'}>
+                            Sil
+                          </button>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="orphaned-actions" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-subtle);">
+                  <span class="selected-count">{orphanedRemnants.files.length} dosya kalıcı olarak silinecek</span>
+                  <button class="btn btn-danger btn-sm" on:click={handleDeleteSelectedRemnants} disabled={loadingAction !== 'none'}>
+                    {#if loadingAction === 'delete_remnants'}
+                      <div class="spinner-sm"></div>Temizleniyor...
+                    {:else}
+                      Tüm Kalıntıları Temizle
+                    {/if}
+                  </button>
+                </div>
+              {/if}
             </div>
           {/if}
         </div>

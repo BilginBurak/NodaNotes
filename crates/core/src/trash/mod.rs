@@ -110,8 +110,19 @@ mod tests {
         
         // Permanent delete test
         let entry2 = soft_delete(dir.path(), &path).await.unwrap();
+        
+        // Assert snapshot was created again
+        let snaps_before = history::list_snapshots(dir.path(), note.id).await.unwrap();
+        assert_eq!(snaps_before.len(), 2); // 1 from first delete/restore, 1 from second delete
+        
         permanent_delete(dir.path(), &entry2).await.unwrap();
+        
         let trash_list3 = list_trash(dir.path()).await.unwrap();
         assert_eq!(trash_list3.len(), 0); // Empty trash
+        
+        // Assert history was completely removed
+        let snaps_after = history::list_snapshots(dir.path(), note.id).await.unwrap();
+        assert_eq!(snaps_after.len(), 0);
+        assert!(!dir.path().join(".noda").join("history").join(note.id.0.to_string()).exists());
     }
 }

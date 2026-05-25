@@ -166,6 +166,12 @@
     }
   });
 
+  $effect(() => {
+    if ($draggedItem === null) {
+      dragOverActive = false;
+    }
+  });
+
   let isSubmitting = false;
 
   async function commitRename() {
@@ -224,6 +230,7 @@
   style="padding-left: {depth * 12 + 12}px"
   draggable="true"
   ondragstart={handleDragStart}
+  ondragend={() => { draggedItem.set(null); dragOverActive = false; }}
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}

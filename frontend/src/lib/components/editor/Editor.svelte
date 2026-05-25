@@ -587,10 +587,16 @@
   }
   }
 
+  const handleGlobalDragEnd = () => {
+    isDraggingFile = false;
+  };
+
   onMount(() => {
     window.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('click', handleWindowClick);
     window.addEventListener('noda:insert-markup', handleInsertMarkupEvent);
+    window.addEventListener('dragend', handleGlobalDragEnd);
+    window.addEventListener('drop', handleGlobalDragEnd, true);
   });
 
   onDestroy(() => {
@@ -598,6 +604,8 @@
     window.removeEventListener('keydown', handleGlobalKeyDown);
     window.removeEventListener('click', handleWindowClick);
     window.removeEventListener('noda:insert-markup', handleInsertMarkupEvent);
+    window.removeEventListener('dragend', handleGlobalDragEnd);
+    window.removeEventListener('drop', handleGlobalDragEnd, true);
   });
 
   async function openDiff(timestamp: string) {
@@ -2195,6 +2203,7 @@
     z-index: 50;
     padding: 40px;
     animation: fadeIn 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
   }
 
   .drag-message {

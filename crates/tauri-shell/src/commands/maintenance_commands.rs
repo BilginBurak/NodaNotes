@@ -1,7 +1,7 @@
 use tauri::State;
 use shared::AppError;
 use crate::state::AppState;
-use noda_core::diagnostics::{OrphanedAttachment, DuplicateNoteGroup};
+use noda_core::diagnostics::{OrphanedAttachment, DuplicateNoteGroup, OrphanedRemnants};
 
 #[tauri::command]
 pub async fn rebuild_database_cache(state: State<'_, AppState>) -> Result<(), AppError> {
@@ -162,5 +162,99 @@ pub async fn delete_duplicate_note_file(
     noda_core::database::queries::delete_note_by_path(&conn, &relative_path)
         .map_err(AppError::from)?;
         
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_orphaned_remnants(
+    state: State<'_, AppState>,
+) -> Result<OrphanedRemnants, AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    noda_core::diagnostics::get_orphaned_remnants(&vault_path)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn delete_orphaned_remnants(
+    state: State<'_, AppState>,
+    remnants: OrphanedRemnants,
+) -> Result<(), AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    noda_core::diagnostics::delete_orphaned_remnants(&vault_path, remnants)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn delete_orphaned_file(
+    state: State<'_, AppState>,
+    relative_path: String,
+) -> Result<(), AppError> {
+    let vault_path = {
+        let guard = state.vault_path.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    // Prevent path traversal
+    if relative_path.contains("..") || relative_path.contains('\\') {
+        return Err(AppError {
+            code: "INVALID_PATH".to_string(),
+            message: "Path traversal attempt detected".to_string(),
+        });
+    }
+    
+    // Safety check: ensure it is in history or conflicts folder!
+    if !relative_path.starts_with(".noda/history/") && !relative_path.starts_with(".noda/conflicts/") {
+        return Err(AppError {
+            code: "INVALID_PATH".to_string(),
+            message: "Only files under .noda/history/ or .noda/conflicts/ can be deleted".to_string(),
+        });
+    }
+    
+    let full_path = vault_path.join(&relative_path);
+    if full_path.exists() && full_path.is_file() {
+        tokio::fs::remove_file(&full_path).await.map_err(|e| AppError {
+            code: "IO_ERROR".to_string(),
+            message: format!("Failed to delete file: {}", e),
+        })?;
+    }
+    
+    // If it was a history file, check if its parent directory (the note_id folder) is now empty.
+    // If it is, delete it too so we don't leave empty folders!
+    if relative_path.starts_with(".noda/history/") {
+        if let Some(parent) = full_path.parent() {
+            if parent.exists() && parent.is_dir() {
+                if let Ok(mut entries) = tokio::fs::read_dir(parent).await {
+                    let mut empty = true;
+                    while let Ok(Some(_)) = entries.next_entry().await {
+                        empty = false;
+                        break;
+                    }
+                    if empty {
+                        let _ = tokio::fs::remove_dir(parent).await;
+                    }
+                }
+            }
+        }
+    }
+    
     Ok(())
 }

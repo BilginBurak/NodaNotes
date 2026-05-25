@@ -194,6 +194,211 @@ pub async fn delete_duplicate_note_file<P: AsRef<Path>>(
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OrphanedFile {
+    pub relative_path: String,
+    pub title: String,
+    pub size_bytes: u64,
+    pub last_modified: String,
+    pub file_type: String, // "history" or "conflict"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OrphanedRemnants {
+    pub files: Vec<OrphanedFile>,
+    pub total_recovered_bytes: u64,
+}
+
+/// Scans the .noda/history/ and .noda/conflicts/ directories to find remnants
+/// of notes that no longer exist in the vault or the trash bin.
+pub async fn get_orphaned_remnants<P: AsRef<Path>>(
+    vault_path: P,
+) -> Result<OrphanedRemnants, NodaError> {
+    let vault_path = vault_path.as_ref();
+    
+    // 1. Gather all active note IDs in the vault
+    let notes = crate::vault::scan::scan_vault(vault_path).await?;
+    let mut known_note_ids = std::collections::HashSet::new();
+    for note in notes {
+        known_note_ids.insert(note.id);
+    }
+    
+    // 2. Gather all trash note IDs in the vault
+    if let Ok(trash_entries) = crate::trash::list_trash(vault_path).await {
+        for entry in trash_entries {
+            known_note_ids.insert(entry.note_id);
+        }
+    }
+    
+    let mut files = Vec::new();
+    let mut total_recovered_bytes = 0;
+    
+    // 3. Scan .noda/history for orphaned note folders
+    let history_dir = vault_path.join(".noda").join("history");
+    if history_dir.exists() {
+        let mut dir = tokio::fs::read_dir(&history_dir).await.map_err(NodaError::Io)?;
+        while let Some(entry) = dir.next_entry().await.map_err(NodaError::Io)? {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(folder_name) = path.file_name().and_then(|s| s.to_str()) {
+                    if let Ok(ulid) = ulid::Ulid::from_string(folder_name) {
+                        let note_id = crate::models::note::NoteId(ulid);
+                        if !known_note_ids.contains(&note_id) {
+                            // Read files inside this history directory
+                            if let Ok(mut history_files) = tokio::fs::read_dir(&path).await {
+                                while let Ok(Some(file_entry)) = history_files.next_entry().await {
+                                    let file_path = file_entry.path();
+                                    if file_path.is_file() && file_path.extension().map_or(false, |ext| ext == "md") {
+                                        if let Ok(meta) = file_entry.metadata().await {
+                                            let size_bytes = meta.len();
+                                            total_recovered_bytes += size_bytes;
+                                            
+                                            let last_modified = meta.modified()
+                                                .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
+                                                .unwrap_or_else(|_| chrono::Utc::now().to_rfc3339());
+                                                
+                                            let filename = file_path.file_name().unwrap().to_string_lossy().to_string();
+                                            let rel_path = format!(".noda/history/{}/{}", folder_name, filename);
+                                            
+                                            let mut file_title = format!("History Snapshot ({})", folder_name);
+                                            if let Ok(content) = tokio::fs::read_to_string(&file_path).await {
+                                                let matter = gray_matter::Matter::<gray_matter::engine::YAML>::new();
+                                                let parsed = matter.parse(&content);
+                                                if let Some(fm_any) = parsed.data {
+                                                    if let Ok(frontmatter) = fm_any.deserialize::<crate::models::note::Frontmatter>() {
+                                                        file_title = frontmatter.title;
+                                                    }
+                                                }
+                                            }
+                                            if let Some(stem) = file_path.file_stem().and_then(|s| s.to_str()) {
+                                                if let Ok(parsed_time) = chrono::NaiveDateTime::parse_from_str(stem, "%Y%m%d_%H%M%S_%3f") {
+                                                    let datetime = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(parsed_time, chrono::Utc);
+                                                    file_title = format!("{} (Geçmiş: {})", file_title, datetime.format("%Y-%m-%d %H:%M:%S"));
+                                                }
+                                            }
+                                            
+                                            files.push(OrphanedFile {
+                                                relative_path: rel_path,
+                                                title: file_title,
+                                                size_bytes,
+                                                last_modified,
+                                                file_type: "history".to_string(),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // 4. Scan .noda/conflicts for orphaned conflict files
+    let conflicts_dir = vault_path.join(".noda").join("conflicts");
+    if conflicts_dir.exists() {
+        let mut dir = tokio::fs::read_dir(&conflicts_dir).await.map_err(NodaError::Io)?;
+        while let Some(entry) = dir.next_entry().await.map_err(NodaError::Io)? {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+                if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
+                    let base = path.file_stem().unwrap().to_string_lossy().to_string();
+                    let parts: Vec<&str> = base.split('_').collect();
+                    if !parts.is_empty() {
+                        if let Ok(ulid) = ulid::Ulid::from_string(parts[0]) {
+                            let note_id = crate::models::note::NoteId(ulid);
+                            if !known_note_ids.contains(&note_id) {
+                                if let Ok(meta) = entry.metadata().await {
+                                    let size_bytes = meta.len();
+                                    total_recovered_bytes += size_bytes;
+                                    
+                                    let last_modified = meta.modified()
+                                        .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
+                                        .unwrap_or_else(|_| chrono::Utc::now().to_rfc3339());
+                                        
+                                    let rel_path = format!(".noda/conflicts/{}", filename);
+                                    
+                                    let mut file_title = "Conflict Version".to_string();
+                                    if let Ok(content) = tokio::fs::read_to_string(&path).await {
+                                        let matter = gray_matter::Matter::<gray_matter::engine::YAML>::new();
+                                        let parsed = matter.parse(&content);
+                                        if let Some(fm_any) = parsed.data {
+                                            if let Ok(frontmatter) = fm_any.deserialize::<crate::models::note::Frontmatter>() {
+                                                file_title = frontmatter.title;
+                                            }
+                                        }
+                                    }
+                                    if parts.len() >= 2 {
+                                        if let Ok(timestamp) = parts[1].parse::<i64>() {
+                                            if let Some(datetime) = chrono::DateTime::from_timestamp(timestamp, 0) {
+                                                file_title = format!("{} (Çakışma: {})", file_title, datetime.format("%Y-%m-%d %H:%M:%S"));
+                                            }
+                                        }
+                                    }
+                                    
+                                    files.push(OrphanedFile {
+                                        relative_path: rel_path,
+                                        title: file_title,
+                                        size_bytes,
+                                        last_modified,
+                                        file_type: "conflict".to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(OrphanedRemnants {
+        files,
+        total_recovered_bytes,
+    })
+}
+
+/// Deletes the specified list of orphaned remnants from the vault.
+pub async fn delete_orphaned_remnants<P: AsRef<Path>>(
+    vault_path: P,
+    remnants: OrphanedRemnants,
+) -> Result<(), NodaError> {
+    let vault_root = vault_path.as_ref();
+    
+    for file in remnants.files {
+        let relative_path = file.relative_path;
+        if relative_path.contains("..") || relative_path.contains('\\') {
+            return Err(NodaError::PathTraversal(format!("Invalid remnant file path: {}", relative_path)));
+        }
+        
+        let path = vault_root.join(&relative_path);
+        if path.exists() && path.is_file() {
+            tokio::fs::remove_file(&path).await.map_err(NodaError::Io)?;
+        }
+        
+        // Clean up empty parent directory if it is a history snapshot folder
+        if relative_path.starts_with(".noda/history/") {
+            if let Some(parent) = path.parent() {
+                if parent.exists() && parent.is_dir() {
+                    if let Ok(mut entries) = tokio::fs::read_dir(parent).await {
+                        let mut empty = true;
+                        while let Ok(Some(_)) = entries.next_entry().await {
+                            empty = false;
+                            break;
+                        }
+                        if empty {
+                            let _ = tokio::fs::remove_dir(parent).await;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,5 +486,50 @@ mod tests {
 
         let duplicates_after = get_duplicate_notes(dir.path()).await.unwrap();
         assert_eq!(duplicates_after.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_orphaned_remnants_diagnostics_flow() {
+        let dir = tempdir().unwrap();
+        let service = VaultService::new(dir.path()).unwrap();
+
+        // 1. Create a note and save snapshot history
+        let mut note = Note::new();
+        note.title = "Remnant Note".to_string();
+        note.body = "Body".to_string();
+        service.write_note(&note).await.unwrap();
+
+        let _snap = crate::history::snapshot(dir.path(), &note).await.unwrap();
+        let history_folder = dir.path().join(".noda").join("history").join(note.id.0.to_string());
+        assert!(history_folder.exists());
+
+        // 2. Setup a conflict file manually
+        let conflicts_dir = dir.path().join(".noda").join("conflicts");
+        tokio::fs::create_dir_all(&conflicts_dir).await.unwrap();
+        let conflict_file = conflicts_dir.join(format!("{}_123456789.md", note.id.0.to_string()));
+        tokio::fs::write(&conflict_file, b"conflict content").await.unwrap();
+        assert!(conflict_file.exists());
+
+        // 3. Delete the active note physically to orphan the history and conflict
+        let note_path = dir.path().join(format!("{}.md", note.id.0.to_string()));
+        tokio::fs::remove_file(&note_path).await.unwrap();
+
+        // 4. Scan for remnants
+        let remnants = get_orphaned_remnants(dir.path()).await.unwrap();
+        assert_eq!(remnants.files.len(), 2);
+        assert!(remnants.files.iter().any(|f| f.file_type == "history"));
+        assert!(remnants.files.iter().any(|f| f.file_type == "conflict"));
+        assert!(remnants.total_recovered_bytes > 0);
+
+        // 5. Clean remnants
+        delete_orphaned_remnants(dir.path(), remnants).await.unwrap();
+
+        // 6. Verify they are gone
+        assert!(!history_folder.exists());
+        assert!(!conflict_file.exists());
+
+        let remnants_after = get_orphaned_remnants(dir.path()).await.unwrap();
+        assert_eq!(remnants_after.files.len(), 0);
+        assert_eq!(remnants_after.total_recovered_bytes, 0);
     }
 }
