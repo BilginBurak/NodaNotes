@@ -4,7 +4,6 @@
   import { vaultInfo } from '../../stores/vault';
   import { get } from 'svelte/store';
   import SyncStatus from '../sync/SyncStatus.svelte';
-  import ConflictBadge from '../sync/ConflictBadge.svelte';
   import SearchBar from '../search/SearchBar.svelte';
 
   $: info = $vaultInfo;
@@ -145,7 +144,6 @@
         <div class="divider-v" role="separator"></div>
       {/if}
 
-      <ConflictBadge />
       <SyncStatus />
     {/if}
   </div>

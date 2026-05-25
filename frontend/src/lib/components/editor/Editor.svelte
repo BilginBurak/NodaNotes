@@ -7,7 +7,8 @@
   import {
     activeNote, updateActiveNoteBody, saveActiveNote, renameActiveNote,
     activeNoteDirty, lastSavedAt, updateActiveNoteTags, notesList,
-    viewingTrashNote, viewingConflictNote, activeViewMode, selectedFolder
+    viewingTrashNote, viewingConflictNote, activeViewMode, selectedFolder,
+    selectNote
   } from '../../stores/notes';
   import { recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
   import { resolveKeepLocal, resolveKeepRemote } from '../../stores/sync';
@@ -299,14 +300,14 @@
               </svg>
               <span class="banner-label">Deleted Note <span class="banner-title">{currentNote.title || 'Untitled'}</span></span>
               <div class="banner-actions">
-                <button class="banner-btn restore-btn" onclick={async () => { await recoverFromTrash(currentNote.id); selectedFolder.set(null); activeViewMode.set('normal'); }} title="Restore note">
+                <button class="banner-btn restore-btn" onclick={async () => { const id = currentNote.id; await recoverFromTrash(id); selectedFolder.set(null); activeViewMode.set('normal'); await selectNote(id); }} title="Restore note">
                   <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
                     <path d="M1 6a5 5 0 1 0 1-2.9"/>
                     <polyline points="1,2 1,6 5,6"/>
                   </svg>
                   Restore
                 </button>
-                <button class="banner-btn delete-btn" onclick={async () => { if(confirm('Permanently delete this note?')) { await emptyTrashPermanently(currentNote.id); selectedFolder.set('__trash__'); } }} title="Delete permanently">
+                <button class="banner-btn delete-btn" onclick={async () => { if(confirm('Permanently delete this note?')) { await emptyTrashPermanently(currentNote.id); activeNote.set(null); viewingTrashNote.set(false); selectedFolder.set('__trash__'); } }} title="Delete permanently">
                   <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
                     <line x1="2" y1="2" x2="10" y2="10"/>
                     <line x1="10" y1="2" x2="2" y2="10"/>
@@ -325,10 +326,10 @@
               </svg>
               <span class="banner-label">Sync Conflict <span class="banner-title">{currentNote.title || 'Untitled'}</span></span>
               <div class="banner-actions">
-                <button class="banner-btn keep-local-btn" onclick={async () => { await resolveKeepLocal(isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); }} title="Keep your local version">
+                <button class="banner-btn keep-local-btn" onclick={async () => { const id = isConflict.noteId; await resolveKeepLocal(isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); await selectNote(id); }} title="Keep your local version">
                   Keep Local
                 </button>
-                <button class="banner-btn keep-remote-btn" onclick={async () => { await resolveKeepRemote(isConflict.noteId, isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); }} title="Use the synced (remote) version">
+                <button class="banner-btn keep-remote-btn" onclick={async () => { const id = isConflict.noteId; await resolveKeepRemote(isConflict.noteId, isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); await selectNote(id); }} title="Use the synced (remote) version">
                   Use Remote
                 </button>
               </div>
@@ -398,7 +399,7 @@
                     </div>
                   </div>
                   <div class="pane-footer">
-                    <button class="btn-keep btn-keep-local" onclick={async () => { await resolveKeepLocal(isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); }}>
+                    <button class="btn-keep btn-keep-local" onclick={async () => { const id = isConflict.noteId; await resolveKeepLocal(isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); await selectNote(id); }}>
                       <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:12px; height:12px; margin-right:4px;">
                         <polyline points="1.5,6 4.5,9 10.5,3"/>
                       </svg>
@@ -425,7 +426,7 @@
                     </div>
                   </div>
                   <div class="pane-footer">
-                    <button class="btn-keep btn-keep-remote" onclick={async () => { await resolveKeepRemote(isConflict.noteId, isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); }}>
+                    <button class="btn-keep btn-keep-remote" onclick={async () => { const id = isConflict.noteId; await resolveKeepRemote(isConflict.noteId, isConflict.archivedPath); selectedFolder.set(null); activeViewMode.set('normal'); await selectNote(id); }}>
                       <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:12px; height:12px; margin-right:4px;">
                         <polyline points="1.5,6 4.5,9 10.5,3"/>
                       </svg>
