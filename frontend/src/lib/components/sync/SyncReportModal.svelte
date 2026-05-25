@@ -1,9 +1,41 @@
 <script lang="ts">
   import { lastSyncReport, showSyncReport, dismissSyncReport, triggerSyncNow, syncStatus } from '../../stores/sync';
+  import { notesList } from '../../stores/notes';
 
   $: report = $lastSyncReport;
   $: visible = $showSyncReport;
   $: status = $syncStatus;
+
+  // Helper to resolve note title from a file path/ULID
+  function getDisplayName(filePath: string): string {
+    if (!filePath) return '';
+
+    // Extract potential 26-char ULID (e.g. 01KSE2D8T9VT8F72XQ9HAE98Y1)
+    const ulidRegex = /\b([0-9A-Za-z]{26})\b/;
+    const match = filePath.match(ulidRegex);
+
+    if (match) {
+      const noteId = match[1].toUpperCase();
+      const allNotes = $notesList;
+      const found = allNotes.find(n => n.id.toUpperCase() === noteId);
+
+      if (found) {
+        const title = found.title || 'Untitled';
+        
+        // If it's a history snapshot
+        if (filePath.includes('.noda/history/')) {
+          return `${filePath} (${title})`;
+        }
+        
+        // If it's a normal note file
+        if (filePath.endsWith('.md')) {
+          return `${filePath} (${title})`;
+        }
+      }
+    }
+
+    return filePath;
+  }
 
   let showDetail = false;
 
@@ -289,7 +321,7 @@
             <div class="file-group">
               <h4 class="color-upload">Uploaded</h4>
               <ul>
-                {#each report.uploaded_files as file}<li>{file}</li>{/each}
+                {#each report.uploaded_files as file}<li>{getDisplayName(file)}</li>{/each}
               </ul>
             </div>
           {/if}
@@ -298,7 +330,7 @@
             <div class="file-group">
               <h4 class="color-download">Downloaded</h4>
               <ul>
-                {#each report.downloaded_files as file}<li>{file}</li>{/each}
+                {#each report.downloaded_files as file}<li>{getDisplayName(file)}</li>{/each}
               </ul>
             </div>
           {/if}
@@ -307,7 +339,7 @@
             <div class="file-group">
               <h4 class="color-delete">Local Deletes</h4>
               <ul>
-                {#each report.deleted_local_files as file}<li>{file}</li>{/each}
+                {#each report.deleted_local_files as file}<li>{getDisplayName(file)}</li>{/each}
               </ul>
             </div>
           {/if}
@@ -316,7 +348,7 @@
             <div class="file-group">
               <h4 class="color-delete">Remote Deletes</h4>
               <ul>
-                {#each report.deleted_remote_files as file}<li>{file}</li>{/each}
+                {#each report.deleted_remote_files as file}<li>{getDisplayName(file)}</li>{/each}
               </ul>
             </div>
           {/if}
@@ -325,7 +357,7 @@
             <div class="file-group">
               <h4 class="color-conflict">Conflicts</h4>
               <ul>
-                {#each report.conflict_files as file}<li>{file}</li>{/each}
+                {#each report.conflict_files as file}<li>{getDisplayName(file)}</li>{/each}
               </ul>
             </div>
           {/if}
