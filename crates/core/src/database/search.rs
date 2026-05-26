@@ -22,14 +22,121 @@ fn row_to_search_result(row: &Row) -> Result<SearchResult, rusqlite::Error> {
     })
 }
 
-/// Searches the vault using FTS5 MATCH query with BM25 ranking.
+fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\")
+     .replace('%', "\\%")
+     .replace('_', "\\_")
+}
+
+fn highlight_match(text: &str, query: &str) -> Option<String> {
+    if query.is_empty() {
+        return None;
+    }
+    let lower_text = text.to_lowercase();
+    let lower_query = query.to_lowercase();
+    
+    let query_chars: Vec<char> = lower_query.chars().collect();
+    let text_chars: Vec<char> = text.chars().collect();
+    let text_chars_lower: Vec<char> = lower_text.chars().collect();
+    
+    let mut match_idx = None;
+    for i in 0..=text_chars_lower.len().saturating_sub(query_chars.len()) {
+        if text_chars_lower[i..i + query_chars.len()] == query_chars[..] {
+            match_idx = Some(i);
+            break;
+        }
+    }
+    
+    if let Some(idx) = match_idx {
+        let before_chars = &text_chars[..idx];
+        let matched_chars = &text_chars[idx..idx + query_chars.len()];
+        let after_chars = &text_chars[idx + query_chars.len()..];
+        
+        let before: String = before_chars.iter().collect();
+        let matched: String = matched_chars.iter().collect();
+        let after: String = after_chars.iter().collect();
+        
+        let display_before = if before_chars.len() > 15 {
+            let start_idx = before_chars.len() - 15;
+            format!("...{}", before_chars[start_idx..].iter().collect::<String>())
+        } else {
+            before
+        };
+        
+        let display_after = if after_chars.len() > 15 {
+            format!("{}...", after_chars[..15].iter().collect::<String>())
+        } else {
+            after
+        };
+        
+        Some(format!("{}<b>{}</b>{}", display_before, matched, display_after))
+    } else {
+        None
+    }
+}
+
+/// Searches the vault using FTS5 MATCH query with BM25 ranking,
+/// combined with a direct search on note ID (ULID) and filename.
 pub fn search_notes(conn: &Connection, query: &str) -> Result<Vec<SearchResult>, NodaError> {
-    if query.trim().is_empty() {
+    let clean_query = query.trim();
+    if clean_query.is_empty() {
         return Ok(Vec::new());
     }
 
+    // 1. Direct search by ID (ULID) or file_path using LIKE
+    let escaped = escape_like(clean_query);
+    let direct_pattern = format!("%{}%", escaped);
+    let sql_direct = r#"
+        SELECT id, title, file_path, body
+        FROM notes
+        WHERE id LIKE ?1 ESCAPE '\' OR file_path LIKE ?1 ESCAPE '\'
+        LIMIT 50
+    "#;
+
+    let mut stmt_direct = conn.prepare(sql_direct)
+        .map_err(|e| NodaError::Database(format!("Prepare direct search failed: {}", e)))?;
+
+    let rows_direct = stmt_direct.query_map(params![direct_pattern], |row| {
+        let id_str: String = row.get("id")?;
+        let title: String = row.get("title")?;
+        let file_path: String = row.get("file_path")?;
+        let body: String = row.get("body")?;
+        
+        Ok((id_str, title, file_path, body))
+    }).map_err(|e| NodaError::Database(format!("Query direct search failed: {}", e)))?;
+
+    let mut direct_results = Vec::new();
+    for row in rows_direct {
+        if let Ok((id_str, title, file_path, body)) = row {
+            if let Ok(id) = parse_ulid(&id_str) {
+                // Generate a high quality highlighted snippet
+                let snippet = if let Some(hl) = highlight_match(&id_str, clean_query) {
+                    format!("ID: {}", hl)
+                } else if let Some(hl) = highlight_match(&file_path, clean_query) {
+                    format!("File: {}", hl)
+                } else {
+                    // Fallback to body preview
+                    let body_chars: Vec<char> = body.chars().collect();
+                    if body_chars.len() > 32 {
+                        format!("{}...", body_chars[..32].iter().collect::<String>())
+                    } else {
+                        body
+                    }
+                };
+
+                direct_results.push(SearchResult {
+                    id,
+                    title,
+                    snippet,
+                    score: -1000.0, // Ranks first in sorting
+                });
+            }
+        }
+    }
+
+    // 2. FTS5 Search
     // Basic sanitization and prefix formatting: "hello world" -> "hello* AND world*"
-    let terms: Vec<String> = query
+    let terms: Vec<String> = clean_query
         .split_whitespace()
         .filter(|s| !s.is_empty())
         .map(|s| {
@@ -39,43 +146,53 @@ pub fn search_notes(conn: &Connection, query: &str) -> Result<Vec<SearchResult>,
         .filter(|s| !s.is_empty() && s != "*")
         .collect();
 
-    if terms.is_empty() {
-        return Ok(Vec::new());
-    }
+    let mut fts_results = Vec::new();
+    if !terms.is_empty() {
+        let fts_query = terms.join(" AND ");
 
-    let fts_query = terms.join(" AND ");
+        // Using FTS5 snippet function: snippet(notes_fts, 1, '<b>', '</b>', '...', 32)
+        // 1 specifies the column (body is column index 1 in notes_fts: title=0, body=1, tags=2)
+        // bm25() returns lower values for better matches, so we order by bm25(notes_fts) ASC
+        let sql_fts = r#"
+            SELECT 
+                n.id, 
+                n.title, 
+                snippet(notes_fts, 1, '<b>', '</b>', '...', 32) as snippet,
+                bm25(notes_fts) as score
+            FROM notes_fts f
+            JOIN notes n ON n.rowid = f.rowid
+            WHERE notes_fts MATCH ?1
+            ORDER BY score ASC
+            LIMIT 50
+        "#;
 
-    // Using FTS5 snippet function: snippet(notes_fts, 1, '<b>', '</b>', '...', 32)
-    // 1 specifies the column (body is column index 1 in notes_fts: title=0, body=1, tags=2)
-    // bm25() returns lower values for better matches, so we order by bm25(notes_fts) ASC
-    let sql = r#"
-        SELECT 
-            n.id, 
-            n.title, 
-            snippet(notes_fts, 1, '<b>', '</b>', '...', 32) as snippet,
-            bm25(notes_fts) as score
-        FROM notes_fts f
-        JOIN notes n ON n.rowid = f.rowid
-        WHERE notes_fts MATCH ?1
-        ORDER BY score ASC
-        LIMIT 50
-    "#;
+        let mut stmt_fts = conn.prepare(sql_fts)
+            .map_err(|e| NodaError::Database(format!("Prepare search failed: {}", e)))?;
 
-    let mut stmt = conn.prepare(sql)
-        .map_err(|e| NodaError::Database(format!("Prepare search failed: {}", e)))?;
+        let rows_fts = stmt_fts.query_map(params![fts_query], row_to_search_result)
+            .map_err(|e| NodaError::Database(format!("Query map search failed: {}", e)))?;
 
-    let rows = stmt.query_map(params![fts_query], row_to_search_result)
-        .map_err(|e| NodaError::Database(format!("Query map search failed: {}", e)))?;
-
-    let mut results = Vec::new();
-    for row in rows {
-        match row {
-            Ok(r) => results.push(r),
-            Err(e) => return Err(NodaError::Database(format!("Row parsing failed in search: {}", e))),
+        for row in rows_fts {
+            match row {
+                Ok(r) => fts_results.push(r),
+                Err(e) => return Err(NodaError::Database(format!("Row parsing failed in search: {}", e))),
+            }
         }
     }
 
-    Ok(results)
+    // 3. Merge & Deduplicate (keeping direct results first)
+    let mut combined = direct_results;
+    for r in fts_results {
+        if !combined.iter().any(|existing| existing.id == r.id) {
+            combined.push(r);
+        }
+    }
+
+    // Sort by score ascending (so lower scores like -1000.0 or lowest BM25 are first)
+    combined.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal));
+    combined.truncate(50);
+
+    Ok(combined)
 }
 
 #[cfg(test)]
@@ -109,5 +226,48 @@ mod tests {
         assert_eq!(results[0].id, note1.id);
         assert!(results[0].snippet.contains("<b>Rust</b>"));
         assert!(results[0].snippet.contains("blazingly <b>fast</b>"));
+    }
+
+    #[test]
+    fn test_search_by_id_and_filename() {
+        let dir = tempdir().unwrap();
+        let db = Database::open(dir.path().join("index.db")).unwrap();
+        let conn = db.conn.lock();
+
+        let mut note1 = Note::new();
+        note1.title = "Rust Programming".to_string();
+        note1.body = "Rust is amazing.".to_string();
+        let path1 = note1.file_path.clone();
+        insert_note(&conn, &note1, &path1, "").unwrap();
+
+        let mut note2 = Note::new();
+        note2.title = "Cooking Pasta".to_string();
+        note2.body = "Let's cook pasta.".to_string();
+        let path2 = "pasta_recipe.md".to_string();
+        note2.file_path = path2.clone();
+        insert_note(&conn, &note2, &path2, "").unwrap();
+
+        // 1. Search by full Note ID (ULID)
+        let id_str = note1.id.0.to_string();
+        let results_id = search_notes(&conn, &id_str).unwrap();
+        assert_eq!(results_id.len(), 1);
+        assert_eq!(results_id[0].id, note1.id);
+        assert!(results_id[0].snippet.contains("ID:"));
+        assert!(results_id[0].snippet.contains(&format!("<b>{}</b>", id_str)));
+
+        // 2. Search by prefix of Note ID (lowercase to test case insensitivity)
+        let id_prefix = &id_str[0..15].to_lowercase();
+        let results_prefix = search_notes(&conn, id_prefix).unwrap();
+        assert_eq!(results_prefix.len(), 1);
+        assert_eq!(results_prefix[0].id, note1.id);
+        assert!(results_prefix[0].snippet.contains("ID:"));
+        assert!(results_prefix[0].snippet.contains(&format!("<b>{}</b>", id_prefix.to_uppercase())));
+
+        // 3. Search by custom filename
+        let results_file = search_notes(&conn, "pasta").unwrap();
+        assert!(results_file.len() >= 1);
+        assert_eq!(results_file[0].id, note2.id);
+        assert!(results_file[0].snippet.contains("File:"));
+        assert!(results_file[0].snippet.contains("<b>pasta</b>_recipe.md"));
     }
 }
