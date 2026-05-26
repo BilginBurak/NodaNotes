@@ -32,16 +32,25 @@ fn highlight_match(text: &str, query: &str) -> Option<String> {
     if query.is_empty() {
         return None;
     }
-    let lower_text = text.to_lowercase();
-    let lower_query = query.to_lowercase();
-    
-    let query_chars: Vec<char> = lower_query.chars().collect();
+    let query_chars: Vec<char> = query.chars().collect();
     let text_chars: Vec<char> = text.chars().collect();
-    let text_chars_lower: Vec<char> = lower_text.chars().collect();
+    
+    if query_chars.len() > text_chars.len() {
+        return None;
+    }
     
     let mut match_idx = None;
-    for i in 0..=text_chars_lower.len().saturating_sub(query_chars.len()) {
-        if text_chars_lower[i..i + query_chars.len()] == query_chars[..] {
+    for i in 0..=text_chars.len().saturating_sub(query_chars.len()) {
+        let mut matched = true;
+        for j in 0..query_chars.len() {
+            let tc = text_chars[i + j];
+            let qc = query_chars[j];
+            if !tc.to_lowercase().eq(qc.to_lowercase()) {
+                matched = false;
+                break;
+            }
+        }
+        if matched {
             match_idx = Some(i);
             break;
         }
@@ -135,15 +144,10 @@ pub fn search_notes(conn: &Connection, query: &str) -> Result<Vec<SearchResult>,
     }
 
     // 2. FTS5 Search
-    // Basic sanitization and prefix formatting: "hello world" -> "hello* AND world*"
     let terms: Vec<String> = clean_query
-        .split_whitespace()
+        .split(|c: char| !c.is_alphanumeric())
         .filter(|s| !s.is_empty())
-        .map(|s| {
-            let clean: String = s.chars().filter(|c| c.is_alphanumeric()).collect();
-            format!("{}*", clean)
-        })
-        .filter(|s| !s.is_empty() && s != "*")
+        .map(|s| format!("{}*", s))
         .collect();
 
     let mut fts_results = Vec::new();
@@ -219,6 +223,11 @@ mod tests {
         note2.body = "Today we will learn how to cook pasta.".to_string();
         insert_note(&conn, &note2, "2.md", "").unwrap();
 
+        let mut note3 = Note::new();
+        note3.title = "Attachments".to_string();
+        note3.body = "Check this attachment: ![xxh3_265b76ac10173dcc.jpg](noda://attachments/xxh3_265b76ac10173dcc.jpg)".to_string();
+        insert_note(&conn, &note3, "3.md", "").unwrap();
+
         // Perform search
         let results = search_notes(&conn, "rust fast").unwrap();
         
@@ -226,6 +235,11 @@ mod tests {
         assert_eq!(results[0].id, note1.id);
         assert!(results[0].snippet.contains("<b>Rust</b>"));
         assert!(results[0].snippet.contains("blazingly <b>fast</b>"));
+
+        // Perform search for attachment name
+        let results_attach = search_notes(&conn, "xxh3_265b76ac10173dcc.jpg").unwrap();
+        assert_eq!(results_attach.len(), 1);
+        assert_eq!(results_attach[0].id, note3.id);
     }
 
     #[test]
@@ -269,5 +283,10 @@ mod tests {
         assert_eq!(results_file[0].id, note2.id);
         assert!(results_file[0].snippet.contains("File:"));
         assert!(results_file[0].snippet.contains("<b>pasta</b>_recipe.md"));
+
+        // 4. Search with a query longer than a ULID (should not panic)
+        let long_query = "a".repeat(30);
+        let results_long = search_notes(&conn, &long_query).unwrap();
+        assert!(results_long.is_empty());
     }
 }
