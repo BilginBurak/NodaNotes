@@ -705,9 +705,9 @@
         </div>
 
         {#if maintenanceSuccessMsg}
-          <div class="maintenance-alert alert-success" transition:fade>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M13.25 4.75L6.75 11.25L2.75 7.25" stroke-linecap="round" stroke-linejoin="round"/>
+          <div class="alert alert-success" transition:fade style="margin-bottom: 20px;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; flex-shrink: 0;">
+              <polyline points="2,8 6,12 14,4"/>
             </svg>
             <span>{maintenanceSuccessMsg}</span>
             <button class="close-alert" on:click={() => maintenanceSuccessMsg = ''}>&times;</button>
@@ -715,11 +715,11 @@
         {/if}
 
         {#if maintenanceErrorMsg}
-          <div class="maintenance-alert alert-danger" transition:fade>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
-              <circle cx="8" cy="8" r="6.25"/>
-              <line x1="8" y1="5" x2="8" y2="9" stroke-linecap="round"/>
-              <circle cx="8" cy="11" r="0.75" fill="currentColor"/>
+          <div class="alert alert-error" transition:fade style="margin-bottom: 20px;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width: 16px; height: 16px; flex-shrink: 0;">
+              <circle cx="8" cy="8" r="6"/>
+              <line x1="8" y1="5" x2="8" y2="8"/>
+              <line x1="8" y1="11" x2="8" y2="11"/>
             </svg>
             <span>{maintenanceErrorMsg}</span>
             <button class="close-alert" on:click={() => maintenanceErrorMsg = ''}>&times;</button>
@@ -727,276 +727,336 @@
         {/if}
 
         <div class="settings-section">
-          <h3>Database Administration</h3>
-          <p class="section-desc">Maintain search performance and clean index metadata.</p>
-          
-          <div class="maintenance-card">
-            <div class="card-info">
-              <span class="action-title">Rebuild Database Cache</span>
-              <span class="action-desc">Fully re-scans vault note files and rebuilds the SQLite search and tag index from scratch. Useful if some notes are missing from list or search.</span>
+          <!-- Section 1: Database Health -->
+          <div class="maintenance-group">
+            <div class="group-title-row">
+              <span class="group-title">Database Administration</span>
+              <span class="group-subtitle">Maintain search performance and clean index metadata</span>
             </div>
-            <button class="btn btn-warning" on:click={handleRebuildDatabase} disabled={loadingAction !== 'none'}>
-              {#if loadingAction === 'rebuild_db'}
-                <div class="spinner-sm"></div>Processing...
-              {:else}
-                Rebuild Cache
-              {/if}
-            </button>
-          </div>
-
-          <div class="maintenance-card">
-            <div class="card-info">
-              <span class="action-title">Vacuum Database</span>
-              <span class="action-desc">Defragments the database file, cleans unused cache spaces, and optimizes internal query performance. Safe to run anytime.</span>
-            </div>
-            <button class="btn btn-secondary" on:click={handleVacuumDatabase} disabled={loadingAction !== 'none'}>
-              {#if loadingAction === 'vacuum_db'}
-                <div class="spinner-sm"></div>Processing...
-              {:else}
-                Vacuum DB
-              {/if}
-            </button>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <h3>Attachments Diagnostics</h3>
-          <p class="section-desc">Reclaim local storage space by purging unreferenced media files.</p>
-          
-          <div class="maintenance-card">
-            <div class="card-info">
-              <span class="action-title">Scan Orphaned Attachments</span>
-              <span class="action-desc">Scans `.noda/attachments/` to identify images and files that are no longer linked or used inside any active note.</span>
-            </div>
-            <button class="btn btn-primary" on:click={handleScanAttachments} disabled={loadingAction !== 'none'}>
-              {#if loadingAction === 'scan_attachments'}
-                <div class="spinner-sm"></div>Scanning...
-              {:else}
-                Scan Files
-              {/if}
-            </button>
-          </div>
-
-          {#if scannedAttachments}
-            <div class="orphaned-box" transition:slide>
-              <div class="box-header">
-                <span class="box-title">Found {orphanedAttachments.length} Orphaned Files</span>
-                {#if orphanedAttachments.length > 0}
-                  <span class="box-total-size">Total: {formatBytes(orphanedAttachments.reduce((sum, a) => sum + a.size_bytes, 0))}</span>
-                {/if}
+            
+            <div class="maintenance-card">
+              <div class="card-icon-container">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                  <path d="M3 5V19A9 3 0 0 0 21 19V5"></path>
+                  <path d="M3 12A9 3 0 0 0 21 12"></path>
+                </svg>
               </div>
-
-              {#if orphanedAttachments.length === 0}
-                <div class="empty-orphaned">
-                  <span class="success-indicator">🎉</span>
-                  <span class="empty-text">Your vault is fully optimized! No orphaned attachments found.</span>
-                </div>
-              {:else}
-                <div class="orphaned-list scrollbar-thin">
-                  {#each orphanedAttachments as att}
-                    <label class="orphaned-item">
-                      <input type="checkbox" bind:group={selectedAttachments} value={att.filename} />
-                      <div class="item-details">
-                        <span class="item-name">{att.filename}</span>
-                        <span class="item-size">{formatBytes(att.size_bytes)}</span>
-                      </div>
-                    </label>
-                  {/each}
-                </div>
-                
-                <div class="orphaned-actions">
-                  <span class="selected-count">{selectedAttachments.length} files selected</span>
-                  <button class="btn btn-danger btn-sm" on:click={handleDeleteSelectedAttachments} disabled={selectedAttachments.length === 0 || loadingAction !== 'none'}>
-                    {#if loadingAction === 'delete_attachments'}
-                      <div class="spinner-sm"></div>Deleting...
-                    {:else}
-                      Permanently Delete Selected
-                    {/if}
-                  </button>
-                </div>
-              {/if}
-            </div>
-          {/if}
-        </div>
-
-        <div class="settings-section">
-          <h3>Duplicate Notes Diagnostics</h3>
-          <p class="section-desc">Scan for and resolve notes with duplicate physical files (same Note ID) across subfolders.</p>
-          
-          <div class="maintenance-card">
-            <div class="card-info">
-              <span class="action-title">Scan Duplicate Notes</span>
-              <span class="action-desc">Scans the entire vault recursively to locate any files sharing identical internal note IDs.</span>
-            </div>
-            <button class="btn btn-primary" on:click={handleScanDuplicates} disabled={loadingAction !== 'none'}>
-              {#if loadingAction === 'scan_duplicates'}
-                <div class="spinner-sm"></div>Scanning...
-              {:else}
-                Scan Duplicates
-              {/if}
-            </button>
-          </div>
-
-          {#if scannedDuplicates}
-            <div class="orphaned-box" transition:slide>
-              {#if duplicateNotes.length === 0}
-                <div class="empty-orphaned">
-                  <span class="success-indicator">🎉</span>
-                  <span class="empty-text">Harika! Vault klasöründe hiçbir mükerrer not bulunamadı.</span>
-                </div>
-              {:else}
-                <div class="box-header">
-                  <span class="box-title">Found {duplicateNotes.length} Duplicate Note Groups</span>
-                </div>
-
-                <div class="duplicate-groups-list scrollbar-thin">
-                  {#each duplicateNotes as group}
-                    <div class="duplicate-group-card">
-                      <div class="group-header">
-                        <span class="group-note-title">📝 {group.title || 'Untitled'}</span>
-                        <span class="group-note-id">ID: {group.note_id}</span>
-                      </div>
-                      <div class="group-files-list">
-                        {#each group.files as file}
-                          <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
-                            <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, group.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, group.title)}>
-                              <span class="file-path">{file.relative_path}</span>
-                              <span class="file-meta">
-                                Size: {formatBytes(file.size_bytes)} • Modified: {new Date(file.last_modified).toLocaleString()}
-                              </span>
-                            </div>
-                            <button class="btn btn-danger btn-xs" on:click={() => handleDeleteDuplicate(file.relative_path)} disabled={loadingAction !== 'none'}>
-                              Delete
-                            </button>
-                          </div>
-                        {/each}
-                      </div>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {/if}
-
-          {#if previewingFile}
-            <div class="preview-drawer" transition:slide={{ axis: 'x', duration: 200 }}>
-              <div class="drawer-header">
-                <h4>Preview: {previewingTitle || 'Untitled'}</h4>
-                <button class="close-btn" on:click={closePreview}>&times;</button>
+              <div class="card-info">
+                <span class="action-title">Rebuild Database Cache</span>
+                <span class="action-desc">Fully re-scans vault note files and rebuilds the SQLite search and tag index from scratch. Useful if some notes are missing from list or search.</span>
               </div>
-              <div class="drawer-body scrollbar-thin">
-                <span class="drawer-path-sub">{previewingFile}</span>
-                {#if loadingPreview}
-                  <div class="preview-loading">
-                    <div class="spinner-sm"></div> Yükleniyor...
-                  </div>
+              <button class="btn btn-warning" on:click={handleRebuildDatabase} disabled={loadingAction !== 'none'}>
+                {#if loadingAction === 'rebuild_db'}
+                  <div class="spinner-sm"></div>Processing...
                 {:else}
-                  <pre class="preview-content">{previewNoteContent || '(Boş Not)'}</pre>
+                  Rebuild Cache
                 {/if}
-              </div>
+              </button>
             </div>
-          {/if}
-        </div>
 
-        <div class="settings-section">
-          <h3>Remnants Diagnostics (History & Conflicts)</h3>
-          <p class="section-desc">Reclaim local storage space by purging orphaned history folders and conflict files of deleted notes.</p>
-          
-          <div class="maintenance-card">
-            <div class="card-info">
-              <span class="action-title">Scan Orphaned Remnants</span>
-              <span class="action-desc">Scans `.noda/history/` and `.noda/conflicts/` directories to identify metadata that no longer belongs to any active or trashed note.</span>
+            <div class="maintenance-card">
+              <div class="card-icon-container">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m21 16-4 4-4-4"></path>
+                  <path d="M17 20V4"></path>
+                  <path d="m3 8 4-4 4 4"></path>
+                  <path d="M7 4v16"></path>
+                </svg>
+              </div>
+              <div class="card-info">
+                <span class="action-title">Vacuum Database</span>
+                <span class="action-desc">Defragments the database file, cleans unused cache spaces, and optimizes internal query performance. Safe to run anytime.</span>
+              </div>
+              <button class="btn btn-secondary" on:click={handleVacuumDatabase} disabled={loadingAction !== 'none'}>
+                {#if loadingAction === 'vacuum_db'}
+                  <div class="spinner-sm"></div>Processing...
+                {:else}
+                  Vacuum DB
+                {/if}
+              </button>
             </div>
-            <button class="btn btn-primary" on:click={handleScanRemnants} disabled={loadingAction !== 'none'}>
-              {#if loadingAction === 'scan_remnants'}
-                <div class="spinner-sm"></div>Scanning...
-              {:else}
-                Scan Remnants
-              {/if}
-            </button>
           </div>
 
-          {#if scannedRemnants && orphanedRemnants}
-            <div class="orphaned-box" transition:slide>
-              {#if orphanedRemnants.files.length === 0}
-                <div class="empty-orphaned">
-                  <span class="success-indicator">🎉</span>
-                  <span class="empty-text">Harika! Vault klasöründe hiçbir sahipsiz geçmiş veya çakışma kalıntısı bulunamadı.</span>
-                </div>
-              {:else}
-                <div class="box-header">
-                  <span class="box-title">Bulunan Sahipsiz Kalıntılar ({orphanedRemnants.files.length} Dosya)</span>
-                  <span class="box-total-size">Kazanılacak Alan: {formatBytes(orphanedRemnants.total_recovered_bytes)}</span>
-                </div>
+          <!-- Section 2: Vault Cleanup -->
+          <div class="maintenance-group">
+            <div class="group-title-row">
+              <span class="group-title">Vault Diagnostics & Storage Cleanup</span>
+              <span class="group-subtitle">Reclaim local storage space by purging unreferenced media or duplicate files</span>
+            </div>
 
-                <div class="duplicate-groups-list scrollbar-thin" style="overflow-y: auto;">
-                  <div class="duplicate-group-card" style="border: none; padding: 0; background: transparent; margin-bottom: 0; box-shadow: none;">
-                    <div class="group-files-list">
-                      {#each orphanedRemnants.files as file}
-                        <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
-                          <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, file.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, file.title)}>
-                            <span class="file-path" style="display: flex; align-items: center; gap: 6px;">
-                              <span>{file.file_type === 'history' ? '📁' : '📄'}</span>
-                              <span style="font-weight: 500;">{file.title}</span>
-                            </span>
-                            <span class="file-meta" style="margin-top: 2px;">
-                              Yol: {file.relative_path} • Boyut: {formatBytes(file.size_bytes)} • Değiştirilme: {new Date(file.last_modified).toLocaleString()}
-                            </span>
+            <!-- Attachments Card -->
+            <div class="maintenance-card-group">
+              <div class="maintenance-card">
+                <div class="card-icon-container">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                  </svg>
+                </div>
+                <div class="card-info">
+                  <span class="action-title">Scan Orphaned Attachments</span>
+                  <span class="action-desc">Scans `.noda/attachments/` to identify images and files that are no longer linked or used inside any active note.</span>
+                </div>
+                <button class="btn btn-primary" on:click={handleScanAttachments} disabled={loadingAction !== 'none'}>
+                  {#if loadingAction === 'scan_attachments'}
+                    <div class="spinner-sm"></div>Scanning...
+                  {:else}
+                    Scan Files
+                  {/if}
+                </button>
+              </div>
+
+              {#if scannedAttachments}
+                <div class="orphaned-box {orphanedAttachments.length === 0 ? 'box-healthy' : 'box-action'}" transition:slide>
+                  <div class="box-header">
+                    <span class="box-title">Found {orphanedAttachments.length} Orphaned Files</span>
+                    {#if orphanedAttachments.length > 0}
+                      <span class="box-total-size">Total: {formatBytes(orphanedAttachments.reduce((sum, a) => sum + a.size_bytes, 0))}</span>
+                    {/if}
+                  </div>
+
+                  {#if orphanedAttachments.length === 0}
+                    <div class="empty-orphaned">
+                      <span class="success-indicator">🎉</span>
+                      <span class="empty-text">Your vault is fully optimized! No orphaned attachments found.</span>
+                    </div>
+                  {:else}
+                    <div class="orphaned-list scrollbar-thin">
+                      {#each orphanedAttachments as att}
+                        <label class="orphaned-item">
+                          <input type="checkbox" bind:group={selectedAttachments} value={att.filename} />
+                          <div class="item-details">
+                            <span class="item-name">{att.filename}</span>
+                            <span class="item-size">{formatBytes(att.size_bytes)}</span>
                           </div>
-                          <button class="btn btn-danger btn-xs" on:click={() => handleDeleteOrphanedFile(file.relative_path)} disabled={loadingAction !== 'none'}>
-                            Sil
-                          </button>
+                        </label>
+                      {/each}
+                    </div>
+                    
+                    <div class="orphaned-actions">
+                      <span class="selected-count">{selectedAttachments.length} files selected</span>
+                      <button class="btn btn-danger btn-sm" on:click={handleDeleteSelectedAttachments} disabled={selectedAttachments.length === 0 || loadingAction !== 'none'}>
+                        {#if loadingAction === 'delete_attachments'}
+                          <div class="spinner-sm"></div>Deleting...
+                        {:else}
+                          Permanently Delete Selected
+                        {/if}
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+
+            <!-- Duplicate Notes Card -->
+            <div class="maintenance-card-group">
+              <div class="maintenance-card">
+                <div class="card-icon-container">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </div>
+                <div class="card-info">
+                  <span class="action-title">Scan Duplicate Notes</span>
+                  <span class="action-desc">Scans the entire vault recursively to locate any files sharing identical internal note IDs.</span>
+                </div>
+                <button class="btn btn-primary" on:click={handleScanDuplicates} disabled={loadingAction !== 'none'}>
+                  {#if loadingAction === 'scan_duplicates'}
+                    <div class="spinner-sm"></div>Scanning...
+                  {:else}
+                    Scan Duplicates
+                  {/if}
+                </button>
+              </div>
+
+              {#if scannedDuplicates}
+                <div class="orphaned-box {duplicateNotes.length === 0 ? 'box-healthy' : 'box-action'}" transition:slide>
+                  {#if duplicateNotes.length === 0}
+                    <div class="empty-orphaned">
+                      <span class="success-indicator">🎉</span>
+                      <span class="empty-text">Harika! Vault klasöründe hiçbir mükerrer not bulunamadı.</span>
+                    </div>
+                  {:else}
+                    <div class="box-header">
+                      <span class="box-title">Found {duplicateNotes.length} Duplicate Note Groups</span>
+                    </div>
+
+                    <div class="duplicate-groups-list scrollbar-thin">
+                      {#each duplicateNotes as group}
+                        <div class="duplicate-group-card">
+                          <div class="group-header">
+                            <span class="group-note-title">📝 {group.title || 'Untitled'}</span>
+                            <span class="group-note-id">ID: {group.note_id}</span>
+                          </div>
+                          <div class="group-files-list">
+                            {#each group.files as file}
+                              <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
+                                <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, group.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, group.title)}>
+                                  <span class="file-path">{file.relative_path}</span>
+                                  <span class="file-meta">
+                                    Size: {formatBytes(file.size_bytes)} • Modified: {new Date(file.last_modified).toLocaleString()}
+                                  </span>
+                                </div>
+                                <button class="btn btn-danger btn-xs" on:click={() => handleDeleteDuplicate(file.relative_path)} disabled={loadingAction !== 'none'}>
+                                  Delete
+                                </button>
+                              </div>
+                            {/each}
+                          </div>
                         </div>
                       {/each}
                     </div>
-                  </div>
-                </div>
-                
-                <div class="orphaned-actions" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-subtle);">
-                  <span class="selected-count">{orphanedRemnants.files.length} dosya kalıcı olarak silinecek</span>
-                  <button class="btn btn-danger btn-sm" on:click={handleDeleteSelectedRemnants} disabled={loadingAction !== 'none'}>
-                    {#if loadingAction === 'delete_remnants'}
-                      <div class="spinner-sm"></div>Temizleniyor...
-                    {:else}
-                      Tüm Kalıntıları Temizle
-                    {/if}
-                  </button>
+                  {/if}
                 </div>
               {/if}
             </div>
-          {/if}
-        </div>
 
-        <div class="settings-section">
-          <h3>Synchronization Self-Healing</h3>
-          <p class="section-desc">Troubleshoot sync conflicts, queue blocks, or stale connections.</p>
-          
-          <div class="maintenance-card">
-            <div class="card-info">
-              <span class="action-title">Reset Sync Queue</span>
-              <span class="action-desc">Purges the persistent transaction sync queue. Safe fallback if you have a failing "poison-pill" action blocking synchronization loops.</span>
-            </div>
-            <button class="btn btn-danger" on:click={handleResetSyncQueue} disabled={loadingAction !== 'none'}>
-              {#if loadingAction === 'reset_queue'}
-                <div class="spinner-sm"></div>Resetting...
-              {:else}
-                Reset Queue
+            <!-- Remnants Card -->
+            <div class="maintenance-card-group">
+              <div class="maintenance-card">
+                <div class="card-icon-container">
+                  <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                    <path d="M12 7v5l4 2"></path>
+                  </svg>
+                </div>
+                <div class="card-info">
+                  <span class="action-title">Scan Orphaned Remnants</span>
+                  <span class="action-desc">Scans `.noda/history/` and `.noda/conflicts/` directories to identify metadata that no longer belongs to any active or trashed note.</span>
+                </div>
+                <button class="btn btn-primary" on:click={handleScanRemnants} disabled={loadingAction !== 'none'}>
+                  {#if loadingAction === 'scan_remnants'}
+                    <div class="spinner-sm"></div>Scanning...
+                  {:else}
+                    Scan Remnants
+                  {/if}
+                </button>
+              </div>
+
+              {#if scannedRemnants && orphanedRemnants}
+                <div class="orphaned-box {orphanedRemnants.files.length === 0 ? 'box-healthy' : 'box-action'}" transition:slide>
+                  {#if orphanedRemnants.files.length === 0}
+                    <div class="empty-orphaned">
+                      <span class="success-indicator">🎉</span>
+                      <span class="empty-text">Harika! Vault klasöründe hiçbir sahipsiz geçmiş veya çakışma kalıntısı bulunamadı.</span>
+                    </div>
+                  {:else}
+                    <div class="box-header">
+                      <span class="box-title">Bulunan Sahipsiz Kalıntılar ({orphanedRemnants.files.length} Dosya)</span>
+                      <span class="box-total-size">Kazanılacak Alan: {formatBytes(orphanedRemnants.total_recovered_bytes)}</span>
+                    </div>
+
+                    <div class="duplicate-groups-list scrollbar-thin">
+                      <div class="duplicate-group-card" style="border: none; padding: 0; background: transparent; margin-bottom: 0; box-shadow: none;">
+                        <div class="group-files-list">
+                          {#each orphanedRemnants.files as file}
+                            <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
+                              <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, file.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, file.title)}>
+                                <span class="file-path" style="display: flex; align-items: center; gap: 6px;">
+                                  <span>{file.file_type === 'history' ? '📁' : '📄'}</span>
+                                  <span style="font-weight: 500;">{file.title}</span>
+                                </span>
+                                <span class="file-meta" style="margin-top: 2px;">
+                                  Yol: {file.relative_path} • Boyut: {formatBytes(file.size_bytes)} • Değiştirilme: {new Date(file.last_modified).toLocaleString()}
+                                </span>
+                              </div>
+                              <button class="btn btn-danger btn-xs" on:click={() => handleDeleteOrphanedFile(file.relative_path)} disabled={loadingAction !== 'none'}>
+                                Sil
+                              </button>
+                            </div>
+                          {/each}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div class="orphaned-actions" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-subtle);">
+                      <span class="selected-count">{orphanedRemnants.files.length} dosya kalıcı olarak silinecek</span>
+                      <button class="btn btn-danger btn-sm" on:click={handleDeleteSelectedRemnants} disabled={loadingAction !== 'none'}>
+                        {#if loadingAction === 'delete_remnants'}
+                          <div class="spinner-sm"></div>Temizleniyor...
+                        {:else}
+                          Tüm Kalıntıları Temizle
+                        {/if}
+                      </button>
+                    </div>
+                  {/if}
+                </div>
               {/if}
-            </button>
+            </div>
+
+            <!-- Preview Drawer Component (Unified for duplicates and remnants) -->
+            {#if previewingFile}
+              <div class="preview-drawer" transition:slide={{ axis: 'x', duration: 200 }}>
+                <div class="drawer-header">
+                  <div class="drawer-title-row">
+                    <span class="drawer-icon">📝</span>
+                    <h4>Preview: {previewingTitle || 'Untitled'}</h4>
+                  </div>
+                  <button class="close-btn" on:click={closePreview}>&times;</button>
+                </div>
+                <div class="drawer-body scrollbar-thin">
+                  <span class="drawer-path-sub">{previewingFile}</span>
+                  {#if loadingPreview}
+                    <div class="preview-loading">
+                      <div class="spinner-sm"></div> Yükleniyor...
+                    </div>
+                  {:else}
+                    <pre class="preview-content">{previewNoteContent || '(Boş Not)'}</pre>
+                  {/if}
+                </div>
+              </div>
+            {/if}
           </div>
 
-          <div class="maintenance-card">
-            <div class="card-info">
-              <span class="action-title">Clear Remote Tracking Cache</span>
-              <span class="action-desc">Purges `remote_state.json`. Clears out-of-sync local metadata state caches. On the next sync cycle, a complete comparative comparison with WebDAV is run.</span>
+          <!-- Section 3: Cloud Synchronization Sync Self Healing -->
+          <div class="maintenance-group">
+            <div class="group-title-row">
+              <span class="group-title">Synchronization Self-Healing</span>
+              <span class="group-subtitle">Troubleshoot sync conflicts, queue blocks, or stale connections</span>
             </div>
-            <button class="btn btn-warning" on:click={handleClearSyncCache} disabled={loadingAction !== 'none'}>
-              {#if loadingAction === 'clear_cache'}
-                <div class="spinner-sm"></div>Clearing...
-              {:else}
-                Clear Cache
-              {/if}
-            </button>
+
+            <div class="maintenance-card">
+              <div class="card-icon-container">
+                <svg class="card-icon card-icon-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </div>
+              <div class="card-info">
+                <span class="action-title">Reset Sync Queue</span>
+                <span class="action-desc">Purges the persistent transaction sync queue. Safe fallback if you have a failing "poison-pill" action blocking synchronization loops.</span>
+              </div>
+              <button class="btn btn-danger" on:click={handleResetSyncQueue} disabled={loadingAction !== 'none'}>
+                {#if loadingAction === 'reset_queue'}
+                  <div class="spinner-sm"></div>Resetting...
+                {:else}
+                  Reset Queue
+                {/if}
+              </button>
+            </div>
+
+            <div class="maintenance-card">
+              <div class="card-icon-container">
+                <svg class="card-icon card-icon-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.42-1.89-1.74-3.5-3.5-3.5C10 7.5 7.5 10 7.5 12.5c0 .35.03.68.08 1M5 19H3a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h4"></path>
+                  <path d="M22 19H12a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h4"></path>
+                </svg>
+              </div>
+              <div class="card-info">
+                <span class="action-title">Clear Remote Tracking Cache</span>
+                <span class="action-desc">Purges `remote_state.json`. Clears out-of-sync local metadata state caches. On the next sync cycle, a complete comparative comparison with WebDAV is run.</span>
+              </div>
+              <button class="btn btn-warning" on:click={handleClearSyncCache} disabled={loadingAction !== 'none'}>
+                {#if loadingAction === 'clear_cache'}
+                  <div class="spinner-sm"></div>Clearing...
+                {:else}
+                  Clear Cache
+                {/if}
+              </button>
+            </div>
           </div>
         </div>
       {/if}
@@ -1138,6 +1198,7 @@
     padding: 24px;
     overflow-y: auto;
     background-color: var(--bg-editor);
+    margin-bottom: 52px;
   }
 
   .content-header {
@@ -1622,102 +1683,157 @@
 
   /* Maintenance Page Custom Styles */
   .nav-tab-maintenance svg {
-    color: #fbbf24;
+    color: var(--color-orange, #ffd60a);
+  }
+  
+  .maintenance-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .maintenance-group:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .group-title-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 12px;
+  }
+
+  .group-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .group-subtitle {
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  .maintenance-card-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 4px;
   }
   
   .maintenance-card {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
     gap: 16px;
-    background-color: var(--bg-surface-elevated, #1c1c1e);
-    border: 1px solid var(--border-normal, #2c2c2e);
-    border-radius: var(--radius-md, 8px);
-    padding: 14px 16px;
-    margin-bottom: 12px;
-    transition: border-color 0.2s, background-color 0.2s;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-normal);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    transition: all 0.15s ease;
   }
   
   .maintenance-card:hover {
-    border-color: var(--border-focus, #3a3a3c);
-    background-color: var(--bg-surface-hover, #242426);
+    border-color: var(--border-strong);
+    background-color: var(--bg-elevated-2);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .card-icon-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background-color: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    border: 1px solid var(--border-subtle);
+    transition: all 0.15s ease;
+  }
+
+  .maintenance-card:hover .card-icon-container {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-normal);
+  }
+
+  .card-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--text-secondary);
+    transition: color 0.15s ease;
+  }
+
+  .maintenance-card:hover .card-icon {
+    color: var(--accent);
+  }
+
+  .card-icon-danger {
+    color: var(--color-red) !important;
+    opacity: 0.85;
+  }
+
+  .maintenance-card:hover .card-icon-danger {
+    color: var(--color-red) !important;
+    opacity: 1;
+  }
+
+  .card-icon-warning {
+    color: var(--color-orange) !important;
+    opacity: 0.85;
+  }
+
+  .maintenance-card:hover .card-icon-warning {
+    color: var(--color-orange) !important;
+    opacity: 1;
   }
   
   .card-info {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     flex: 1;
   }
   
   .action-title {
-    font-weight: 500;
-    font-size: 13.5px;
+    font-weight: 600;
+    font-size: 13px;
     color: var(--text-primary);
   }
   
   .action-desc {
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--text-secondary);
     line-height: 1.4;
   }
   
-  .section-desc {
-    font-size: 12.5px;
-    color: var(--text-tertiary, #8e8e93);
-    margin-top: -6px;
-    margin-bottom: 16px;
-  }
-  
   .btn-warning {
-    background-color: rgba(245, 158, 11, 0.12) !important;
-    color: #fbbf24 !important;
-    border: 1.2px solid rgba(245, 158, 11, 0.35) !important;
+    background-color: rgba(245, 158, 11, 0.08) !important;
+    color: var(--color-orange, #ff9f0a) !important;
+    border: 1px solid rgba(245, 158, 11, 0.25) !important;
   }
   
   .btn-warning:hover:not(:disabled) {
-    background-color: rgba(245, 158, 11, 0.22) !important;
-    border-color: rgba(245, 158, 11, 0.55) !important;
+    background-color: rgba(245, 158, 11, 0.16) !important;
+    border-color: rgba(245, 158, 11, 0.4) !important;
   }
   
   .btn-danger {
-    background-color: rgba(239, 68, 68, 0.12) !important;
-    color: #f87171 !important;
-    border: 1.2px solid rgba(239, 68, 68, 0.35) !important;
+    background-color: rgba(239, 68, 68, 0.08) !important;
+    color: var(--color-red, #ff453a) !important;
+    border: 1px solid rgba(239, 68, 68, 0.25) !important;
   }
   
   .btn-danger:hover:not(:disabled) {
-    background-color: rgba(239, 68, 68, 0.22) !important;
-    border-color: rgba(239, 68, 68, 0.55) !important;
-  }
-  
-  .maintenance-alert {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    border-radius: var(--radius-md, 8px);
-    margin-bottom: 20px;
-    font-size: 12.5px;
-    position: relative;
-  }
-  
-  .maintenance-alert svg {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
-  
-  .alert-success {
-    background-color: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    color: #34d399;
-  }
-  
-  .alert-danger {
-    background-color: rgba(239, 68, 68, 0.12);
-    border: 1px solid rgba(239, 68, 68, 0.25);
-    color: #f87171;
+    background-color: rgba(239, 68, 68, 0.16) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
   }
   
   .close-alert {
@@ -1725,10 +1841,11 @@
     border: none;
     color: currentColor;
     font-size: 18px;
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
+    position: relative;
+    margin-left: auto;
+    /*right: 35px;*/
+    /*top: 50%;*/
+    /*transform: translateY(-50%);*/ 
     cursor: pointer;
     opacity: 0.6;
     transition: opacity 0.2s;
@@ -1739,51 +1856,63 @@
   }
   
   .orphaned-box {
-    background-color: var(--bg-surface-elevated, #1c1c1e);
-    border: 1px solid var(--border-normal, #2c2c2e);
-    border-radius: var(--radius-md, 8px);
-    margin-top: -4px;
-    margin-bottom: 20px;
-    padding: 16px;
+    background-color: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--border-normal);
+    border-radius: var(--radius-md);
+    margin-top: 4px;
+    margin-bottom: 12px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .box-healthy {
+    border-left: 3px solid var(--color-green) !important;
+    background-color: rgba(48, 209, 88, 0.03);
+  }
+
+  .box-action {
+    border-left: 3px solid var(--accent) !important;
+    background-color: rgba(10, 132, 255, 0.03);
   }
   
   .box-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid var(--border-normal, #2c2c2e);
-    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 8px;
   }
   
   .box-title {
-    font-weight: 500;
-    font-size: 13px;
+    font-weight: 600;
+    font-size: 12.5px;
     color: var(--text-primary);
   }
   
   .box-total-size {
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--text-secondary);
+    font-family: var(--font-mono);
   }
   
   .empty-orphaned {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 24px;
+    gap: 6px;
+    padding: 16px;
     text-align: center;
   }
   
   .success-indicator {
-    font-size: 28px;
+    font-size: 24px;
   }
   
   .empty-text {
-    font-size: 12.5px;
+    font-size: 12px;
     color: var(--text-secondary);
   }
   
@@ -1792,25 +1921,25 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     padding-right: 4px;
   }
   
   .orphaned-item {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     padding: 8px 12px;
-    background-color: var(--bg-main, #141415);
-    border: 1.2px solid var(--border-normal, #2c2c2e);
-    border-radius: var(--radius-sm, 6px);
+    background-color: var(--bg-control);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background-color 0.2s, border-color 0.2s;
+    transition: all 0.12s ease;
   }
   
   .orphaned-item:hover {
-    background-color: var(--bg-control-hover, #1e1e1f);
-    border-color: var(--border-focus, #3a3a3c);
+    background-color: var(--bg-control-hover);
+    border-color: var(--border-normal);
   }
   
   .orphaned-item input[type="checkbox"] {
@@ -1822,7 +1951,7 @@
     display: flex;
     justify-content: space-between;
     flex: 1;
-    font-size: 12px;
+    font-size: 11.5px;
   }
   
   .item-name {
@@ -1834,19 +1963,20 @@
   .item-size {
     color: var(--text-secondary);
     white-space: nowrap;
+    font-family: var(--font-mono);
   }
   
   .orphaned-actions {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-top: 1px solid var(--border-normal, #2c2c2e);
-    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 10px;
     margin-top: 4px;
   }
   
   .selected-count {
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--text-secondary);
   }
   
@@ -1855,98 +1985,107 @@
     vertical-align: middle;
     margin-right: 6px;
   }
-
-  /* Duplicate Groups and Cards styling */
+ 
   .duplicate-groups-list {
-    /* max-height: 280px; */
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     padding-right: 4px;
   }
-
+ 
   .duplicate-group-card {
-    background-color: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: var(--radius-md, 6px);
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-normal);
+    border-radius: var(--radius-md);
     overflow: hidden;
+    transition: border-color 0.15s ease;
   }
 
+  .duplicate-group-card:hover {
+    border-color: var(--border-strong);
+  }
+ 
   .group-header {
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: rgba(255, 255, 255, 0.03);
     padding: 8px 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
   }
-
+ 
   .group-note-title {
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 600;
     color: var(--text-primary);
   }
-
+ 
   .group-note-id {
-    font-size: 10px;
-    font-family: var(--font-mono, monospace);
-    color: var(--text-secondary);
-    opacity: 0.7;
+    font-size: 9.5px;
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
   }
-
+ 
   .group-files-list {
     display: flex;
     flex-direction: column;
   }
-
+ 
   .duplicate-file-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    transition: background-color 0.2s;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background-color 0.12s ease;
   }
-
+ 
   .duplicate-file-item:last-child {
     border-bottom: none;
   }
-
+ 
   .duplicate-file-item:hover {
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: rgba(255, 255, 255, 0.03);
   }
-
+ 
   .duplicate-file-item.previewing {
-    background-color: rgba(10, 132, 255, 0.15);
+    background-color: var(--bg-selected);
   }
-
+ 
   .file-info-col {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
     cursor: pointer;
     text-align: left;
     outline: none;
   }
-
+ 
   .file-path {
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 500;
-    color: var(--color-blue, #0a84ff);
+    color: var(--accent);
     word-break: break-all;
+    font-family: var(--font-mono);
   }
-
+ 
   .file-info-col:hover .file-path {
     text-decoration: underline;
   }
-
+ 
   .file-meta {
-    font-size: 10.5px;
+    font-size: 10px;
     color: var(--text-secondary);
   }
 
+  .btn-xs {
+    padding: 2px 6px;
+    font-size: 10.5px;
+    border-radius: var(--radius-sm);
+  }
+ 
   /* Preview Drawer Styling */
   .preview-drawer {
     position: absolute;
@@ -1954,63 +2093,82 @@
     right: 0;
     width: 320px;
     height: 100%;
-    background-color: var(--modal-bg, #2c2c2e);
-    border-left: 1px solid var(--border-normal, #3a3a3c);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+    background-color: var(--bg-elevated);
+    border-left: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
     z-index: 10;
     display: flex;
     flex-direction: column;
     text-align: left;
+    animation: zoomIn 0.15s ease-out;
   }
-
+ 
   .drawer-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--border-normal, #3a3a3c);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-normal);
+    background-color: rgba(0, 0, 0, 0.08);
   }
 
+  .drawer-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .drawer-icon {
+    font-size: 14px;
+  }
+ 
   .drawer-header h4 {
     margin: 0;
-    font-size: 13.5px;
+    font-size: 12.5px;
     font-weight: 600;
     color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-
+ 
   .close-btn {
     background: transparent;
     border: none;
     color: var(--text-secondary);
-    font-size: 18px;
+    font-size: 20px;
     cursor: pointer;
     opacity: 0.7;
     transition: opacity 0.2s;
+    line-height: 1;
+    padding: 0 4px;
   }
-
+ 
   .close-btn:hover {
     opacity: 1;
   }
-
+ 
   .drawer-body {
     flex: 1;
-    padding: 16px;
+    padding: 14px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
   }
-
+ 
   .drawer-path-sub {
-    font-size: 10.5px;
-    color: var(--text-secondary);
-    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
     word-break: break-all;
-    background-color: rgba(255, 255, 255, 0.03);
-    padding: 4px 6px;
-    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.1);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
   }
-
+ 
   .preview-loading {
     display: flex;
     align-items: center;
@@ -2018,12 +2176,12 @@
     gap: 8px;
     padding: 40px 0;
     color: var(--text-secondary);
-    font-size: 12.5px;
+    font-size: 12px;
   }
-
+ 
   .preview-content {
     margin: 0;
-    font-size: 12px;
+    font-size: 11.5px;
     line-height: 1.5;
     font-family: var(--font-mono, monospace);
     color: var(--text-primary);
