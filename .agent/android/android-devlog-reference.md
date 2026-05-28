@@ -1,0 +1,479 @@
+# Noda Android — Development Knowledge Base
+
+> This document distills actionable technical decisions from the macOS Development Log.
+> Source: `.agent/Noda-Development_LOG.md` — READ THAT for full context.
+> This file only captures decisions that DIRECTLY apply to Android/Rust core development.
+> macOS-specific UI items (Svelte, WKWebView, CodeMirror, CSS) are intentionally excluded.
+
+---
+
+## 1. Date & Timestamp Standards
+
+**Source:** Development Log Entry #2, #10
+
+### Rule: RFC 3339 / ISO 8601 Everywhere
+All timestamps in Rust MUST be serialized in RFC 3339 / ISO 8601 format:
+```rust
+// CORRECT: "2026-05-28T21:00:00Z"
+chrono::Utc::now().to_rfc3339()
+
+// WRONG: "22.05.2026 22.30" (locale-specific), Unix timestamp integers
+```
+
+All `created_at`, `updated_at`, `deleted_at`, `timestamp` fields in all DTOs MUST be RFC 3339 strings.
+
+### Kotlin Formatting
+Parse and format dates on the Kotlin side for display:
+```kotlin
+// Parse RFC 3339 string
+val instant = Instant.parse(rfc3339String)  // java.time.Instant
+val formatter = DateTimeFormatter.ofPattern("MMM d, yyyy 'at' HH:mm")
+    .withZone(ZoneId.systemDefault())
+val displayString = formatter.format(instant)
+// Result: "May 28, 2026 at 22:30"
+```
+
+For relative time display in status bar:
+- < 1 min: "Just saved"
+- < 1 hour: "Saved Xm ago"
+- < 24 hours: "Saved Xh ago"
+- Otherwise: "Saved May 28"
+
+---
+
+## 2. Tag Management Design
+
+**Source:** Development Log Entry #2
+
+### Data Model
+Tags are stored as `Vec<String>` in note frontmatter:
+```yaml
+tags: ["rust", "android", "webdav"]
+```
+
+Tags are simple strings — no hierarchy, no special characters required.
+
+### Autocomplete Source
+`RustCore.getAllTags("{}")` returns all unique tags across the entire vault, alphabetically sorted.
+Filter this list locally in Kotlin as the user types (prefix match, case-insensitive).
+
+### Tag Input Behavior
+- **Commit trigger:** Enter key, comma (`,`), space (` `)
+- **Navigation:** Up/Down arrow keys move through suggestions
+- **Remove:** Each chip has an `×` dismiss icon
+- **No duplicate tags:** Filter out already-added tags from suggestions
+
+---
+
+## 3. File-Based Save State
+
+**Source:** Development Log Entry #3
+
+### Status Bar Logic
+The save status is tied to the NOTE, not the app:
+- Note unchanged: "Saved [relative time]"
+- Note being typed: "Unsaved changes..."
+- Auto-save triggered: "Saving..."
+- Save complete: "Just saved"
+
+The `updated_at` field from Rust is the source of truth for "when was it last saved."
+Do NOT maintain a separate "last saved" timestamp in the ViewModel — read from `NoteDto.updated_at`.
+
+---
+
+## 4. Sync Engine: "Newer Wins" Strategy for Empty Cache
+
+**Source:** Development Log Entry #9
+
+### The Problem
+When `remote_state.json` is deleted (via "Clear Remote Tracking Cache") or on first sync:
+- The sync engine has no previous state reference
+- Every file appears as a "potential conflict"
+- Without this fix: ALL notes become conflicts
+
+### The Solution (Already in `crates/core/src/sync/delta.rs`)
+When both local and remote copies exist but there is NO previous state:
+1. If `local.updated_at` > `remote.last_modified` + 5 seconds → **Upload**
+2. If `remote.last_modified` > `local.updated_at` + 5 seconds → **Download**
+3. If timestamps within 5 seconds of each other → **Conflict** (true ambiguity)
+4. If date parsing fails → **Conflict** (safe fallback)
+
+**Android implication:** The Rust core already handles this correctly. Do NOT attempt to re-implement delta logic in Kotlin. Just call `RustCore.syncNow()` and trust the result.
+
+---
+
+## 5. Safe Snapshot Restore
+
+**Source:** Development Log Entry #10
+
+### Critical Rule: Do NOT Restore Old Metadata
+When restoring a snapshot, the Rust `restore_snapshot` function MUST:
+
+✅ **Restore:** `body` (note content), `title` (if changed in old version)
+
+❌ **Do NOT restore:** `parent_id`, `tags`, `color`, `created_at`
+
+✅ **Set to now:** `updated_at = Utc::now()` (CRITICAL for sync safety)
+
+**Why `updated_at = now()`:** If the old `updated_at` is restored, the WebDAV sync engine sees the note as "older" than the server copy and will silently overwrite the restoration with the remote file.
+
+**Why preserve `parent_id`:** Restoring an old `parent_id` moves the note to a folder it used to be in, which is confusing and incorrect.
+
+The Tauri shell `restore_snapshot` command already implements this correctly. Ensure the Android JNI `restoreSnapshot` function delegates to the same core logic.
+
+---
+
+## 6. Contextual Diff Implementation
+
+**Source:** Development Log Entry #10
+
+### How Diffs Are Generated
+Rust uses the `similar` crate with `TextDiff::grouped_ops(3)`:
+- `3` means 3 lines of context around each change
+- Unchanged sections larger than `3 * 2` lines are skipped
+- A `"Separator"` DiffChunk is inserted where lines are skipped
+
+### DiffChunk Tags (from `SnapshotDiffDto.body_chunks`)
+| Tag | Meaning | Android rendering |
+|---|---|---|
+| `"Equal"` | Unchanged context line | Normal text, no background |
+| `"Delete"` | Removed line | Red background, `-` prefix |
+| `"Insert"` | Added line | Green background, `+` prefix |
+| `"Separator"` | Skipped unchanged section | `⋯` dotted divider row |
+
+### Android Rendering
+```kotlin
+@Composable
+fun DiffChunkRow(chunk: DiffChunk) {
+    val (bg, prefix) = when (chunk.tag) {
+        "Delete" -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f) to "- "
+        "Insert" -> Color(0xFF2D4A2D).copy(alpha = 0.5f) to "+ "  // Adapt to Monet
+        "Separator" -> Color.Transparent to ""
+        else -> Color.Transparent to ""  // Equal
+    }
+    if (chunk.tag == "Separator") {
+        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        Text("⋯", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        Box(modifier = Modifier.background(bg).fillMaxWidth().padding(horizontal = 8.dp)) {
+            Text(
+                text = prefix + chunk.text,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+```
+
+---
+
+## 7. Trash System: Deep Scan Required
+
+**Source:** Development Log Entry #6
+
+### Problem
+`list_trash` must scan RECURSIVELY through ALL subdirectories of `.noda/trash/`.
+A shallow scan will miss notes that were deleted from subfolders.
+
+### Verification
+After calling `RustCore.listTrash("{}")`, verify that notes deleted from subfolders (e.g., `work/projects/note.md`) appear in the trash list, not just root-level notes.
+
+---
+
+## 8. Permanent Delete Must Clean History and Conflicts
+
+**Source:** Development Log Entry #17
+
+When a note is permanently deleted from trash (`permanentDelete` JNI function), Rust MUST also:
+1. Delete `.noda/history/{note_id}/` directory (all snapshots)
+2. Delete `.noda/conflicts/{note_id}_*.md` files
+3. If the history parent directory becomes empty, remove it too
+
+This is already implemented in `crates/core/src/trash/storage.rs → permanent_delete()`.
+The Android JNI `permanentDelete` function must call this same core function.
+
+---
+
+## 9. Orphaned Remnants: Human-Readable Names
+
+**Source:** Development Log Entry #17
+
+When listing orphaned remnants (`.getOrphanedRemnants()`), the Rust function MUST:
+1. Open each orphaned `.md` file
+2. Parse its YAML frontmatter with `gray-matter`
+3. Extract the `title` field from frontmatter
+4. Return a human-readable `display_name`:
+   - For history files: `"Note Title (History: 2026-05-25 00:08:43)"`
+   - For conflict files: `"Note Title (Conflict: 2026-05-25 00:08:43)"`
+
+**Android display:** Show the `display_name` as the primary text, `path` as secondary, `size_bytes` as tertiary.
+
+---
+
+## 10. Duplicate Notes Detection
+
+**Source:** Development Log Entry #12
+
+### What Counts as a Duplicate?
+Notes with the same ULID in their frontmatter `id` field, but stored in DIFFERENT file paths.
+
+### The Flow
+1. `getDuplicateNotes` → scan all `.md` files, group by `frontmatter.id`
+2. Any group with 2+ files = duplicates
+3. Show user: each file's path, size, `modified_at`
+4. User previews content (via `getNote` with the file path)
+5. User deletes one copy (via `deleteDuplicateFile` with the exact file path)
+
+**Safety note:** `deleteDuplicateFile` deletes the physical file directly (NOT soft-delete to trash). This is intentional — duplicates are structural errors, not user-deleted notes.
+
+---
+
+## 11. Database Rebuild: Use Upsert, Not Insert
+
+**Source:** Development Log Entry #11
+
+When rebuilding the SQLite cache (`rebuildCache`), the Rust code uses `upsert_note` instead of `insert_note`:
+- This handles the case where duplicate notes exist on disk (same ULID in two files)
+- Instead of crashing with `UNIQUE constraint failed`, it silently upserts (last write wins)
+- The database remains usable even with corrupted vault structures
+
+This is already implemented. Do NOT change the rebuild logic to use `insert_note`.
+
+---
+
+## 12. Sync Report: Resolve ULIDs to Titles
+
+**Source:** Development Log Entry #9
+
+The `SyncReportDto` returned by `syncNow` should include human-readable note titles, not raw ULID filenames.
+
+The Rust `sync_now` implementation (or post-processing step) should:
+1. After computing the sync plan, look up each affected file's note title from the database
+2. Format as: `"01JXYZ... (My Note Title)"` or just `"My Note Title"` if ID is not needed
+3. For history files: `"My Note Title (History: 2026-05-25 00:08)"` 
+4. For attachments: use the raw filename (no title to resolve)
+
+If the lookup fails (note deleted), fall back to the raw filename.
+
+This resolves the problem where sync reports showed cryptic ULID-based filenames.
+
+---
+
+## 13. Delta Sync: Folder-Aware Path Mapping
+
+**Source:** Development Log Entry #11
+
+### The Problem
+The delta calculation in `delta.rs` MUST use the note's actual file path (e.g., `work/projects/01JXYZ.md`) as the key, NOT just the bare `{id}.md`.
+
+If the key is only `{id}.md`, notes inside subfolders will be treated as "missing locally" and re-downloaded to the root directory.
+
+### Current Implementation
+`local_map` is keyed by `n.file_path` (relative to vault root). This is correct — do not change it.
+
+### ULID Extraction from Path
+When uploading a note, extract the ULID from the filename safely:
+```rust
+// CORRECT: handles "work/projects/01JXYZ.md" → "01JXYZ"
+let note_id = std::path::Path::new(relative_path)
+    .file_stem()
+    .and_then(|s| s.to_str())
+    .unwrap_or(relative_path);
+
+// WRONG: relative_path.trim_end_matches(".md")
+// → "work/projects/01JXYZ" (contains folder prefix = invalid ULID)
+```
+
+---
+
+## 14. Search: ID, Filename, and Attachment Search
+
+**Source:** Development Log Entry #19
+
+### Search Scope
+The search engine (`crates/core/src/database/search.rs`) searches:
+1. **FTS5 full-text match** — title, body, tags (ranked by BM25)
+2. **SQLite LIKE** — `id` column (for ULID search)
+3. **SQLite LIKE** — `file_path` column (for filename/attachment name search)
+
+Direct ID/path matches get priority score `-1000.0` (always appears first).
+
+### Panic Prevention
+Before calling `highlight_match`, ALWAYS check:
+```rust
+if query.len() > haystack.len() {
+    return None;  // Cannot highlight — query longer than text
+}
+```
+Never slice byte strings directly in UTF-8 content. Use character-aware slicing.
+
+### Attachment Name Search
+Attachment filenames (e.g., `xxh3_265b76ac.jpg`) are stored in note body as `noda://attachments/xxh3_265b76ac.jpg`. FTS5 tokenizes on non-alphanumeric characters, so the full filename won't match as a single token. The LIKE-based `file_path` search handles this case:
+```sql
+WHERE file_path LIKE '%xxh3_265b76ac%'
+```
+
+---
+
+## 15. Custom Protocol for Attachments (Android Alternative)
+
+**Source:** Development Log Entry #15
+
+### macOS Approach
+macOS uses a `noda://` custom protocol registered with Tauri/WKWebView to serve attachment files.
+
+### Android Approach (Different)
+Android does NOT use Tauri or WKWebView. Attachments are accessed differently:
+
+**For in-app display (images):**
+Call `RustCore.getAttachmentData(json)` → returns base64-encoded bytes → decode in Kotlin → use `BitmapFactory.decodeByteArray()` → display with `AsyncImage` (Coil).
+
+**For opening external files (PDFs, documents):**
+Use Android `FileProvider` + `ACTION_VIEW` intent. Copy the attachment to a temp location in app's cache directory, create a content URI, and open with the system viewer.
+
+**Do NOT use `noda://` URIs in Kotlin code.** That is a macOS/WebView concept only.
+
+---
+
+## 16. File Watcher Behavior on Android
+
+**Source:** Development Log Entry #1, android-steering.md
+
+### Foreground Behavior
+When app is in foreground: Rust `notify` crate watches the vault directory via inotify.
+File system changes are detected in real-time.
+
+### Background/Resume Behavior
+When app returns to foreground (`onResume`):
+1. Call `RustCore.refreshVault("{}")` — triggers a fresh scan
+2. Compare with the cached note list in ViewModel
+3. Update `NoteListViewModel` to reflect any external changes
+
+### First-Launch Import
+On first vault open (or any `refreshVault` call), Rust:
+1. Scans all `.md` files in the vault
+2. Identifies files WITHOUT valid Noda frontmatter (missing `id`, `created_at`, etc.)
+3. Automatically:
+   - Generates a new ULID as the file's `id`
+   - Injects full frontmatter with current timestamp
+   - Renames file to ULID format (or keeps original name with injected frontmatter)
+   - Upserts to SQLite
+
+Returns `{ "imported_count": N }`. If `N > 0`, show a toast: "Imported N notes from external files."
+
+---
+
+## 17. Concurrency Rules (Rust JNI Context)
+
+**Source:** `android-steering.md`, `crates/tauri-shell/src/state/mod.rs`
+
+### Arc<RwLock<T>> / Arc<Mutex<T>> Usage
+All shared Rust state uses:
+| Resource | Type |
+|---|---|
+| SQLite connection | `Arc<Mutex<Connection>>` |
+| Sync queue | `Arc<RwLock<SyncQueue>>` |
+| Vault state | `Arc<RwLock<VaultState>>` |
+| Watcher handle | `Arc<RwLock<VaultWatcher>>` |
+| Sync engine | `Arc<RwLock<SyncEngine>>` |
+
+### Critical Anti-Pattern: Lock Guard Across `.await`
+**NEVER hold a lock guard across an `.await` boundary:**
+```rust
+// WRONG — will deadlock or cause panic:
+let guard = state.write();
+some_async_fn().await;  // Guard held here = deadlock potential
+drop(guard);
+
+// CORRECT — scope the lock:
+{
+    let mut guard = state.write();
+    *guard = new_value;
+}  // Lock released here
+some_async_fn().await;  // Safe
+```
+
+### JNI Threading
+The global Tokio runtime (`OnceLock<Runtime>`) is thread-safe and can be called from any JNI thread. The `block_on` call does NOT spawn a new runtime — it reuses the existing one.
+
+---
+
+## 18. Error Handling: No Panics in JNI
+
+**Source:** `android-steering.md`
+
+The ONLY acceptable error handling pattern in JNI functions:
+```rust
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_someFunction(
+    mut env: JNIEnv, _class: JClass, input: JString,
+) -> jstring {
+    // ALL errors are caught and returned as {"error": "..."}
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        get_runtime().block_on(async {
+            match do_work().await {
+                Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
+                Err(e) => format!("{{\"error\":\"{}\"}}", e),
+            }
+        })
+    })).unwrap_or_else(|_| "{\"error\":\"Unexpected panic in Rust\"}".to_string());
+
+    env.new_string(result).unwrap().into_raw()
+}
+```
+
+Alternatively, use `.unwrap_or_else()` patterns throughout and rely on Rust's error propagation without panics (preferred approach — no `catch_unwind` needed if no `.unwrap()` or `.expect()` is used).
+
+---
+
+## 19. Settings Persistence: Two Layers
+
+The app uses TWO persistence layers for settings:
+
+| Setting Type | Storage | Reason |
+|---|---|---|
+| Vault path | Android `SharedPreferences` | Android-lifecycle, app opens/closes |
+| WebDAV URL, username | Android `SharedPreferences` | Non-sensitive |
+| WebDAV password | `EncryptedSharedPreferences` | Security |
+| Sync interval | Android `SharedPreferences` | Android timer lifecycle |
+| History max snapshots | Rust `.noda/settings.json` | Applies to all platforms |
+| History max age | Rust `.noda/settings.json` | Applies to all platforms |
+| Auto-save delay | Rust `.noda/settings.json` | Applies to all platforms |
+| Dark mode | Android `SharedPreferences` | Android-only preference |
+| Editor font | Android `SharedPreferences` | Android-only preference |
+
+**Rule:** If the setting affects Rust core behavior → store via `RustCore.updateSettings()`.
+If the setting is Android UI-only → store in `SharedPreferences` or `VaultPreferences`.
+
+---
+
+## 20. Maintenance Panel Groups (macOS Reference)
+
+**Source:** Development Log Entry #18
+
+The Maintenance screen is organized in three groups (same on Android):
+
+1. **Database Administration**
+   - Rebuild SQLite cache from `.md` files
+   - Optimize FTS5 index (`OPTIMIZE` command)
+
+2. **Vault Diagnostics & Storage Cleanup**
+   - Scan orphaned attachments (files in `.noda/attachments/` not linked in any note)
+   - Scan duplicate notes (same ULID in multiple files)
+   - Scan orphaned remnants (history/conflict files from deleted notes)
+
+3. **Synchronization Self-Healing**
+   - Clear remote tracking cache (`remote_state.json`)
+   - Reset sync queue (`queue.json`)
+
+Each action card should have:
+- An icon (Material Icon or SVG)
+- A title
+- A one-line description
+- An action button
+- Results section (appears BELOW the card after scanning, not in a separate screen)
+
+Status line on left edge of result box:
+- Green = clean (0 items found)
+- Blue/Primary = items found, action available
