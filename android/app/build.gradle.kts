@@ -57,3 +57,18 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+tasks.register<Exec>("compileRustCore") {
+    group = "build"
+    description = "Compiles the Rust core library for Android aarch64"
+    
+    val homeDir = System.getProperty("user.home")
+    commandLine(
+        "/bin/zsh", "-c",
+        "PATH=\"/opt/homebrew/opt/rustup/bin:${homeDir}/.cargo/bin:/opt/homebrew/bin:\$PATH\" cargo ndk -t arm64-v8a -o ${projectDir}/src/main/jniLibs build --manifest-path ${projectDir}/../../crates/android-bridge/Cargo.toml --release"
+    )
+}
+
+tasks.matching { it.name.startsWith("compileDebugKotlin") || it.name.startsWith("compileReleaseKotlin") }.configureEach {
+    dependsOn("compileRustCore")
+}
