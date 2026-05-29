@@ -27,7 +27,11 @@ class DrawerViewModel(application: Application) : AndroidViewModel(application) 
     private val _conflictCount = MutableStateFlow(0)
     val conflictCount: StateFlow<Int> = _conflictCount.asStateFlow()
 
+    private val _trashCount = MutableStateFlow(0)
+    val trashCount: StateFlow<Int> = _trashCount.asStateFlow()
+
     private val conflictRepository = com.bubi.nodanotes.data.repository.ConflictRepository()
+    private val trashRepository = com.bubi.nodanotes.data.repository.TrashRepository()
 
 
     init {
@@ -48,6 +52,9 @@ class DrawerViewModel(application: Application) : AndroidViewModel(application) 
             )
             conflictRepository.listConflicts().onSuccess { list ->
                 _conflictCount.value = list.size
+            }
+            trashRepository.listTrash().onSuccess { list ->
+                _trashCount.value = list.size
             }
         }
     }

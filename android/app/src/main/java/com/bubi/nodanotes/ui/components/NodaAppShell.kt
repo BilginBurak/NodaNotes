@@ -223,10 +223,28 @@ fun NodaAppShell(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+            val trashCount by drawerViewModel.trashCount.collectAsState()
+
             // Static links section at the bottom
             NavigationDrawerItem(
                 icon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                label = { Text("Trash") },
+                label = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Trash")
+                        if (trashCount > 0) {
+                            Badge(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ) {
+                                Text(trashCount.toString(), fontSize = 10.sp)
+                            }
+                        }
+                    }
+                },
                 selected = currentRoute == Screen.Trash.route,
                 onClick = {
                     scope.launch { drawerState.close() }

@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun FormattingToolbar(
     onInsertText: (String) -> Unit,
+    onAttachmentClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -50,7 +51,7 @@ fun FormattingToolbar(
                 ToolbarButton(icon = Icons.Default.Link, label = "Link", onClick = { onInsertText("[](url)") })
             }
             item {
-                ToolbarButton(icon = Icons.Default.Attachment, label = "Attachment", onClick = { onInsertText("📎") })
+                ToolbarButton(icon = Icons.Default.Attachment, label = "Attachment", onClick = onAttachmentClick)
             }
         }
     }

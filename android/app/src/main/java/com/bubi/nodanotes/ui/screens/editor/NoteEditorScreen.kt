@@ -17,6 +17,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bubi.nodanotes.ui.components.FormattingToolbar
 import com.bubi.nodanotes.ui.components.NoteInfoSheet
@@ -37,6 +40,36 @@ fun NoteEditorScreen(
 
     var showInfoSheet by remember { mutableStateOf(false) }
     var isEditorFocused by remember { mutableStateOf(false) }
+
+    // Media and File Picker for attachments
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri?.let {
+            // Helper to get absolute path from Uri (usually we copy content to a temporary cache file first)
+            try {
+                val inputStream = context.contentResolver.openInputStream(it)
+                val tempFile = java.io.File.createTempFile("noda_attach_", "_" + (it.lastPathSegment ?: "file"), context.cacheDir)
+                tempFile.deleteOnExit()
+                tempFile.outputStream().use { output ->
+                    inputStream?.copyTo(output)
+                }
+                
+                // Add attachment to Rust
+                viewModel.addAttachment(tempFile.absolutePath) { markdownLink ->
+                    val successState = uiState as? NoteEditorUiState.Success
+                    if (successState != null) {
+                        viewModel.onContentChanged(successState.note.body + "\n" + markdownLink)
+                    }
+                }
+            } catch (e: Exception) {
+                // handle error or show error state via viewModel
+            }
+        }
+    }
+
+    val isReaderMode by viewModel.isReaderMode.collectAsState()
 
     LaunchedEffect(noteId) {
         viewModel.loadNote(noteId)
@@ -77,6 +110,12 @@ fun NoteEditorScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleReaderMode() }) {
+                        Icon(
+                            imageVector = if (isReaderMode) Icons.Default.EditNote else Icons.Default.MenuBook,
+                            contentDescription = if (isReaderMode) "Editor Mode" else "Reader Mode"
+                        )
+                    }
                     IconButton(onClick = { onNavigateToHistory(noteId) }) {
                         Icon(Icons.Default.History, contentDescription = "Version History")
                     }
@@ -130,20 +169,56 @@ fun NoteEditorScreen(
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            BasicTextField(
-                                value = note.body,
-                                onValueChange = { viewModel.onContentChanged(it) },
-                                textStyle = TextStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 15.sp,
-                                    lineHeight = 24.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                ),
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
-                                    .onFocusChanged { isEditorFocused = it.isFocused }
-                            )
+                            if (isReaderMode) {
+                                AndroidView(
+                                    factory = { ctx ->
+                                        WebView(ctx).apply {
+                                            webViewClient = WebViewClient()
+                                            settings.javaScriptEnabled = false
+                                        }
+                                    },
+                                    update = { webView ->
+                                        // A very quick Markdown-to-HTML formatter representation
+                                        val escaped = note.body
+                                            .replace("&", "&amp;")
+                                            .replace("<", "&lt;")
+                                            .replace(">", "&gt;")
+                                            .replace("\n", "<br/>")
+                                        val html = """
+                                            <html>
+                                            <head>
+                                            <style>
+                                                body { font-family: sans-serif; padding: 16px; line-height: 1.6; color: #333; }
+                                                h1, h2, h3 { color: #111; }
+                                                pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; }
+                                                code { font-family: monospace; }
+                                            </style>
+                                            </head>
+                                            <body>
+                                                $escaped
+                                            </body>
+                                            </html>
+                                        """.trimIndent()
+                                        webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                BasicTextField(
+                                    value = note.body,
+                                    onValueChange = { viewModel.onContentChanged(it) },
+                                    textStyle = TextStyle(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 15.sp,
+                                        lineHeight = 24.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .onFocusChanged { isEditorFocused = it.isFocused }
+                                )
+                            }
                         }
 
                         // Tags Input Bar
@@ -164,6 +239,9 @@ fun NoteEditorScreen(
                                 onInsertText = { shortcutText ->
                                     // Append or insert formatting text
                                     viewModel.onContentChanged(note.body + shortcutText)
+                                },
+                                onAttachmentClick = {
+                                    filePickerLauncher.launch("*/*")
                                 }
                             )
                         }

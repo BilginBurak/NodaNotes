@@ -85,7 +85,9 @@ fun NodaNavGraph(
             )
         }
         composable(Screen.Trash.route) {
-            PlaceholderScreen(name = "Trash Screen")
+            com.bubi.nodanotes.ui.screens.trash.TrashScreen(
+                onBackClick = { navController.popBackStack() }
+            )
         }
         composable(Screen.Conflicts.route) {
             com.bubi.nodanotes.ui.screens.conflict.ConflictScreen(
@@ -104,7 +106,9 @@ fun NodaNavGraph(
             )
         }
         composable(Screen.Maintenance.route) {
-            PlaceholderScreen(name = "Maintenance Screen")
+            com.bubi.nodanotes.ui.screens.maintenance.MaintenanceScreen(
+                onBackClick = { navController.popBackStack() }
+            )
         }
         composable(Screen.SyncReport.route) {
             val vaultPreferences = remember { com.bubi.nodanotes.data.preferences.VaultPreferences(navController.context) }

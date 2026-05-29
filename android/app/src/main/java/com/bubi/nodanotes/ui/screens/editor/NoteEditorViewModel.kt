@@ -20,6 +20,8 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
     private val noteRepository = NoteRepository()
     private val searchRepository = SearchRepository()
 
+    private val attachmentRepository = com.bubi.nodanotes.data.repository.AttachmentRepository()
+
     private val _uiState = MutableStateFlow<NoteEditorUiState>(NoteEditorUiState.Loading)
     val uiState: StateFlow<NoteEditorUiState> = _uiState.asStateFlow()
 
@@ -31,6 +33,9 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _tagSuggestions = MutableStateFlow<List<String>>(emptyList())
     val tagSuggestions: StateFlow<List<String>> = _tagSuggestions.asStateFlow()
+
+    private val _isReaderMode = MutableStateFlow(false)
+    val isReaderMode: StateFlow<Boolean> = _isReaderMode.asStateFlow()
 
     private var activeNoteId: String = ""
     private var currentNoteDto: NoteDto? = null
@@ -139,6 +144,23 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
                 }
             )
         }
+    }
+
+    fun addAttachment(sourcePath: String, onLinkGenerated: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            attachmentRepository.addAttachment(sourcePath).fold(
+                onSuccess = { result ->
+                    onLinkGenerated(result.markdown_link)
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteEditorUiState.Error(error.message ?: "Failed to add attachment")
+                }
+            )
+        }
+    }
+
+    fun toggleReaderMode() {
+        _isReaderMode.value = !_isReaderMode.value
     }
 
     override fun onCleared() {

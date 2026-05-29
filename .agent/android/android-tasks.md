@@ -471,30 +471,30 @@
 
 ### T-F001: Trash Screen
 
-- [ ] Create `TrashViewModel.kt`:
+- [x] Create `TrashViewModel.kt`:
   - `loadTrash()` — calls `TrashRepository.listTrash()`
   - `restore(noteId: String)` — calls `TrashRepository.restoreFromTrash(noteId)`, reloads
   - `permanentDelete(noteId: String)` — confirmation dialog + calls `TrashRepository.permanentDelete(noteId)`, reloads
   - `emptyTrash()` — confirmation dialog + calls `TrashRepository.emptyTrash()`, reloads
-- [ ] Create `TrashScreen.kt` (see android-ui-spec.md Section 8)
-- [ ] Update Navigation Drawer "Trash" item with count badge
+- [x] Create `TrashScreen.kt` (see android-ui-spec.md Section 8)
+- [x] Update Navigation Drawer "Trash" item with count badge
 
 ### T-F002: Attachments in Editor
 
-- [ ] `FormattingToolbar` attachment button (📎) triggers Android media picker:
+- [x] `FormattingToolbar` attachment button (📎) triggers Android media picker:
   - `ActivityResultContracts.GetContent("*/*")` for general file
   - OR `ActivityResultContracts.GetContent("image/*")` for image shortcut
-- [ ] Copy selected file to a temp accessible path, call `RustCore.addAttachment(json)`
-- [ ] Insert returned `markdown_link` at cursor position in editor
-- [ ] Handle base64 image preview in attachment list (optional, Phase 5 polish)
+- [x] Copy selected file to a temp accessible path, call `RustCore.addAttachment(json)`
+- [x] Insert returned `markdown_link` at cursor position in editor
+- [x] Handle base64 image preview in attachment list (optional, Phase 5 polish)
 
 ### T-F003: Maintenance Screen
 
-- [ ] Create `MaintenanceViewModel.kt`:
+- [x] Create `MaintenanceViewModel.kt`:
   - All DiagnosticsRepository calls
   - State for each section: loading, results, error
   - Confirmation dialogs before destructive actions
-- [ ] Create `MaintenanceScreen.kt` (see android-ui-spec.md Section 11):
+- [x] Create `MaintenanceScreen.kt` (see android-ui-spec.md Section 11):
   - Section 1: Rebuild Cache, Optimize FTS
   - Section 2: Orphaned Attachments scan, Duplicate Notes scan, Orphaned Remnants scan
   - Section 3: Clear Remote Cache, Reset Sync Queue
@@ -504,10 +504,10 @@
 
 ### T-F004: Reader Mode
 
-- [ ] Add "Reader Mode" toggle button to editor overflow menu
-- [ ] Reader mode replaces `BasicTextField` with `AndroidView` wrapping a WebView (or Markwon)
-- [ ] Render markdown content using Markwon library or WebView with simple HTML conversion
-- [ ] Return to editor mode: toggle back
+- [x] Add "Reader Mode" toggle button to editor overflow menu
+- [x] Reader mode replaces `BasicTextField` with `AndroidView` wrapping a WebView (or Markwon)
+- [x] Render markdown content using Markwon library or WebView with simple HTML conversion
+- [x] Return to editor mode: toggle back
 
 ---
 
