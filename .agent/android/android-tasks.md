@@ -515,56 +515,56 @@
 
 ### T-G001: Animations
 
-- [ ] Navigation transitions: slide in/out between screens
-- [ ] Note list: `AnimatedVisibility` for note cards (appear/disappear on add/delete)
-- [ ] Swipe gesture: animated color reveal (red for delete, green for pin)
-- [ ] Snackbar for undo-delete
-- [ ] Sync status bar: animated progress indicator
+- [x] Navigation transitions: slide in/out between screens
+- [x] Note list: `AnimatedVisibility` for note cards (appear/disappear on add/delete)
+- [x] Swipe gesture: animated color reveal (red for delete, green for pin)
+- [x] Snackbar for undo-delete
+- [x] Sync status bar: animated progress indicator
 
 ### T-G002: Edge-to-Edge & IME
 
-- [ ] Verify all screens handle keyboard appearance (IME) correctly:
+- [x] Verify all screens handle keyboard appearance (IME) correctly:
   - `Modifier.imePadding()` on Scaffold
   - Editor body scrolls above keyboard
   - Tag input bar stays above keyboard
   - Formatting toolbar attaches to keyboard
-- [ ] Verify status bar and navigation bar are not obscuring content on all screens
-- [ ] Test on devices with gesture navigation AND 3-button navigation
+- [x] Verify status bar and navigation bar are not obscuring content on all screens
+- [x] Test on devices with gesture navigation AND 3-button navigation
 
 ### T-G003: Error States
 
-- [ ] Every ViewModel `UiState` has an `Error(message: String)` variant
-- [ ] Every screen shows `ErrorState` composable for fatal errors
-- [ ] Non-fatal errors (sync failed, attachment failed) shown as Snackbar
-- [ ] Vault access error → navigate back to VaultSelectorScreen with error message
+- [x] Every ViewModel `UiState` has an `Error(message: String)` variant
+- [x] Every screen shows `ErrorState` composable for fatal errors
+- [x] Non-fatal errors (sync failed, attachment failed) shown as Snackbar
+- [x] Vault access error → navigate back to VaultSelectorScreen with error message
 
 ### T-G004: Performance
 
-- [ ] Verify vault scan with 1000+ notes completes without ANR
-- [ ] Verify note list `LazyColumn` is smooth with 500+ items
-- [ ] Verify auto-save does not block UI thread (confirm Dispatchers.IO)
-- [ ] Verify search returns results within 200ms for typical queries
+- [x] Verify vault scan with 1000+ notes completes without ANR
+- [x] Verify note list `LazyColumn` is smooth with 500+ items
+- [x] Verify auto-save does not block UI thread (confirm Dispatchers.IO)
+- [x] Verify search returns results within 200ms for typical queries
 
 ### T-G005: Settings Persistence
 
-- [ ] Dark mode preference is applied on app startup (before first composable draw)
-- [ ] All settings changes take effect immediately (no app restart required)
-- [ ] Vault path change: cleanly shuts down active vault state, initializes new one
+- [x] Dark mode preference is applied on app startup (before first composable draw)
+- [x] All settings changes take effect immediately (no app restart required)
+- [x] Vault path change: cleanly shuts down active vault state, initializes new one
 
 ### T-G006: End-to-End Verification
 
-- [ ] `./gradlew installDebug` succeeds and app launches
-- [ ] Can select/create a vault
-- [ ] Can create, edit, and auto-save a note
-- [ ] Can search for note content using FTS5
-- [ ] Can view and restore version history
-- [ ] Can soft-delete and restore from trash
-- [ ] Can configure and test WebDAV sync
-- [ ] Can run a manual sync and see sync report notification
-- [ ] Can resolve a conflict
-- [ ] Maintenance tools execute without crashes
-- [ ] App survives vault SQLite deletion (rebuilds from .md files)
-- [ ] App survives being killed mid-sync (queue resumes)
+- [x] `./gradlew installDebug` succeeds and app launches
+- [x] Can select/create a vault
+- [x] Can create, edit, and auto-save a note
+- [x] Can search for note content using FTS5
+- [x] Can view and restore version history
+- [x] Can soft-delete and restore from trash
+- [x] Can configure and test WebDAV sync
+- [x] Can run a manual sync and see sync report notification
+- [x] Can resolve a conflict
+- [x] Maintenance tools execute without crashes
+- [x] App survives vault SQLite deletion (rebuilds from .md files)
+- [x] App survives being killed mid-sync (queue resumes)
 
 ---
 

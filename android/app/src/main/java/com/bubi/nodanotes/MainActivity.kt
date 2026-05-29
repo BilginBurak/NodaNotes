@@ -22,6 +22,12 @@ import java.io.File
 
 import com.bubi.nodanotes.ui.components.NodaAppShell
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import android.content.SharedPreferences
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
@@ -64,7 +70,29 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            NodaTheme {
+            // Read theme preference from SharedPreferences reactively
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val sharedPreferences = remember { context.getSharedPreferences("noda_prefs", android.content.Context.MODE_PRIVATE) }
+            var darkModePref by remember { mutableStateOf(sharedPreferences.getString("dark_mode", "system") ?: "system") }
+            
+            DisposableEffect(sharedPreferences) {
+                val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+                    if (key == "dark_mode") {
+                        darkModePref = prefs.getString("dark_mode", "system") ?: "system"
+                    }
+                }
+                sharedPreferences.registerOnSharedPreferenceChangeListener(listener)
+                onDispose {
+                    sharedPreferences.unregisterOnSharedPreferenceChangeListener(listener)
+                }
+            }
+
+            val darkTheme = when (darkModePref) {
+                "dark" -> true
+                "light" -> false
+                else -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+            NodaTheme(darkTheme = darkTheme) {
                 val navController = rememberNavController()
                 NodaAppShell(
                     navController = navController,
