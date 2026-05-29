@@ -12,6 +12,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bubi.nodanotes.data.model.NoteMetadataDto
 
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteInfoSheet(
@@ -57,7 +62,10 @@ fun NoteInfoSheet(
             InfoRow(label = "Word Count", value = "${metadata.word_count} words")
             InfoRow(label = "Character Count", value = "${metadata.char_count} characters")
             InfoRow(label = "Snapshots Saved", value = "${metadata.history_count} versions")
-            InfoRow(label = "Last Sync Upload", value = metadata.last_upload_time ?: "Never")
+            InfoRow(
+                label = "Last Sync Upload",
+                value = metadata.last_upload_time?.let { formatDate(it) } ?: "Never"
+            )
             
             Spacer(modifier = Modifier.height(8.dp))
             InfoRow(label = "Created At", value = formatDate(metadata.created_at))
@@ -92,6 +100,8 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
+private val dateTimeFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy 'at' HH:mm", Locale.ENGLISH)
+
 private fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
     val exp = (Math.log(bytes.toDouble()) / Math.log(1024.0)).toInt()
@@ -101,10 +111,15 @@ private fun formatBytes(bytes: Long): String {
 
 private fun formatDate(dateStr: String): String {
     return try {
-        // Simple formatter
-        val clean = dateStr.replace("T", " ").substringBefore('.')
-        clean
+        val instant = Instant.parse(dateStr)
+        val zonedDateTime = instant.atZone(ZoneId.systemDefault())
+        dateTimeFormatter.format(zonedDateTime)
     } catch (e: Exception) {
-        dateStr
+        try {
+            val clean = dateStr.replace("T", " ").substringBefore('.')
+            clean
+        } catch (ex: Exception) {
+            dateStr
+        }
     }
 }

@@ -137,13 +137,14 @@ Bu sırayla oku ve sistemi kavra:
 - `.agent/android/android-spec.md` — Fonksiyonel gereksinimler
 ### 2. SANA ÖZEL ÇALIŞMA KURALLARI (ÇOK ÖNEMLİ)
 
+
 * **Dumb Monitor:** Kotlin sadece görüntüler, komut gönderir. Dosya okuma/yazma, sync, search = Rust.
 * **Tüm JNI çağrıları Dispatchers.IO üzerinde** çalışır — asla main thread'de değil.
 * **Vault path:** Kullanıcı tarafından seçilir (MANAGE_EXTERNAL_STORAGE). SharedPreferences'te saklanır.
 * **Tema:** Tamamen Material 3 Dynamic Color (Monet). Hardcoded renk yok.
 * **Dil Kuralları:** Benimle (kullanıcıyla) chat üzerindeki tüm iletişimin **Türkçe** olmalıdır. Ancak bunun dışındaki her şey (yazdığın kodlar, yorum satırları, commit mesajları, hata çıktıları ve teknik dokümantasyonlar) tamamen **İngilizce** olmalıdır.
 * **Task İşaretleme (Checkboxes):** Herhangi bir task üzerinde çalışırken ve o task'i tamamladığında, mutlaka `.agent/android/android-tasks.md` dosyasındaki ilgili checkbox'ı (`[ ]` -> `[x]`) işaretle/güncelle.
-* **Task Geçiş Onayı:** Bir task'i tamamladığında doğrudan diğerine geçme. geröekten çok kısa bir özet geç. Sonra kullanıcıya: `"Task (örneğin T-A000) tamam. Sıradaki task (örneğin T-A001: Vault JNI Functions) devam etmek"` şeklinde sor ve kullanıcının onayını bekle.
+* **Task Geçiş Onayı:** Bir task'i tamamladığında doğrudan diğerine geçme. Önce kullanıcıya: `"Task (örneğin T-A000) tamam. Sıradaki task (örneğin T-A001: Vault JNI Functions) devam etmek"` şeklinde sor ve kullanıcının onayını bekle.
 * **Olağan Dışı Bulgular & Direksiyon Rehberi:** Kod yazarken veya sistemi incelerken olağan dışı, kritik veya çok önemli bir bulgu/öğrenim elde edersen (her basit task'ten sonra değil, sadece gerçekten önemli ve geleceğe ışık tutacak durumlarda), kullanıcıya: `"Bu bulguyu android-steering.md dosyasına Project-Specific Patterns başlığı altına eklemek ister misiniz?"` diye sor. Kullanıcı onay verirse bu bulguyu ilgili yere ekle.
 * **Rust-First:** Kotlin tarafında HİÇBİR iş mantığı yazılmaz. Tüm veriler RustCore singleton üzerinden JSON String olarak alınır. Kotlin sadece "Dumb Monitor" (Aptal Ekran) olarak görev yapar.
 
@@ -153,18 +154,14 @@ Bu sırayla oku ve sistemi kavra:
 * **Android proje:** `android/` klasörü
 * **Rust bridge:** `crates/android-bridge/src/lib.rs`
 * **Kotlin kaynak:** `android/app/src/main/java/com/bubi/nodanotes/`
-* **Derleme:** `cd android && ./gradlew installDebug` (Rust bridge'i de otomatik derler)
+* **Derleme:** `cd android && JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew assembleDebug` (Rust bridge'i de otomatik derler)
 
 ---
 
-### ILK GÖREVİN: Phase 0 - T-A000 ile İşe Koyul!
+### ILK GÖREVİN: Phase 3: Advanced Note Features ile İşe Koyul!
 
-Yukarıdaki tüm dokümanları ve kuralları okuyup anladıktan sonra, `.agent/android/android-tasks.md` dosyasındaki ilk task olan **T-A000: Bridge Infrastructure** task'ine başla:
-1. `crates/android-bridge/Cargo.toml` dosyasını doğrula: `noda_core` takma adının (alias) `{ package = "core", path = "../core" }` şeklinde olduğundan emin ol (Rust'ın standart `core` kütüphanesini gölgelememesi için).
-2. `crates/android-bridge/src/lib.rs` içerisine `fn error_string(env: &mut JNIEnv, message: &str) -> jstring` yardımcı fonksiyonunu ekle.
-3. Yine aynı dosyaya `fn parse_string(env: &mut JNIEnv, s: &JString) -> Result<String, jstring>` yardımcı fonksiyonunu ekle.
-4. Küresel (global) `OnceLock<Runtime>` yapısının varlığını ve doğruluğunu kontrol et.
+Yukarıdaki tüm dokümanları ve kuralları okuyup anladıktan sonra, `.agent/android/android-tasks.md` dosyasındaki Faz 3'deki 3 taskı sırasıyla tamamla,  testlerini yap, eğer testler başarılıysa doğrudan bir sonraki taska geç. Faz 3 tamamen bittiğinde bana rapor ver.
 
-Bu adımları tamamladıktan sonra `android-tasks.md`'deki checkbox'ları işaretle ve onay iste!
+adımları tamamladıktan sonra `android-tasks.md`'deki checkbox'ları işaretle ve onay iste!
 ```
 

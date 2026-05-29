@@ -12,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 
+import com.bubi.nodanotes.ui.screens.history.HistoryScreen
 import com.bubi.nodanotes.ui.screens.vault.VaultSelectorScreen
 
 import com.bubi.nodanotes.ui.screens.search.SearchScreen
@@ -77,7 +78,10 @@ fun NodaNavGraph(
             arguments = listOf(navArgument("noteId") { type = NavType.StringType })
         ) { backStackEntry ->
             val noteId = backStackEntry.arguments?.getString("noteId") ?: ""
-            PlaceholderScreen(name = "History Screen (Note ID: $noteId)")
+            HistoryScreen(
+                noteId = noteId,
+                onBackClick = { navController.popBackStack() }
+            )
         }
         composable(Screen.Trash.route) {
             PlaceholderScreen(name = "Trash Screen")

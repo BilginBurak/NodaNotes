@@ -403,34 +403,34 @@
 
 ### T-D001: Version History Screen
 
-- [ ] Create `HistoryViewModel.kt`:
-  - `loadSnapshots(noteId: String)` — calls `HistoryRepository.listSnapshots(noteId)`
-  - `loadDiff(noteId: String, timestamp: String)` — calls `HistoryRepository.getSnapshotDiff(noteId, timestamp)`
-  - `restoreSnapshot(noteId: String, timestamp: String)` — calls `HistoryRepository.restoreSnapshot(...)`, navigates back to editor with refreshed note
-  - `deleteSnapshot(noteId: String, timestamp: String)` — calls `HistoryRepository.deleteSnapshot(...)`
-- [ ] Create `HistoryScreen.kt` (see android-ui-spec.md Section 7):
-  - Snapshot list with date, size
-  - "View Diff" button per snapshot → shows DiffViewer in modal bottom sheet
-  - "Restore" button with confirmation dialog
-  - Delete swipe/button per snapshot
-- [ ] Create `ui/components/DiffViewer.kt`:
-  - Renders `List<DiffChunk>` — Equal (normal text), Insert (green), Delete (red), Separator (⋯ divider)
-  - Uses `SpanStyle` for colored backgrounds
-  - Monospace font for diff text
+- [x] Create `HistoryViewModel.kt`:
+  - [x] `loadSnapshots(noteId: String)` — calls `HistoryRepository.listSnapshots(noteId)`
+  - [x] `loadDiff(noteId: String, timestamp: String)` — calls `HistoryRepository.getSnapshotDiff(noteId, timestamp)`
+  - [x] `restoreSnapshot(noteId: String, timestamp: String)` — calls `HistoryRepository.restoreSnapshot(...)`, navigates back to editor with refreshed note
+  - [x] `deleteSnapshot(noteId: String, timestamp: String)` — calls `HistoryRepository.deleteSnapshot(...)`
+- [x] Create `HistoryScreen.kt` (see android-ui-spec.md Section 7):
+  - [x] Snapshot list with date, size
+  - [x] "View Diff" button per snapshot → shows DiffViewer in modal bottom sheet
+  - [x] "Restore" button with confirmation dialog
+  - [x] Delete swipe/button per snapshot
+- [x] Create `ui/components/DiffViewer.kt`:
+  - [x] Renders `List<DiffChunk>` — Equal (normal text), Insert (green), Delete (red), Separator (⋯ divider)
+  - [x] Uses `SpanStyle` for colored backgrounds
+  - [x] Monospace font for diff text
 
 ### T-D002: Note Metadata Info Sheet
 
-- [ ] `NoteInfoSheet` bottom sheet is triggered from editor toolbar
-- [ ] Calls `NoteEditorViewModel.loadMetadata()` → `NoteMetadataDto`
-- [ ] Displays all fields (see android-ui-spec.md Section 12)
-- [ ] Dates formatted as "May 28, 2026 at 22:30" (use `DateTimeFormatter` or `SimpleDateFormat`)
-- [ ] "Never" for null last_upload_time
+- [x] `NoteInfoSheet` bottom sheet is triggered from editor toolbar
+- [x] Calls `NoteEditorViewModel.loadMetadata()` → `NoteMetadataDto`
+- [x] Displays all fields (see android-ui-spec.md Section 12)
+- [x] Dates formatted as "May 28, 2026 at 22:30" (use `DateTimeFormatter` or `SimpleDateFormat`)
+- [x] "Never" for null last_upload_time
 
 ### T-D003: Contextual Diff in History
 
-- [ ] Verify `DiffChunk.tag == "Separator"` renders as `⋯` row (8 unchanged lines skipped)
-- [ ] Scrollable diff view in bottom sheet (sheet itself is NOT scrollable — content inside is)
-- [ ] Diff uses fixed-width monospace for alignment
+- [x] Verify `DiffChunk.tag == "Separator"` renders as `⋯` row (8 unchanged lines skipped)
+- [x] Scrollable diff view in bottom sheet (sheet itself is NOT scrollable — content inside is)
+- [x] Diff uses fixed-width monospace for alignment
 
 ---
 
