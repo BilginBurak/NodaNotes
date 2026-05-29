@@ -1,0 +1,209 @@
+package com.bubi.nodanotes.ui.screens.notelist
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.bubi.nodanotes.data.model.NoteListItemDto
+import com.bubi.nodanotes.data.preferences.VaultPreferences
+import com.bubi.nodanotes.data.repository.NoteRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+import android.app.PendingIntent
+import android.content.Intent
+import com.bubi.nodanotes.data.repository.SyncRepository
+import com.bubi.nodanotes.data.model.SyncReportDto
+
+class NoteListViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val noteRepository = NoteRepository()
+    private val vaultPreferences = VaultPreferences(application)
+    private val syncRepository = SyncRepository()
+
+    private val _uiState = MutableStateFlow<NoteListUiState>(NoteListUiState.Loading)
+    val uiState: StateFlow<NoteListUiState> = _uiState.asStateFlow()
+
+    private val _currentFolder = MutableStateFlow<String?>(null)
+    val currentFolder: StateFlow<String?> = _currentFolder.asStateFlow()
+
+    private val _vaultName = MutableStateFlow("")
+    val vaultName: StateFlow<String> = _vaultName.asStateFlow()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private val _syncStatus = MutableStateFlow("Sync idle")
+    val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
+
+    private var recentlyDeletedNote: NoteListItemDto? = null
+    private var recentlyDeletedPath: String? = null
+
+    init {
+        val path = vaultPreferences.getVaultPath()
+        _vaultName.value = path?.substringAfterLast('/') ?: "NodaNotes"
+    }
+
+    fun loadNotes(folderPath: String? = null) {
+        _currentFolder.value = folderPath
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = NoteListUiState.Loading
+            noteRepository.listNotes(folderPath).fold(
+                onSuccess = { notes ->
+                    _uiState.value = NoteListUiState.Success(notes)
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteListUiState.Error(error.message ?: "Failed to load notes")
+                }
+            )
+        }
+    }
+
+    fun triggerSync() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isRefreshing.value = true
+            _syncStatus.value = "Syncing..."
+            syncRepository.syncNow().fold(
+                onSuccess = { report ->
+                    _isRefreshing.value = false
+                    _syncStatus.value = "Synced just now"
+                    vaultPreferences.saveLastSyncReport(
+                        kotlinx.serialization.json.Json.encodeToString(
+                            SyncReportDto.serializer(),
+                            report
+                        )
+                    )
+                    postSyncNotification(report)
+                    loadNotes(FolderContext.currentFolder)
+                },
+                onFailure = { error ->
+                    _isRefreshing.value = false
+                    _syncStatus.value = "Sync failed: ${error.message}"
+                }
+            )
+        }
+    }
+
+    private fun postSyncNotification(report: SyncReportDto) {
+        val context = getApplication<Application>()
+        try {
+            val intent = Intent(context, Class.forName("com.bubi.nodanotes.MainActivity")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                putExtra("navigate_to", "sync_report")
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val message = "Uploaded ${report.uploads} notes, downloaded ${report.downloads} notes, ${report.conflicts} conflicts."
+            val builder = androidx.core.app.NotificationCompat.Builder(context, "noda_sync")
+                .setSmallIcon(android.R.drawable.stat_notify_sync)
+                .setContentTitle("NodaNotes Sync Complete")
+                .setContentText(message)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+
+            val notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            notificationManager.notify(1001, builder.build())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun createNote(parentFolder: String?, onNoteCreated: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            noteRepository.createNote("Untitled", parentFolder, emptyList()).fold(
+                onSuccess = { newNote ->
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onNoteCreated(newNote.id)
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteListUiState.Error(error.message ?: "Failed to create note")
+                }
+            )
+        }
+    }
+
+    fun deleteNoteWithUndo(note: NoteListItemDto, onShowUndoSnackbar: (suspend () -> Unit) -> Unit) {
+        recentlyDeletedNote = note
+        recentlyDeletedPath = note.file_path
+
+        viewModelScope.launch(Dispatchers.IO) {
+            noteRepository.deleteNote(note.id).fold(
+                onSuccess = {
+                    loadNotes(FolderContext.currentFolder)
+                    
+                    // Trigger undo Snackbar
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onShowUndoSnackbar {
+                            restoreDeletedNote()
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteListUiState.Error(error.message ?: "Failed to delete note")
+                }
+            )
+        }
+    }
+
+    private fun restoreDeletedNote() {
+        val note = recentlyDeletedNote ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val trashRepository = com.bubi.nodanotes.data.repository.TrashRepository()
+            trashRepository.restoreFromTrash(note.id).fold(
+                onSuccess = {
+                    loadNotes(FolderContext.currentFolder)
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteListUiState.Error(error.message ?: "Failed to restore note")
+                }
+            )
+        }
+    }
+
+    fun togglePinNote(note: NoteListItemDto) {
+        viewModelScope.launch(Dispatchers.IO) {
+            noteRepository.getNote(note.id).fold(
+                onSuccess = { noteDto ->
+                    noteRepository.updateNote(
+                        noteId = noteDto.id,
+                        title = noteDto.title,
+                        body = noteDto.body,
+                        tags = noteDto.tags,
+                        color = noteDto.color,
+                        pinned = !noteDto.pinned
+                    ).fold(
+                        onSuccess = {
+                            loadNotes(FolderContext.currentFolder)
+                        },
+                        onFailure = { error ->
+                            _uiState.value = NoteListUiState.Error(error.message ?: "Failed to update pin status")
+                        }
+                    )
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteListUiState.Error(error.message ?: "Failed to read note details")
+                }
+            )
+        }
+    }
+
+    fun refreshOnResume() {
+        loadNotes(FolderContext.currentFolder)
+    }
+}
+
+sealed class NoteListUiState {
+    object Loading : NoteListUiState()
+    data class Success(val notes: List<NoteListItemDto>) : NoteListUiState()
+    data class Error(val message: String) : NoteListUiState()
+}

@@ -1,30 +1,41 @@
 package com.bubi.nodanotes
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.bubi.nodanotes.ui.theme.NodaNotesTheme
-
-import android.content.Intent
-import android.net.Uri
-import android.os.Environment
-import android.provider.Settings
+import androidx.navigation.compose.rememberNavController
+import com.bubi.nodanotes.data.preferences.VaultPreferences
+import com.bubi.nodanotes.ui.navigation.NodaNavGraph
+import com.bubi.nodanotes.ui.navigation.Screen
+import com.bubi.nodanotes.ui.theme.NodaTheme
 import java.io.File
 
+import com.bubi.nodanotes.ui.components.NodaAppShell
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+
 class MainActivity : ComponentActivity() {
+
+    private lateinit var vaultPreferences: VaultPreferences
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
-        // Request "All Files Access" if not already granted (required for ~/Documents/NodaVault)
+
+        vaultPreferences = VaultPreferences(this)
+
+        // Request "All Files Access" if not already granted (required for vault access)
         if (!Environment.isExternalStorageManager()) {
             try {
                 val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
@@ -37,48 +48,43 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Target path: /storage/emulated/0/Documents/NodaVault (corresponds to ~/Documents/NodaVault)
-        val vaultDir = File(Environment.getExternalStorageDirectory(), "Documents/NodaVault")
-        if (Environment.isExternalStorageManager() && !vaultDir.exists()) {
-            vaultDir.mkdirs()
-        }
-
-        // Initialize the vault using our Rust Core bridge
-        val initResult = try {
-            if (Environment.isExternalStorageManager()) {
-                RustCore.initVault(vaultDir.absolutePath)
-            } else {
-                "Storage Access Required: Please grant 'All Files Access' in the settings screen and restart the app."
+        // Determine start destination and initialize vault if path is already saved
+        val savedVaultPath = vaultPreferences.getVaultPath()
+        val startDestination = if (Environment.isExternalStorageManager() && savedVaultPath != null) {
+            try {
+                RustCore.initVault(savedVaultPath)
+                Screen.NoteList.route
+            } catch (e: Exception) {
+                // If JNI init fails, fallback to selector
+                Screen.VaultSelector.route
             }
-        } catch (e: Throwable) {
-            "JNI Error: ${e.message}"
+        } else {
+            Screen.VaultSelector.route
         }
 
         setContent {
-            NodaNotesTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = initResult,
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+            NodaTheme {
+                val navController = rememberNavController()
+                NodaAppShell(
+                    navController = navController,
+                    startDestination = startDestination,
+                    vaultPreferences = vaultPreferences
+                )
             }
         }
     }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    NodaNotesTheme {
-        Greeting("Android")
+    override fun onResume() {
+        super.onResume()
+        val savedVaultPath = if (::vaultPreferences.isInitialized) vaultPreferences.getVaultPath() else null
+        if (savedVaultPath != null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    com.bubi.nodanotes.data.repository.VaultRepository().refreshVault()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
     }
 }

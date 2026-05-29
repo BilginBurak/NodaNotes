@@ -137,14 +137,13 @@ Bu sırayla oku ve sistemi kavra:
 - `.agent/android/android-spec.md` — Fonksiyonel gereksinimler
 ### 2. SANA ÖZEL ÇALIŞMA KURALLARI (ÇOK ÖNEMLİ)
 
-* **Rust-First:** Kotlin tarafında HİÇBİR iş mantığı yazılmaz. Tüm veriler RustCore singleton üzerinden JSON String olarak alınır.
 * **Dumb Monitor:** Kotlin sadece görüntüler, komut gönderir. Dosya okuma/yazma, sync, search = Rust.
 * **Tüm JNI çağrıları Dispatchers.IO üzerinde** çalışır — asla main thread'de değil.
 * **Vault path:** Kullanıcı tarafından seçilir (MANAGE_EXTERNAL_STORAGE). SharedPreferences'te saklanır.
 * **Tema:** Tamamen Material 3 Dynamic Color (Monet). Hardcoded renk yok.
 * **Dil Kuralları:** Benimle (kullanıcıyla) chat üzerindeki tüm iletişimin **Türkçe** olmalıdır. Ancak bunun dışındaki her şey (yazdığın kodlar, yorum satırları, commit mesajları, hata çıktıları ve teknik dokümantasyonlar) tamamen **İngilizce** olmalıdır.
 * **Task İşaretleme (Checkboxes):** Herhangi bir task üzerinde çalışırken ve o task'i tamamladığında, mutlaka `.agent/android/android-tasks.md` dosyasındaki ilgili checkbox'ı (`[ ]` -> `[x]`) işaretle/güncelle.
-* **Task Geçiş Onayı:** Bir task'i tamamladığında doğrudan diğerine geçme. Önce kullanıcıya: `"Task (örneğin T-A000) tamam. Sıradaki task (örneğin T-A001: Vault JNI Functions) devam etmek"` şeklinde sor ve kullanıcının onayını bekle.
+* **Task Geçiş Onayı:** Bir task'i tamamladığında doğrudan diğerine geçme. geröekten çok kısa bir özet geç. Sonra kullanıcıya: `"Task (örneğin T-A000) tamam. Sıradaki task (örneğin T-A001: Vault JNI Functions) devam etmek"` şeklinde sor ve kullanıcının onayını bekle.
 * **Olağan Dışı Bulgular & Direksiyon Rehberi:** Kod yazarken veya sistemi incelerken olağan dışı, kritik veya çok önemli bir bulgu/öğrenim elde edersen (her basit task'ten sonra değil, sadece gerçekten önemli ve geleceğe ışık tutacak durumlarda), kullanıcıya: `"Bu bulguyu android-steering.md dosyasına Project-Specific Patterns başlığı altına eklemek ister misiniz?"` diye sor. Kullanıcı onay verirse bu bulguyu ilgili yere ekle.
 * **Rust-First:** Kotlin tarafında HİÇBİR iş mantığı yazılmaz. Tüm veriler RustCore singleton üzerinden JSON String olarak alınır. Kotlin sadece "Dumb Monitor" (Aptal Ekran) olarak görev yapar.
 

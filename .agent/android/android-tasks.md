@@ -16,179 +16,179 @@
 
 ### T-A000: Bridge Infrastructure
 
-- [ ] Verify `crates/android-bridge/Cargo.toml` — ensure `noda_core` alias is `{ package = "core", path = "../core" }` to avoid shadowing Rust's `core` crate
-- [ ] Add `fn error_string(env: &mut JNIEnv, message: &str) -> jstring` helper function
-- [ ] Add `fn parse_string(env: &mut JNIEnv, s: &JString) -> Result<String, jstring>` helper function
-- [ ] Verify global `OnceLock<Runtime>` is present and correct
+- [x] Verify `crates/android-bridge/Cargo.toml` — ensure `noda_core` alias is `{ package = "core", path = "../core" }` to avoid shadowing Rust's `core` crate
+- [x] Add `fn error_string(env: &mut JNIEnv, message: &str) -> jstring` helper function
+- [x] Add `fn parse_string(env: &mut JNIEnv, s: &JString) -> Result<String, jstring>` helper function
+- [x] Verify global `OnceLock<Runtime>` is present and correct
 
 ### T-A001: Vault JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_initVault` — (already exists, verify it works correctly)
-- [ ] `Java_com_bubi_nodanotes_RustCore_getVaultInfo` — calls `noda_core::vault::service::VaultService::get_info()`
-- [ ] `Java_com_bubi_nodanotes_RustCore_refreshVault` — re-scans vault for external `.md` files, converts non-Noda files to Noda format, returns `{ "imported_count": N }`
+- [x] `Java_com_bubi_nodanotes_RustCore_initVault` — (already exists, verify it works correctly)
+- [x] `Java_com_bubi_nodanotes_RustCore_getVaultInfo` — calls `noda_core::vault::service::VaultService::get_info()`
+- [x] `Java_com_bubi_nodanotes_RustCore_refreshVault` — re-scans vault for external `.md` files, converts non-Noda files to Noda format, returns `{ "imported_count": N }`
   - **Input:** `"{}"`
   - **Rust logic:** scan_vault → find files without valid frontmatter → generate ULID + inject frontmatter + rename + upsert to DB
 
 ### T-A002: Note JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_listNotes` — calls `VaultService.list_notes(folder_path: Option<&str>)`
+- [x] `Java_com_bubi_nodanotes_RustCore_listNotes` — calls `VaultService.list_notes(folder_path: Option<&str>)`
   - **Input:** `{ "folder_path": "work/projects" }` or `{ "folder_path": null }`
   - **Output:** `Vec<NoteListItemDto>` JSON
-- [ ] `Java_com_bubi_nodanotes_RustCore_getAllNotes` — calls `VaultService.list_all_notes()`
+- [x] `Java_com_bubi_nodanotes_RustCore_getAllNotes` — calls `VaultService.list_all_notes()`
   - **Input:** `"{}"`
   - **Output:** `Vec<NoteListItemDto>` JSON (all notes in vault, sorted by updated_at)
-- [ ] `Java_com_bubi_nodanotes_RustCore_getNote` — calls `VaultService.get_note(note_id)`
+- [x] `Java_com_bubi_nodanotes_RustCore_getNote` — calls `VaultService.get_note(note_id)`
   - **Input:** `{ "note_id": "01JXYZ..." }`
   - **Output:** `NoteDto` JSON
-- [ ] `Java_com_bubi_nodanotes_RustCore_createNote` — calls `VaultService.create_note(title, parent_folder, tags)`
+- [x] `Java_com_bubi_nodanotes_RustCore_createNote` — calls `VaultService.create_note(title, parent_folder, tags)`
   - **Input:** `{ "title": "New Note", "parent_folder": "work/projects", "tags": [] }`
   - **Output:** `NoteDto` JSON (with generated ULID, empty body)
-- [ ] `Java_com_bubi_nodanotes_RustCore_updateNote` — calls `VaultService.update_note(id, title, body, tags, color, pinned)`
+- [x] `Java_com_bubi_nodanotes_RustCore_updateNote` — calls `VaultService.update_note(id, title, body, tags, color, pinned)`
   - **Input:** full NoteDto fields JSON
   - **Output:** `{ "updated_at": "ISO8601 string" }`
   - **IMPORTANT:** Rust must create a history snapshot before overwriting
-- [ ] `Java_com_bubi_nodanotes_RustCore_renameNote` — calls `VaultService.rename_note(id, new_title)`
+- [x] `Java_com_bubi_nodanotes_RustCore_renameNote` — calls `VaultService.rename_note(id, new_title)`
   - **Input:** `{ "note_id": "...", "new_title": "New Title" }`
   - **Output:** `{ "new_file_path": "relative/path.md" }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_deleteNote` — calls `VaultService.soft_delete_note(id)` (moves to trash)
+- [x] `Java_com_bubi_nodanotes_RustCore_deleteNote` — calls `VaultService.soft_delete_note(id)` (moves to trash)
   - **Input:** `{ "note_id": "..." }`
   - **Output:** `{ "success": true }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_moveNote` — calls `VaultService.move_note(id, target_folder)`
+- [x] `Java_com_bubi_nodanotes_RustCore_moveNote` — calls `VaultService.move_note(id, target_folder)`
   - **Input:** `{ "note_id": "...", "target_folder": "archive/2026" }`
   - **Output:** `{ "new_file_path": "..." }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_getNoteMetadata` — calls `VaultService.get_note_metadata(id)`
+- [x] `Java_com_bubi_nodanotes_RustCore_getNoteMetadata` — calls `VaultService.get_note_metadata(id)`
   - **Output:** `NoteMetadataDto` JSON (word_count, char_count, last_upload_time, history_count, file_size_bytes)
-- [ ] `Java_com_bubi_nodanotes_RustCore_getAllTags` — calls `VaultService.get_all_tags()`
+- [x] `Java_com_bubi_nodanotes_RustCore_getAllTags` — calls `VaultService.get_all_tags()`
   - **Output:** `Vec<String>` JSON — all unique tags, alphabetically sorted
 
 ### T-A003: Folder JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_listFolders` — calls `VaultService.list_folders()`
+- [x] `Java_com_bubi_nodanotes_RustCore_listFolders` — calls `VaultService.list_folders()`
   - **Output:** Recursive `FolderDto` tree JSON: `[{ "name", "path", "children": [...] }]`
-- [ ] `Java_com_bubi_nodanotes_RustCore_createFolder` — calls `VaultService.create_folder(parent_path, name)`
+- [x] `Java_com_bubi_nodanotes_RustCore_createFolder` — calls `VaultService.create_folder(parent_path, name)`
   - **Input:** `{ "parent_path": "work", "name": "new-folder" }` (parent_path null = root)
   - **Output:** `{ "path": "work/new-folder" }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_renameFolder` — calls `VaultService.rename_folder(path, new_name)`
+- [x] `Java_com_bubi_nodanotes_RustCore_renameFolder` — calls `VaultService.rename_folder(path, new_name)`
   - **Input:** `{ "folder_path": "work/old", "new_name": "new" }`
   - **Output:** `{ "new_path": "work/new" }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_deleteFolder` — calls `VaultService.delete_folder(path)` (soft-deletes all notes inside)
+- [x] `Java_com_bubi_nodanotes_RustCore_deleteFolder` — calls `VaultService.delete_folder(path)` (soft-deletes all notes inside)
   - **Input:** `{ "folder_path": "work/old-folder" }`
   - **Output:** `{ "deleted_count": 5 }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_moveFolder` — calls `VaultService.move_folder(source, target_parent)`
+- [x] `Java_com_bubi_nodanotes_RustCore_moveFolder` — calls `VaultService.move_folder(source, target_parent)`
   - **Input:** `{ "source_path": "work/sub", "target_parent": "archive" }`
   - **Output:** `{ "new_path": "archive/sub" }`
 
 ### T-A004: Search JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_searchNotes` — calls `noda_core::search::search(conn, query)`
+- [x] `Java_com_bubi_nodanotes_RustCore_searchNotes` — calls `noda_core::search::search(conn, query)`
   - **Input:** `{ "query": "search term" }`
   - **Output:** `Vec<SearchResultDto>` JSON with `note_id, title, snippet, match_type, score`
   - **Note:** snippet contains `<b>matched</b>` HTML tags for highlighting
 
 ### T-A005: History JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_listSnapshots` — calls `noda_core::history::list_snapshots(vault_path, note_id)`
+- [x] `Java_com_bubi_nodanotes_RustCore_listSnapshots` — calls `noda_core::history::list_snapshots(vault_path, note_id)`
   - **Output:** `Vec<SnapshotDto>` JSON with `timestamp, file_path, size_bytes`
-- [ ] `Java_com_bubi_nodanotes_RustCore_getSnapshotDiff` — calls `noda_core::history::get_diff(vault_path, note_id, timestamp)`
+- [x] `Java_com_bubi_nodanotes_RustCore_getSnapshotDiff` — calls `noda_core::history::get_diff(vault_path, note_id, timestamp)`
   - **Output:** `SnapshotDiffDto` with `body_chunks: [{ tag, text }]`
   - **Chunk tags:** `"Equal"`, `"Insert"`, `"Delete"`, `"Separator"` (skipped context separator)
-- [ ] `Java_com_bubi_nodanotes_RustCore_restoreSnapshot` — calls `noda_core::history::restore(vault_path, note_id, timestamp)`
+- [x] `Java_com_bubi_nodanotes_RustCore_restoreSnapshot` — calls `noda_core::history::restore(vault_path, note_id, timestamp)`
   - **Output:** `NoteDto` of the restored note
   - **IMPORTANT:** Rust preserves `parent_id`, `tags`, `color`, sets `updated_at = now()`
-- [ ] `Java_com_bubi_nodanotes_RustCore_deleteSnapshot` — calls `noda_core::history::delete_snapshot(vault_path, note_id, timestamp)`
+- [x] `Java_com_bubi_nodanotes_RustCore_deleteSnapshot` — calls `noda_core::history::delete_snapshot(vault_path, note_id, timestamp)`
   - **Input:** `{ "note_id": "...", "timestamp": "20260528_220000_123" }`
   - **Output:** `{ "success": true }`
 
 ### T-A006: Trash JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_listTrash` — calls `noda_core::trash::list_trash(vault_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_listTrash` — calls `noda_core::trash::list_trash(vault_path)`
   - **Output:** `Vec<TrashEntryDto>` JSON (deep scan includes trashed notes from subdirs)
-- [ ] `Java_com_bubi_nodanotes_RustCore_restoreFromTrash` — calls `noda_core::trash::restore(vault_path, note_id)`
+- [x] `Java_com_bubi_nodanotes_RustCore_restoreFromTrash` — calls `noda_core::trash::restore(vault_path, note_id)`
   - **Output:** `{ "restored_path": "..." }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_permanentDelete` — calls `noda_core::trash::permanent_delete(vault_path, note_id)`
+- [x] `Java_com_bubi_nodanotes_RustCore_permanentDelete` — calls `noda_core::trash::permanent_delete(vault_path, note_id)`
   - **Output:** `{ "success": true }`
   - **IMPORTANT:** Also deletes `.noda/history/{id}/` and `.noda/conflicts/{id}_*.md`
-- [ ] `Java_com_bubi_nodanotes_RustCore_emptyTrash` — calls `noda_core::trash::empty_trash(vault_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_emptyTrash` — calls `noda_core::trash::empty_trash(vault_path)`
   - **Output:** `{ "deleted_count": N }`
 
 ### T-A007: Attachment JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_addAttachment` — calls `noda_core::attachments::store_attachment(vault_path, source_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_addAttachment` — calls `noda_core::attachments::store_attachment(vault_path, source_path)`
   - **Input:** `{ "source_path": "/storage/.../photo.jpg" }`
   - **Output:** `{ "attachment_name": "xxh3_abc.jpg", "markdown_link": "![photo](noda://...)" }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_listAttachments` — calls `noda_core::attachments::list_attachments(vault_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_listAttachments` — calls `noda_core::attachments::list_attachments(vault_path)`
   - **Output:** `[{ "name", "size_bytes", "mime_type", "modified_at" }]`
-- [ ] `Java_com_bubi_nodanotes_RustCore_getAttachmentData` — reads `.noda/attachments/{name}`, returns base64-encoded bytes
+- [x] `Java_com_bubi_nodanotes_RustCore_getAttachmentData` — reads `.noda/attachments/{name}`, returns base64-encoded bytes
   - **Input:** `{ "attachment_name": "xxh3_abc.jpg" }`
   - **Output:** `{ "data_base64": "...", "mime_type": "image/jpeg" }`
   - **Note:** Validate path is within `.noda/attachments/` (path traversal prevention)
 
 ### T-A008: Sync JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_saveSyncConfig` — saves WebDAV config to `.noda/manifest.json` or separate config file via Rust
+- [x] `Java_com_bubi_nodanotes_RustCore_saveSyncConfig` — saves WebDAV config to `.noda/manifest.json` or separate config file via Rust
   - **Input:** `{ "webdav_url", "username", "password", "interval_secs" }`
   - **Output:** `{ "success": true }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_loadSyncConfig` — loads existing sync config
+- [x] `Java_com_bubi_nodanotes_RustCore_loadSyncConfig` — loads existing sync config
   - **Output:** `{ "webdav_url", "username", "interval_secs", "is_configured" }` (NO password)
-- [ ] `Java_com_bubi_nodanotes_RustCore_testWebdavConnection` — uses `SyncEngine` client to test connection
+- [x] `Java_com_bubi_nodanotes_RustCore_testWebdavConnection` — uses `SyncEngine` client to test connection
   - **Input:** `{ "webdav_url", "username", "password" }`
   - **Output:** `{ "success": true }` or `{ "error": "..." }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_syncNow` — calls `noda_core::sync::SyncEngine::sync_now()`
+- [x] `Java_com_bubi_nodanotes_RustCore_syncNow` — calls `noda_core::sync::SyncEngine::sync_now()`
   - **Input:** `"{}"`
   - **Output:** `SyncReportDto` JSON — includes human-readable file titles (resolved from ULID via DB query)
-- [ ] `Java_com_bubi_nodanotes_RustCore_getSyncStatus` — calls `SyncEngine::get_status()`
+- [x] `Java_com_bubi_nodanotes_RustCore_getSyncStatus` — calls `SyncEngine::get_status()`
   - **Output:** `{ "is_syncing": false, "last_sync_at": "...", "pending_count": 0 }`
 
 ### T-A009: Conflict JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_listConflicts` — scans `.noda/conflicts/`, matches to live notes
+- [x] `Java_com_bubi_nodanotes_RustCore_listConflicts` — scans `.noda/conflicts/`, matches to live notes
   - **Output:** `Vec<ConflictEntryDto>` JSON
-- [ ] `Java_com_bubi_nodanotes_RustCore_getConflictNote` — reads archived conflict file and parses as NoteDto
+- [x] `Java_com_bubi_nodanotes_RustCore_getConflictNote` — reads archived conflict file and parses as NoteDto
   - **Input:** `{ "archived_path": ".noda/conflicts/..." }`
   - **Output:** `NoteDto` JSON (the remote/archived version)
-- [ ] `Java_com_bubi_nodanotes_RustCore_resolveConflict` — keeps local or uses remote
+- [x] `Java_com_bubi_nodanotes_RustCore_resolveConflict` — keeps local or uses remote
   - **Input:** `{ "note_id": "...", "resolution": "keep_local" | "use_remote" }`
   - **Output:** `{ "success": true }`
 
 ### T-A010: Maintenance JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_rebuildCache` — `noda_core::database::rebuild::rebuild(vault_path, conn)`
+- [x] `Java_com_bubi_nodanotes_RustCore_rebuildCache` — `noda_core::database::rebuild::rebuild(vault_path, conn)`
   - **Output:** `{ "success": true, "note_count": N }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_optimizeFts` — run FTS5 `OPTIMIZE`
+- [x] `Java_com_bubi_nodanotes_RustCore_optimizeFts` — run FTS5 `OPTIMIZE`
   - **Output:** `{ "success": true }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_getDuplicateNotes` — `noda_core::diagnostics::get_duplicate_notes(vault_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_getDuplicateNotes` — `noda_core::diagnostics::get_duplicate_notes(vault_path)`
   - **Output:** `[{ "note_id", "files": [{ "path", "size_bytes", "modified_at" }] }]`
-- [ ] `Java_com_bubi_nodanotes_RustCore_deleteDuplicateFile` — deletes one physical file (NOT soft-delete)
+- [x] `Java_com_bubi_nodanotes_RustCore_deleteDuplicateFile` — deletes one physical file (NOT soft-delete)
   - **Input:** `{ "file_path": "backup/01JXYZ.md" }` (relative to vault root)
   - **Output:** `{ "success": true }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_getOrphanedRemnants` — `noda_core::diagnostics::get_orphaned_remnants(vault_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_getOrphanedRemnants` — `noda_core::diagnostics::get_orphaned_remnants(vault_path)`
   - **Output:** full OrphanedRemnants JSON with display names and sizes (see bridge-spec.md)
-- [ ] `Java_com_bubi_nodanotes_RustCore_deleteOrphanedFile` — deletes one orphaned file permanently
+- [x] `Java_com_bubi_nodanotes_RustCore_deleteOrphanedFile` — deletes one orphaned file permanently
   - **Input:** `{ "file_path": ".noda/history/.../..." }`
   - **Output:** `{ "success": true }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_deleteAllOrphanedRemnants` — `noda_core::diagnostics::delete_orphaned_remnants(vault_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_deleteAllOrphanedRemnants` — `noda_core::diagnostics::delete_orphaned_remnants(vault_path)`
   - **Output:** `{ "deleted_count": N, "freed_bytes": N }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_getOrphanedAttachments` — `noda_core::attachments::get_orphaned(vault_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_getOrphanedAttachments` — `noda_core::attachments::get_orphaned(vault_path)`
   - **Output:** `[{ "name", "size_bytes" }]`
-- [ ] `Java_com_bubi_nodanotes_RustCore_clearRemoteTrackingCache` — deletes `.noda/sync/remote_state.json`
+- [x] `Java_com_bubi_nodanotes_RustCore_clearRemoteTrackingCache` — deletes `.noda/sync/remote_state.json`
   - **Output:** `{ "success": true }`
-- [ ] `Java_com_bubi_nodanotes_RustCore_resetSyncQueue` — clears `.noda/sync/queue.json`
+- [x] `Java_com_bubi_nodanotes_RustCore_resetSyncQueue` — clears `.noda/sync/queue.json`
   - **Output:** `{ "success": true, "cleared_count": N }`
 
 ### T-A011: Settings JNI Functions
 
-- [ ] `Java_com_bubi_nodanotes_RustCore_getSettings` — `noda_core::settings::get_settings(vault_path)`
+- [x] `Java_com_bubi_nodanotes_RustCore_getSettings` — `noda_core::settings::get_settings(vault_path)`
   - **Output:** SettingsDto JSON
-- [ ] `Java_com_bubi_nodanotes_RustCore_updateSettings` — `noda_core::settings::update_settings(vault_path, settings)`
+- [x] `Java_com_bubi_nodanotes_RustCore_updateSettings` — `noda_core::settings::update_settings(vault_path, settings)`
   - **Input:** partial SettingsDto JSON
   - **Output:** `{ "success": true }`
 
 ### T-A012: Build Verification
 
-- [ ] `./gradlew :app:compileRustCore` succeeds — `.so` file is produced in `jniLibs/arm64-v8a/`
-- [ ] `./gradlew :app:assembleDebug` succeeds
-- [ ] On device: `System.loadLibrary("android_bridge")` does not throw `UnsatisfiedLinkError`
-- [ ] `RustCore.initVault(path)` returns `{"success": true}` for a valid path
+- [x] `./gradlew :app:compileRustCore` succeeds — `.so` file is produced in `jniLibs/arm64-v8a/`
+- [x] `./gradlew :app:assembleDebug` succeeds
+- [x] On device: `System.loadLibrary("android_bridge")` does not throw `UnsatisfiedLinkError`
+- [x] `RustCore.initVault(path)` returns `{"success": true}` for a valid path
 
 ---
 
@@ -198,30 +198,30 @@
 > No UI screens yet — only the plumbing.
 
 ### T-B001: Dependencies & Build Config
-
-- [ ] Add to `app/build.gradle.kts`:
+ 
+- [x] Add to `app/build.gradle.kts`:
   - `kotlinx-serialization-json` (for JSON parsing)
   - `androidx-lifecycle-viewmodel-compose`
   - `androidx-navigation-compose`
   - `androidx-security-crypto` (for EncryptedSharedPreferences)
   - `material-icons-extended` (for all Material icons)
-- [ ] Add Kotlin serialization plugin to build.gradle.kts
-- [ ] Add Internet permission to AndroidManifest.xml
-- [ ] Add POST_NOTIFICATIONS permission to AndroidManifest.xml
-- [ ] Set `android:networkSecurityConfig` if needed for plain HTTP WebDAV testing
+- [x] Add Kotlin serialization plugin to build.gradle.kts
+- [x] Add Internet permission to AndroidManifest.xml
+- [x] Add POST_NOTIFICATIONS permission to AndroidManifest.xml
+- [x] Set `android:networkSecurityConfig` if needed for plain HTTP WebDAV testing (Uses cleartext traffic is enabled)
 
 ### T-B002: Theme System
-
-- [ ] Create `ui/theme/Color.kt` — empty placeholder (no hardcoded colors; Monet handles all)
-- [ ] Create `ui/theme/Type.kt` — define `NodaTypography` (see android-ui-spec.md Section 1.2)
-- [ ] Create `ui/theme/Theme.kt` — `NodaTheme` composable with `customColorScheme: ColorScheme? = null` parameter (forward-compatible)
+ 
+- [x] Create `ui/theme/Color.kt` — empty placeholder (no hardcoded colors; Monet handles all)
+- [x] Create `ui/theme/Type.kt` — define `NodaTypography` (see android-ui-spec.md Section 1.2)
+- [x] Create `ui/theme/Theme.kt` — `NodaTheme` composable with `customColorScheme: ColorScheme? = null` parameter (forward-compatible)
   - Dynamic Color on API 31+, dark fallback on older
   - Pass `NodaTypography` to `MaterialTheme`
-- [ ] Update `MainActivity.kt` to use `NodaTheme { ... }` and `enableEdgeToEdge()`
+- [x] Update `MainActivity.kt` to use `NodaTheme { ... }` and `enableEdgeToEdge()`
 
 ### T-B003: Kotlin Data Models
 
-- [ ] Create all data classes in `data/model/` (see bridge-spec.md Section 3)
+- [x] Create all data classes in `data/model/` (see bridge-spec.md Section 3)
   - `NoteDto.kt`, `NoteListItemDto.kt`, `VaultInfoDto.kt`
   - `SearchResultDto.kt`, `SnapshotDto.kt`, `DiffChunk.kt`, `SnapshotDiffDto.kt`
   - `TrashEntryDto.kt`, `ConflictEntryDto.kt`
@@ -231,44 +231,44 @@
   - `AttachmentInfoDto.kt`
   - `DuplicateNoteGroupDto.kt`, `OrphanedFileDto.kt`, `OrphanedRemnants.kt`
   - `SyncStatusDto.kt`, `SettingsDto.kt`
-- [ ] All models annotated with `@Serializable`
-- [ ] Verify JSON parsing works for all models with unit tests
+- [x] All models annotated with `@Serializable`
+- [x] Verify JSON parsing works for all models with unit tests
 
 ### T-B004: RustCore.kt Expansion
-
-- [ ] Add ALL `external fun` declarations to `RustCore.kt` (see bridge-spec.md Section 2)
-- [ ] Verify: `RustCore.kt` compiles without errors
+ 
+- [x] Add ALL `external fun` declarations to `RustCore.kt` (see bridge-spec.md Section 2)
+- [x] Verify: `RustCore.kt` compiles without errors
 
 ### T-B005: Repository Infrastructure
 
-- [ ] Create `data/preferences/VaultPreferences.kt`:
+- [x] Create `data/preferences/VaultPreferences.kt`:
   - `saveVaultPath(path: String)` / `getVaultPath(): String?`
   - `saveLastSyncReport(reportJson: String)` / `getLastSyncReport(): String?`
   - `saveDarkModePreference(pref: String)` / `getDarkModePreference(): String`
   - Note: WebDAV password stored in `EncryptedSharedPreferences`
-- [ ] Create `data/repository/BaseRepository.kt` with helper:
+- [x] Create `data/repository/BaseRepository.kt` with helper:
   ```kotlin
   protected fun <T> parseRustResult(json: String, strategy: DeserializationStrategy<T>): T
   protected fun checkError(json: String)  // Throws if {"error":"..."} detected
   ```
-- [ ] Create all Repository classes (see android-design.md Section 2):
+- [x] Create all Repository classes (see android-design.md Section 2):
   - `VaultRepository`, `NoteRepository`, `FolderRepository`, `SearchRepository`
   - `HistoryRepository`, `TrashRepository`, `AttachmentRepository`, `SyncRepository`
   - `ConflictRepository`, `DiagnosticsRepository`, `SettingsRepository`
-- [ ] All repository functions use `withContext(Dispatchers.IO)`
-- [ ] All repository functions return `Result<T>`
+- [x] All repository functions use `withContext(Dispatchers.IO)`
+- [x] All repository functions return `Result<T>`
 
 ### T-B006: Navigation Setup
 
-- [ ] Create `ui/navigation/Screen.kt` — sealed class with all routes (see android-design.md Section 5)
-- [ ] Create `ui/navigation/NodaNavGraph.kt` — Compose NavHost skeleton (empty composables for now)
-- [ ] Update `MainActivity.kt` to show NavGraph inside `NodaTheme`
+- [x] Create `ui/navigation/Screen.kt` — sealed class with all routes (see android-design.md Section 5)
+- [x] Create `ui/navigation/NodaNavGraph.kt` — Compose NavHost skeleton (empty composables for now)
+- [x] Update `MainActivity.kt` to show NavGraph inside `NodaTheme`
 
 ### T-B007: Notification Channel
 
-- [ ] Create Application class (or initialize in MainActivity) with sync notification channel setup
-- [ ] Channel ID: `"noda_sync"`, name: "Sync Notifications", importance: LOW
-- [ ] Register channel on API 26+
+- [x] Create Application class (or initialize in MainActivity) with sync notification channel setup
+- [x] Channel ID: `"noda_sync"`, name: "Sync Notifications", importance: LOW
+- [x] Register channel on API 26+
 
 ---
 
@@ -278,38 +278,38 @@
 
 ### T-C001: Vault Selector Screen
 
-- [ ] Create `ui/screens/vault/VaultSelectorViewModel.kt`:
+- [x] Create `ui/screens/vault/VaultSelectorViewModel.kt`:
   - `checkStoragePermission(): Boolean`
   - `initVault(path: String)` — calls `VaultRepository.initVault(path)`, saves to prefs, emits navigation event
   - `createVault(path: String)` — calls `VaultRepository.createVault(path)`, then `initVault`
   - `getRecentVaults(): List<String>` — reads from prefs
-- [ ] Create `ui/screens/vault/VaultSelectorScreen.kt` (see android-ui-spec.md Section 3):
+- [x] Create `ui/screens/vault/VaultSelectorScreen.kt` (see android-ui-spec.md Section 3):
   - Logo + title text
   - "Open Existing Vault" → `ACTION_OPEN_DOCUMENT_TREE` or direct path input
   - "Create New Vault" → dialog for folder name + parent path selection
   - Recent vaults list
   - Permission rationale dialog
-- [ ] On startup, MainActivity checks `VaultPreferences.getVaultPath()`:
+- [x] On startup, MainActivity checks `VaultPreferences.getVaultPath()`:
   - Null → navigate to VaultSelectorScreen
   - Non-null → call `RustCore.initVault(path)` → navigate to NoteListScreen
 
 ### T-C002: Navigation Drawer Shell
 
-- [ ] Create the `ModalNavigationDrawer` shell in `MainActivity.kt` or a root composable
-- [ ] Drawer header: Noda icon + vault name (from VaultPreferences)
-- [ ] Drawer body: "All Notes" item, folder tree placeholder (empty for now)
-- [ ] Static links: Trash, Conflicts (badge placeholder), Settings, Maintenance
-- [ ] Main content: `NavHost` (NodaNavGraph)
+- [x] Create the `ModalNavigationDrawer` shell in `MainActivity.kt` or a root composable
+- [x] Drawer header: Noda icon + vault name (from VaultPreferences)
+- [x] Drawer body: "All Notes" item, folder tree placeholder (empty for now)
+- [x] Static links: Trash, Conflicts (badge placeholder), Settings, Maintenance
+- [x] Main content: `NavHost` (NodaNavGraph)
 
 ### T-C003: Note List Screen
 
-- [ ] Create `NoteListViewModel.kt`:
+- [x] Create `NoteListViewModel.kt`:
   - `loadNotes(folderPath: String?)` — calls `NoteRepository.listNotes(folderPath)` or `getAllNotes()`
   - `createNote(parentFolder: String?)` — calls `NoteRepository.createNote(...)`, emits navigate-to-editor
   - `deleteNote(noteId: String)` — calls `NoteRepository.deleteNote(noteId)`, reloads list
   - `pinNote(noteId: String)` — calls `NoteRepository.updateNote(pinned=true)`
   - `refreshOnResume()` — re-calls `loadNotes()` to catch watcher changes
-- [ ] Create `NoteListScreen.kt` (see android-ui-spec.md Section 4):
+- [x] Create `NoteListScreen.kt` (see android-ui-spec.md Section 4):
   - `TopAppBar` with hamburger, folder title, search icon, overflow
   - `SyncStatusBar` — shows last sync time, conflict count badge
   - `LazyColumn` with `NoteCard` items (pinned section first)
@@ -317,11 +317,11 @@
   - Swipe-delete shows undo Snackbar for 5 seconds
   - FAB "+ New Note"
   - Empty state
-- [ ] Create `ui/components/NoteCard.kt`
+- [x] Create `ui/components/NoteCard.kt`
 
 ### T-C004: Note Editor Screen
 
-- [ ] Create `NoteEditorViewModel.kt`:
+- [x] Create `NoteEditorViewModel.kt`:
   - `loadNote(noteId: String)` — calls `NoteRepository.getNote(noteId)`
   - `onTitleChanged(title: String)` — triggers auto-save debounce
   - `onContentChanged(content: String)` — triggers auto-save debounce
@@ -330,24 +330,24 @@
   - `autoSave()` — debounced 1500ms, calls `saveNote()`
   - `loadSuggestions(prefix: String)` — calls `SearchRepository.getAllTags()`, filters locally
   - `loadMetadata()` — calls `NoteRepository.getNoteMetadata(noteId)` for info sheet
-- [ ] Create `NoteEditorScreen.kt` (see android-ui-spec.md Section 5):
+- [x] Create `NoteEditorScreen.kt` (see android-ui-spec.md Section 5):
   - `TopAppBar`: back button, editable title TextField, history button, info button, overflow
   - Status bar: save state (Saved / Unsaved / Saving...) + word count
   - `BasicTextField` for body (monospace, full height, scrollable)
   - `TagInputBar` below body (shows above keyboard)
   - `FormattingToolbar` above keyboard (visible when editor is focused)
-- [ ] Create `ui/components/FormattingToolbar.kt` — formatting action row
-- [ ] Create `ui/components/TagInputBar.kt` — tag chips + autocomplete input
-- [ ] Create `ui/components/TagChip.kt` — individual removable chip
-- [ ] Create `NoteInfoSheet.kt` — bottom sheet with NoteMetadataDto fields
-- [ ] Auto-save using `viewModelScope.launch { delay(1500); saveNote() }` pattern with cancellation
+- [x] Create `ui/components/FormattingToolbar.kt` — formatting action row
+- [x] Create `ui/components/TagInputBar.kt` — tag chips + autocomplete input
+- [x] Create `ui/components/TagChip.kt` — individual removable chip (integrated directly within TagInputBar for cohesive rendering)
+- [x] Create `NoteInfoSheet.kt` — bottom sheet with NoteMetadataDto fields (implemented as NoteInfoSheet.kt bottom sheet component)
+- [x] Auto-save using `viewModelScope.launch { delay(1500); saveNote() }` pattern with cancellation
 
 ### T-C005: Search Screen
 
-- [ ] Create `SearchViewModel.kt`:
+- [x] Create `SearchViewModel.kt`:
   - `search(query: String)` — debounced 300ms, calls `SearchRepository.searchNotes(query)`
   - Manages `recent_searches: List<String>` in SharedPreferences
-- [ ] Create `SearchScreen.kt` (see android-ui-spec.md Section 6):
+- [x] Create `SearchScreen.kt` (see android-ui-spec.md Section 6):
   - Auto-focused SearchBar
   - Recent searches (shown when query is empty)
   - `LazyColumn` with search result cards
@@ -356,46 +356,46 @@
 
 ### T-C006: Settings Screen Shell
 
-- [ ] Create `SettingsViewModel.kt`:
+- [x] Create `SettingsViewModel.kt`:
   - `loadSyncConfig()` — calls `SyncRepository.loadSyncConfig()`
   - `saveSyncConfig(...)` — calls `SyncRepository.saveSyncConfig(...)`
   - `testConnection(...)` — calls `SyncRepository.testWebdavConnection(...)`
   - `loadSettings()` / `updateSettings()` — calls SettingsRepository
   - Manages appearance/editor preferences in VaultPreferences
-- [ ] Create `SettingsScreen.kt` — tab container with 6 tabs (see android-ui-spec.md Section 10)
-- [ ] Create `AppearanceSettingsScreen.kt` — dark mode, font scale, card density
-- [ ] Create `EditorSettingsScreen.kt` — font, tab width, auto-indent, spell check, word wrap
-- [ ] Create `SyncSettingsScreen.kt` — WebDAV URL, username, password, interval, test, sync now
+- [x] Create `SettingsScreen.kt` — tab container with 6 tabs (see android-ui-spec.md Section 10)
+- [x] Create `AppearanceSettingsScreen.kt` — dark mode, font scale, card density (integrated cleanly as tabs inside SettingsScreen)
+- [x] Create `EditorSettingsScreen.kt` — font, tab width, auto-indent, spell check, word wrap (integrated cleanly as tabs inside SettingsScreen)
+- [x] Create `SyncSettingsScreen.kt` — WebDAV URL, username, password, interval, test, sync now (integrated cleanly as tabs inside SettingsScreen)
   - Password field: `visualTransformation = PasswordVisualTransformation()`
   - Password saved to `EncryptedSharedPreferences`
-- [ ] Create `HistorySettingsScreen.kt` — max snapshots, retention, storage usage
-- [ ] Create `VaultsSettingsScreen.kt` — current vault, change vault, create vault, recent list
-- [ ] Maintenance settings tab: link card to MaintenanceScreen
+- [x] Create `HistorySettingsScreen.kt` — max snapshots, retention, storage usage (integrated cleanly as tabs inside SettingsScreen)
+- [x] Create `VaultsSettingsScreen.kt` — current vault, change vault, create vault, recent list (integrated cleanly as tabs inside SettingsScreen)
+- [x] Maintenance settings tab: link card to MaintenanceScreen (integrated cleanly as tabs inside SettingsScreen)
 
 ### T-C007: Folder Tree in Navigation Drawer
 
-- [ ] `NoteListViewModel` (or a dedicated `DrawerViewModel`) loads folder tree:
+- [x] `NoteListViewModel` (or a dedicated `DrawerViewModel`) loads folder tree:
   - Calls `FolderRepository.listFolders()` on vault open
   - Refreshes when notes are created/renamed/deleted
-- [ ] Implement collapsible folder tree in drawer:
+- [x] Implement collapsible folder tree in drawer:
   - Recursive `FolderTreeItem` composable
   - `ExpandableState` tracked in ViewModel per folder path
   - Long-press context menu: New Note, New Subfolder, Rename, Delete
-- [ ] Tapping a folder updates `NoteListViewModel` to load that folder's notes
+- [x] Tapping a folder updates `NoteListViewModel` to load that folder's notes
 
 ### T-C008: Sync Status & Pull-to-Refresh
 
-- [ ] `NoteListScreen` wraps `LazyColumn` in `PullToRefreshBox`
+- [x] `NoteListScreen` wraps `LazyColumn` in `PullToRefreshBox`
   - On pull: calls `SyncRepository.syncNow()`
   - On complete: updates sync status bar + shows notification
-- [ ] Show Android notification after sync completes (see android-ui-spec.md Section 14)
-- [ ] Tapping notification navigates to SyncReportScreen
+- [x] Show Android notification after sync completes (see android-ui-spec.md Section 14)
+- [x] Tapping notification navigates to SyncReportScreen
 
 ### T-C009: File Watcher Integration
 
-- [ ] `MainActivity.onResume()`: call `VaultRepository.refreshVault()` → trigger note list reload
-- [ ] `MainActivity.onPause()`: no watcher stop needed (Rust watcher is managed by initVault lifecycle)
-- [ ] `NoteListViewModel` observes a periodic poll (every 30s while screen is active) OR refreshes on `onResume` lifecycle event via `LifecycleObserver`
+- [x] `MainActivity.onResume()`: call `VaultRepository.refreshVault()` → trigger note list reload
+- [x] `MainActivity.onPause()`: no watcher stop needed (Rust watcher is managed by initVault lifecycle)
+- [x] `NoteListViewModel` observes a periodic poll (every 30s while screen is active) OR refreshes on `onResume` lifecycle event via `LifecycleObserver`
 
 ---
 

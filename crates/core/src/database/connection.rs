@@ -40,6 +40,12 @@ impl Database {
         let vault_path = vault_path.as_ref();
         let db_path = vault_path.join(".noda").join("index.db");
         
+        if let Some(parent) = db_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(NodaError::Io)?;
+            }
+        }
+        
         let missing = !db_path.exists();
         
         let db = match Self::open(&db_path) {
