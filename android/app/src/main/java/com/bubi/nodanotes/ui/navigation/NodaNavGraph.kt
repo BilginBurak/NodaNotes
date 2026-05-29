@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -87,7 +88,9 @@ fun NodaNavGraph(
             PlaceholderScreen(name = "Trash Screen")
         }
         composable(Screen.Conflicts.route) {
-            PlaceholderScreen(name = "Conflicts Screen")
+            com.bubi.nodanotes.ui.screens.conflict.ConflictScreen(
+                onBackClick = { navController.popBackStack() }
+            )
         }
         composable(Screen.Settings.route) {
             SettingsScreen(
@@ -104,7 +107,12 @@ fun NodaNavGraph(
             PlaceholderScreen(name = "Maintenance Screen")
         }
         composable(Screen.SyncReport.route) {
-            PlaceholderScreen(name = "Sync Report Screen")
+            val vaultPreferences = remember { com.bubi.nodanotes.data.preferences.VaultPreferences(navController.context) }
+            com.bubi.nodanotes.ui.screens.sync.SyncReportScreen(
+                onBackClick = { navController.popBackStack() },
+                onNavigateToConflicts = { navController.navigate(Screen.Conflicts.route) },
+                vaultPreferences = vaultPreferences
+            )
         }
     }
 }

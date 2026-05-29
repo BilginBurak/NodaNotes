@@ -438,32 +438,32 @@
 
 ### T-E001: Full Sync Flow
 
-- [ ] `SyncRepository.syncNow()` — returns `SyncReportDto`
-- [ ] Store `SyncReportDto` as JSON in `VaultPreferences` for SyncReportScreen
-- [ ] Show notification with count summary after sync (see android-ui-spec.md Section 14)
-- [ ] `PendingIntent` on notification → opens app at SyncReportScreen route
+- [x] `SyncRepository.syncNow()` — returns `SyncReportDto`
+- [x] Store `SyncReportDto` as JSON in `VaultPreferences` for SyncReportScreen
+- [x] Show notification with count summary after sync (see android-ui-spec.md Section 14)
+- [x] `PendingIntent` on notification → opens app at SyncReportScreen route
 
 ### T-E002: Sync Report Screen
 
-- [ ] Create `SyncReportScreen.kt` (see android-ui-spec.md Section 13)
-- [ ] Reads stored SyncReportDto from VaultPreferences
-- [ ] Three sections: Uploaded, Downloaded, Conflicts (with "View Conflicts" button)
+- [x] Create `SyncReportScreen.kt` (see android-ui-spec.md Section 13)
+- [x] Reads stored SyncReportDto from VaultPreferences
+- [x] Three sections: Uploaded, Downloaded, Conflicts (with "View Conflicts" button)
 
 ### T-E003: Conflict Comparison Screen
 
-- [ ] Create `ConflictViewModel.kt`:
-  - `loadConflicts()` — calls `ConflictRepository.listConflicts()`
-  - `loadConflictNote(archivedPath: String)` — calls `ConflictRepository.getConflictNote(archivedPath)`
-  - `resolveConflict(noteId: String, resolution: String)` — calls `ConflictRepository.resolveConflict(...)`
-- [ ] Create `ConflictScreen.kt` (conflict list + comparison view) (see android-ui-spec.md Section 9)
-- [ ] Update Navigation Drawer conflict badge — shows count from `listConflicts().size`
+- [x] Create `ConflictViewModel.kt`:
+  - [x] `loadConflicts()` — calls `ConflictRepository.listConflicts()`
+  - [x] `loadConflictNote(archivedPath: String)` — calls `ConflictRepository.getConflictNote(archivedPath)`
+  - [x] `resolveConflict(noteId: String, resolution: String)` — calls `ConflictRepository.resolveConflict(...)`
+- [x] Create `ConflictScreen.kt` (conflict list + comparison view) (see android-ui-spec.md Section 9)
+- [x] Update Navigation Drawer conflict badge — shows count from `listConflicts().size`
 
 ### T-E004: Auto-Sync Timer
 
-- [ ] Load `interval_secs` from `SyncRepository.loadSyncConfig()`
-- [ ] In `MainActivity`, start a `Handler.postDelayed` loop (or `lifecycleScope.launch { while(true) { delay(intervalMs); syncNow() } }`) when app is in foreground
-- [ ] Cancel timer in `onStop()` / when interval is 0 (disabled)
-- [ ] Trigger `refreshVault()` after each download to update note list
+- [x] Load `interval_secs` from `SyncRepository.loadSyncConfig()`
+- [x] In `MainActivity`, start a `Handler.postDelayed` loop (or `lifecycleScope.launch { while(true) { delay(intervalMs); syncNow() } }`) when app is in foreground
+- [x] Cancel timer in `onStop()` / when interval is 0 (disabled)
+- [x] Trigger `refreshVault()` after each download to update note list
 
 ---
 

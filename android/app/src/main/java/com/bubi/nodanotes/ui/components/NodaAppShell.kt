@@ -42,6 +42,17 @@ fun NodaAppShell(
     val vaultPath = vaultPreferences.getVaultPath()
     val vaultName = vaultPath?.substringAfterLast('/') ?: "No Vault"
 
+    // Check for deep link intents from dynamic notifications
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        val activity = context as? android.app.Activity
+        val navigateTo = activity?.intent?.getStringExtra("navigate_to")
+        if (navigateTo == "sync_report") {
+            activity.intent.removeExtra("navigate_to") // Consume extra
+            navController.navigate(Screen.SyncReport.route)
+        }
+    }
+
     // Folder states
     val folders by drawerViewModel.folders.collectAsState()
     val expandedPaths by drawerViewModel.expandedPaths.collectAsState()
@@ -224,6 +235,8 @@ fun NodaAppShell(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
             )
 
+            val conflictCount by drawerViewModel.conflictCount.collectAsState()
+
             NavigationDrawerItem(
                 icon = { Icon(Icons.Default.Difference, contentDescription = null) },
                 label = {
@@ -233,11 +246,13 @@ fun NodaAppShell(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Conflicts")
-                        Badge(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        ) {
-                            Text("0", fontSize = 10.sp)
+                        if (conflictCount > 0) {
+                            Badge(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ) {
+                                Text(conflictCount.toString(), fontSize = 10.sp)
+                            }
                         }
                     }
                 },

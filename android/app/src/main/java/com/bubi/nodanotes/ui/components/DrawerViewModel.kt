@@ -24,6 +24,12 @@ class DrawerViewModel(application: Application) : AndroidViewModel(application) 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _conflictCount = MutableStateFlow(0)
+    val conflictCount: StateFlow<Int> = _conflictCount.asStateFlow()
+
+    private val conflictRepository = com.bubi.nodanotes.data.repository.ConflictRepository()
+
+
     init {
         loadFolders()
     }
@@ -40,6 +46,9 @@ class DrawerViewModel(application: Application) : AndroidViewModel(application) 
                     _isLoading.value = false
                 }
             )
+            conflictRepository.listConflicts().onSuccess { list ->
+                _conflictCount.value = list.size
+            }
         }
     }
 
