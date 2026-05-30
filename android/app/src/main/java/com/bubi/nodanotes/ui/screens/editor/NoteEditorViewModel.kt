@@ -7,6 +7,7 @@ import com.bubi.nodanotes.data.model.NoteDto
 import com.bubi.nodanotes.data.model.NoteMetadataDto
 import com.bubi.nodanotes.data.repository.NoteRepository
 import com.bubi.nodanotes.data.repository.SearchRepository
+import com.bubi.nodanotes.data.preferences.VaultPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,6 +37,8 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _isReaderMode = MutableStateFlow(false)
     val isReaderMode: StateFlow<Boolean> = _isReaderMode.asStateFlow()
+
+    val vaultPath: String? = VaultPreferences(application).getVaultPath()
 
     private var activeNoteId: String = ""
     private var currentNoteDto: NoteDto? = null
@@ -89,6 +92,7 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun saveNoteImmediately() {
+        if (_saveState.value != SaveState.Unsaved) return
         val successState = _uiState.value as? NoteEditorUiState.Success ?: return
         autoSaveJob?.cancel()
         viewModelScope.launch(Dispatchers.IO) {

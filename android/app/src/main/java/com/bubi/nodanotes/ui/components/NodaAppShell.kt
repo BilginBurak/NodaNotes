@@ -112,13 +112,16 @@ fun NodaAppShell(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
+    val currentFolder by com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolderState.collectAsState()
+
             // Drawer Items
             NavigationDrawerItem(
                 icon = { Icon(Icons.Default.Description, contentDescription = null) },
                 label = { Text("All Notes", fontWeight = FontWeight.SemiBold) },
-                selected = currentRoute == Screen.NoteList.route,
+                selected = currentRoute == Screen.NoteList.route && currentFolder == null,
                 onClick = {
                     scope.launch { drawerState.close() }
+                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
                     navController.navigate(Screen.NoteList.route) {
                         popUpTo(Screen.NoteList.route) { inclusive = true }
                     }
