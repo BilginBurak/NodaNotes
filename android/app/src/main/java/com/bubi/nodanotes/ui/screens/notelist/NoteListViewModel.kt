@@ -45,12 +45,16 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
     init {
         val path = vaultPreferences.getVaultPath()
         _vaultName.value = path?.substringAfterLast('/') ?: "NodaNotes"
+        updateRelativeSyncStatus()
     }
 
     fun loadNotes(folderPath: String? = null) {
         _currentFolder.value = folderPath
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = NoteListUiState.Loading
+            val currentState = _uiState.value
+            if (currentState !is NoteListUiState.Success) {
+                _uiState.value = NoteListUiState.Loading
+            }
             noteRepository.getAllNotes().fold(
                 onSuccess = { allNotes ->
                     val filtered = if (folderPath == null) {
@@ -61,7 +65,10 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
                             noteFolder == folderPath || noteFolder.startsWith("$folderPath/")
                         }
                     }
-                    _uiState.value = NoteListUiState.Success(filtered)
+                    val newState = NoteListUiState.Success(filtered)
+                    if (_uiState.value != newState) {
+                        _uiState.value = newState
+                    }
                 },
                 onFailure = { error ->
                     _uiState.value = NoteListUiState.Error(error.message ?: "Failed to load notes")
@@ -77,6 +84,7 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
             syncRepository.syncNow().fold(
                 onSuccess = { report ->
                     _isRefreshing.value = false
+                    vaultPreferences.saveLastSyncTime(System.currentTimeMillis())
                     _syncStatus.value = "Synced just now: ↑${report.uploads} ↓${report.downloads}"
                     vaultPreferences.saveLastSyncReport(
                         kotlinx.serialization.json.Json.encodeToString(
@@ -93,6 +101,31 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
                 }
             )
         }
+    }
+
+    fun updateRelativeSyncStatus() {
+        val lastSync = vaultPreferences.getLastSyncTime()
+        if (lastSync == 0L) {
+            _syncStatus.value = "Never synced"
+            return
+        }
+        val elapsed = System.currentTimeMillis() - lastSync
+        if (elapsed < 60000) {
+            _syncStatus.value = "Synced just now"
+            return
+        }
+        val mins = elapsed / 60000
+        if (mins < 60) {
+            _syncStatus.value = "Synced $mins min${if (mins > 1) "s" else ""} ago"
+            return
+        }
+        val hours = mins / 60
+        if (hours < 24) {
+            _syncStatus.value = "Synced $hours hour${if (hours > 1) "s" else ""} ago"
+            return
+        }
+        val sdf = java.text.SimpleDateFormat("MMM d, yyyy HH:mm", java.util.Locale.US)
+        _syncStatus.value = "Synced: " + sdf.format(java.util.Date(lastSync))
     }
 
     fun triggerFilesystemScan() {

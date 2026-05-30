@@ -116,8 +116,8 @@ fun NodaAppShell(
 
             // Drawer Items
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Description, contentDescription = null) },
-                label = { Text("All Notes", fontWeight = FontWeight.SemiBold) },
+                icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                label = { Text("All Notes", fontWeight = FontWeight.SemiBold, fontSize = 14.sp) },
                 selected = currentRoute == Screen.NoteList.route && currentFolder == null,
                 onClick = {
                     scope.launch { drawerState.close() }
@@ -126,7 +126,7 @@ fun NodaAppShell(
                         popUpTo(Screen.NoteList.route) { inclusive = true }
                     }
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
             )
 
             // Folders Section Header
@@ -230,14 +230,14 @@ fun NodaAppShell(
 
             // Static links section at the bottom
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                icon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp)) },
                 label = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Trash")
+                        Text("Trash", fontSize = 14.sp)
                         if (trashCount > 0) {
                             Badge(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
@@ -253,20 +253,20 @@ fun NodaAppShell(
                     scope.launch { drawerState.close() }
                     navController.navigate(Screen.Trash.route)
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp)
             )
 
             val conflictCount by drawerViewModel.conflictCount.collectAsState()
 
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Difference, contentDescription = null) },
+                icon = { Icon(Icons.Default.Difference, contentDescription = null, modifier = Modifier.size(20.dp)) },
                 label = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Conflicts")
+                        Text("Conflicts", fontSize = 14.sp)
                         if (conflictCount > 0) {
                             Badge(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
@@ -282,29 +282,29 @@ fun NodaAppShell(
                     scope.launch { drawerState.close() }
                     navController.navigate(Screen.Conflicts.route)
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
             )
 
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Attachment, contentDescription = null) },
-                label = { Text("Attachments") },
+                icon = { Icon(Icons.Default.Attachment, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                label = { Text("Attachments", fontSize = 14.sp) },
                 selected = currentRoute == Screen.Attachments.route,
                 onClick = {
                     scope.launch { drawerState.close() }
                     navController.navigate(Screen.Attachments.route)
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
             )
 
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                label = { Text("Settings") },
+                icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                label = { Text("Settings", fontSize = 14.sp) },
                 selected = currentRoute == Screen.Settings.route,
                 onClick = {
                     scope.launch { drawerState.close() }
                     navController.navigate(Screen.Settings.route)
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -542,21 +542,21 @@ fun FolderTreeItem(
                     onClick = { onFolderClick(folder.path) },
                     onLongClick = { onLongPressFolder(folder) }
                 )
-                .padding(start = (16 * depth + 16).dp, top = 8.dp, bottom = 8.dp, end = 16.dp),
+                .padding(start = (12 * depth + 12).dp, top = 4.dp, bottom = 4.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = { onToggleExpanded(folder.path) },
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(20.dp)
             ) {
                 if (hasChildren) {
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                 } else {
-                    Spacer(modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.size(14.dp))
                 }
             }
             Spacer(modifier = Modifier.width(4.dp))
@@ -564,12 +564,12 @@ fun FolderTreeItem(
                 imageVector = Icons.Default.Folder,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = folder.name,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
             )

@@ -36,10 +36,19 @@ class VaultPreferences(private val context: Context) {
     companion object {
         private const val KEY_VAULT_PATH = "vault_path"
         private const val KEY_LAST_SYNC_REPORT = "last_sync_report"
+        private const val KEY_LAST_SYNC_TIME = "last_sync_time"
         private const val KEY_DARK_MODE = "dark_mode"
         private const val KEY_WEBDAV_PASSWORD = "webdav_password"
         private const val KEY_RECENT_VAULTS = "recent_vaults"
         private const val KEY_RECENT_SEARCHES = "recent_searches"
+    }
+
+    fun saveLastSyncTime(timestampMs: Long) {
+        sharedPrefs.edit().putLong(KEY_LAST_SYNC_TIME, timestampMs).apply()
+    }
+
+    fun getLastSyncTime(): Long {
+        return sharedPrefs.getLong(KEY_LAST_SYNC_TIME, 0L)
     }
 
     fun saveVaultPath(path: String) {

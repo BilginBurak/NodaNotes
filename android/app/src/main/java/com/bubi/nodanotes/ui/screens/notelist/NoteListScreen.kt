@@ -70,6 +70,7 @@ fun NoteListScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshOnResume()
+                viewModel.updateRelativeSyncStatus()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -83,6 +84,7 @@ fun NoteListScreen(
         while (true) {
             kotlinx.coroutines.delay(30000)
             viewModel.refreshOnResume()
+            viewModel.updateRelativeSyncStatus()
         }
     }
 
@@ -94,7 +96,7 @@ fun NoteListScreen(
                         Text(
                             text = currentFolder ?: "All Notes",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = 17.sp
                         )
                         Text(
                             text = vaultName,
@@ -166,7 +168,8 @@ fun NoteListScreen(
                             }
                         )
                     }
-                }
+                },
+                windowInsets = WindowInsets(0, 0, 0, 0) // This stops double padding from window insets causing a manasiz space!
             )
         },
         floatingActionButton = {

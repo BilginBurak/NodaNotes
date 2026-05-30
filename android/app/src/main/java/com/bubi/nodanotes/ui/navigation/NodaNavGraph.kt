@@ -99,17 +99,11 @@ fun NodaNavGraph(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onBackClick = { navController.popBackStack() },
-                onNavigateToMaintenance = { navController.navigate(Screen.Maintenance.route) },
                 onNavigateToVaultSelector = {
                     navController.navigate(Screen.VaultSelector.route) {
                         popUpTo(0) { inclusive = true }
                     }
                 }
-            )
-        }
-        composable(Screen.Maintenance.route) {
-            com.bubi.nodanotes.ui.screens.maintenance.MaintenanceScreen(
-                onBackClick = { navController.popBackStack() }
             )
         }
         composable(Screen.Attachments.route) {

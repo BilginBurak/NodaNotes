@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -28,7 +29,6 @@ import com.bubi.nodanotes.data.model.SettingsDto
 @Composable
 fun SettingsScreen(
     onBackClick: () -> Unit,
-    onNavigateToMaintenance: () -> Unit,
     onNavigateToVaultSelector: () -> Unit,
     viewModel: SettingsViewModel = viewModel()
 ) {
@@ -88,7 +88,7 @@ fun SettingsScreen(
                             2 -> SyncTab(state.settings, viewModel)
                             3 -> HistoryTab(state.settings, viewModel)
                             4 -> VaultsTab(state.recentVaults, state.currentVault, onNavigateToVaultSelector)
-                            5 -> MaintenanceTab(onNavigateToMaintenance)
+                            5 -> MaintenanceTab()
                         }
                     }
                     is SettingsUiState.Error -> {
@@ -231,18 +231,49 @@ fun EditorTab(settings: SettingsDto, viewModel: SettingsViewModel) {
 
         HorizontalDivider()
 
+        var autoSaveExpanded by remember { mutableStateOf(false) }
+        val autoSaveOptions = listOf(
+            1000 to "1 sec",
+            3000 to "3 sec",
+            5000 to "5 sec",
+            10000 to "10 sec",
+            30000 to "30 sec",
+            60000 to "1 min"
+        )
+        val currentAutoSaveLabel = autoSaveOptions.find { it.first == settings.editor.auto_save_delay_ms }?.second ?: "${settings.editor.auto_save_delay_ms / 1000} sec"
+
         Column {
-            Text("Auto Save Delay (ms)", style = MaterialTheme.typography.bodyLarge)
+            Text("Auto Save Delay", style = MaterialTheme.typography.bodyLarge)
+            Text("Select how long to wait after typing stops before saving changes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = settings.editor.auto_save_delay_ms.toString(),
-                onValueChange = {
-                    val value = it.toIntOrNull() ?: 1500
-                    viewModel.updateEditor(settings.editor.font_size, settings.editor.typography, settings.editor.show_word_count, value)
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
-            )
+            Box {
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth().clickable { autoSaveExpanded = true }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(currentAutoSaveLabel, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                    }
+                }
+                DropdownMenu(
+                    expanded = autoSaveExpanded,
+                    onDismissRequest = { autoSaveExpanded = false }
+                ) {
+                    autoSaveOptions.forEach { (delayMs, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                viewModel.updateEditor(settings.editor.font_size, settings.editor.typography, settings.editor.show_word_count, delayMs)
+                                autoSaveExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -299,14 +330,75 @@ fun SyncTab(settings: SettingsDto, viewModel: SettingsViewModel) {
             singleLine = true
         )
 
-        OutlinedTextField(
-            value = interval,
-            onValueChange = { interval = it },
-            label = { Text("Auto Sync Interval (Seconds)") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+        var autoSyncExpanded by remember { mutableStateOf(false) }
+        val autoSyncOptions = listOf(
+            0L to "Disabled",
+            120L to "2 mins",
+            300L to "5 mins",
+            600L to "10 mins",
+            1800L to "30 mins",
+            3600L to "1 hour"
         )
+        val currentIntervalSecs = interval.toLongOrNull() ?: 0L
+        val currentAutoSyncLabel = autoSyncOptions.find { it.first == currentIntervalSecs }?.second ?: "${currentIntervalSecs / 60} mins"
+
+        var showSaveSuccess by remember { mutableStateOf(false) }
+        if (showSaveSuccess) {
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(3000)
+                showSaveSuccess = false
+            }
+        }
+
+        Column {
+            Text("Auto Sync Interval", style = MaterialTheme.typography.bodyLarge)
+            Text("Select how often the background WebDAV synchronization should run", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(8.dp))
+            Box {
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth().clickable { autoSyncExpanded = true }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(currentAutoSyncLabel, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                    }
+                }
+                DropdownMenu(
+                    expanded = autoSyncExpanded,
+                    onDismissRequest = { autoSyncExpanded = false }
+                ) {
+                    autoSyncOptions.forEach { (secs, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                interval = secs.toString()
+                                autoSyncExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showSaveSuccess) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Configuration saved successfully!", color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -315,6 +407,7 @@ fun SyncTab(settings: SettingsDto, viewModel: SettingsViewModel) {
             Button(
                 onClick = {
                     viewModel.updateSync(webdavUrl, username, password.ifEmpty { null }, interval.toLongOrNull() ?: 0L)
+                    showSaveSuccess = true
                 },
                 modifier = Modifier.weight(1f)
             ) {
@@ -370,6 +463,11 @@ fun SyncTab(settings: SettingsDto, viewModel: SettingsViewModel) {
 @Composable
 fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
     val scrollState = rememberScrollState()
+
+    var localRetentionDays by remember(settings.history.retention_days) { mutableStateOf(settings.history.retention_days.toFloat()) }
+    var localMaxSnapshots by remember(settings.history.max_snapshots_per_note) { mutableStateOf(settings.history.max_snapshots_per_note.toFloat()) }
+    var localEmptyTrashDays by remember(settings.history.empty_trash_after_days) { mutableStateOf(settings.history.empty_trash_after_days.toFloat()) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -380,11 +478,12 @@ fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
         Text("Backup & History Options", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
         Column {
-            Text("Snapshot Retention Days (${settings.history.retention_days} days)", style = MaterialTheme.typography.bodyLarge)
+            Text("Snapshot Retention Days (${localRetentionDays.toInt()} days)", style = MaterialTheme.typography.bodyLarge)
             Slider(
-                value = settings.history.retention_days.toFloat(),
-                onValueChange = {
-                    viewModel.updateHistory(it.toInt(), settings.history.max_snapshots_per_note, settings.history.empty_trash_after_days)
+                value = localRetentionDays,
+                onValueChange = { localRetentionDays = it },
+                onValueChangeFinished = {
+                    viewModel.updateHistory(localRetentionDays.toInt(), settings.history.max_snapshots_per_note, settings.history.empty_trash_after_days)
                 },
                 valueRange = 1f..365f,
                 steps = 364
@@ -394,11 +493,12 @@ fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
         HorizontalDivider()
 
         Column {
-            Text("Max Snapshots Per Note (${settings.history.max_snapshots_per_note} versions)", style = MaterialTheme.typography.bodyLarge)
+            Text("Max Snapshots Per Note (${localMaxSnapshots.toInt()} versions)", style = MaterialTheme.typography.bodyLarge)
             Slider(
-                value = settings.history.max_snapshots_per_note.toFloat(),
-                onValueChange = {
-                    viewModel.updateHistory(settings.history.retention_days, it.toInt(), settings.history.empty_trash_after_days)
+                value = localMaxSnapshots,
+                onValueChange = { localMaxSnapshots = it },
+                onValueChangeFinished = {
+                    viewModel.updateHistory(settings.history.retention_days, localMaxSnapshots.toInt(), settings.history.empty_trash_after_days)
                 },
                 valueRange = 5f..100f,
                 steps = 95
@@ -408,11 +508,12 @@ fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
         HorizontalDivider()
 
         Column {
-            Text("Empty Trash Automatically After (${settings.history.empty_trash_after_days} days)", style = MaterialTheme.typography.bodyLarge)
+            Text("Empty Trash Automatically After (${localEmptyTrashDays.toInt()} days)", style = MaterialTheme.typography.bodyLarge)
             Slider(
-                value = settings.history.empty_trash_after_days.toFloat(),
-                onValueChange = {
-                    viewModel.updateHistory(settings.history.retention_days, settings.history.max_snapshots_per_note, it.toInt())
+                value = localEmptyTrashDays,
+                onValueChange = { localEmptyTrashDays = it },
+                onValueChangeFinished = {
+                    viewModel.updateHistory(settings.history.retention_days, settings.history.max_snapshots_per_note, localEmptyTrashDays.toInt())
                 },
                 valueRange = 1f..90f,
                 steps = 89
@@ -466,33 +567,275 @@ fun VaultsTab(recentVaults: List<String>, currentVault: String, onChangeVaultCli
 }
 
 @Composable
-fun MaintenanceTab(onNavigateToMaintenance: () -> Unit) {
-    Box(
+fun MaintenanceTab(
+    viewModel: com.bubi.nodanotes.ui.screens.maintenance.MaintenanceViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val duplicates by viewModel.duplicates.collectAsState()
+    val remnants by viewModel.orphanedRemnants.collectAsState()
+    val attachments by viewModel.orphanedAttachments.collectAsState()
+    val vaultPath = viewModel.vaultPath
+
+    var previewFileTitle by remember { mutableStateOf<String?>(null) }
+    var previewFilePath by remember { mutableStateOf<String?>(null) }
+    var previewFileContent by remember { mutableStateOf<String?>(null) }
+    var previewFileMime by remember { mutableStateOf<String?>(null) }
+
+    val scrollState = rememberScrollState()
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
             .padding(16.dp),
-        contentAlignment = Alignment.Center
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Text("Vault Maintenance & Diagnostics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+        when (val state = uiState) {
+            is com.bubi.nodanotes.ui.screens.maintenance.MaintenanceUiState.Loading -> {
+                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }
+            }
+            is com.bubi.nodanotes.ui.screens.maintenance.MaintenanceUiState.Success -> {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(state.message, color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            is com.bubi.nodanotes.ui.screens.maintenance.MaintenanceUiState.Error -> {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(state.message, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            else -> {}
+        }
+
+        // Section 1: Optimizations
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onNavigateToMaintenance() }
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
         ) {
-            Column(
-                modifier = Modifier.padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(imageVector = Icons.Default.Build, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Open Maintenance Panel", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Rebuild index cache, run full-text search optimization, clean up duplicate notes, orphaned remnants or attachments.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Database Administration", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                
+                Text("Rebuild Cache", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                Text("Scans all markdown files, regenerates SQLite indices, and updates metadata.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = { viewModel.rebuildCache() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Rebuild Index Cache")
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                Text("Optimize FTS5 Search", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                Text("Runs SQLite FTS5 database optimization routine to pack search indices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = { viewModel.optimizeFts() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Optimize Search Index")
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                Text("Synchronization Self-Healing", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                Text("Resets sync tracking cache or clears local pending operations queue.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { viewModel.clearRemoteCache() }, modifier = Modifier.weight(1f)) {
+                        Text("Reset Sync State")
+                    }
+                    OutlinedButton(onClick = { viewModel.resetSyncQueue() }, modifier = Modifier.weight(1f)) {
+                        Text("Clear Queue")
+                    }
+                }
             }
         }
+
+        // Section 2: Duplicates
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Duplicate Note Diagnostics", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                Text("Checks for multiple files containing the exact same Note ID (ULID).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                
+                Button(onClick = { viewModel.scanDuplicates() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Scan for Duplicate Notes")
+                }
+
+                if (duplicates.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    duplicates.forEach { group ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Title: ${group.title}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("ID: ${group.note_id}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                group.files.forEach { file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                try {
+                                                    val f = if (vaultPath != null) java.io.File(vaultPath, file.path) else java.io.File(file.path)
+                                                    val text = if (f.exists()) f.readText() else "File not found"
+                                                    previewFileTitle = group.title
+                                                    previewFilePath = f.absolutePath
+                                                    previewFileContent = text
+                                                    previewFileMime = null
+                                                } catch (e: Exception) {
+                                                    previewFileTitle = group.title
+                                                    previewFilePath = file.path
+                                                    previewFileContent = "Failed to read content: ${e.message}"
+                                                    previewFileMime = null
+                                                }
+                                            }
+                                            .padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(file.path, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                            Text("Size: ${file.size_bytes} B | Mod: ${file.modified_at}", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        IconButton(onClick = { viewModel.deleteDuplicateFile(file.path) }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete duplicate", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 3: Remnants & Orphaned files
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Orphaned Remnants & Attachments", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                Text("Clean up old history snapshots, conflict files, or unused attachment media.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = {
+                            viewModel.scanOrphanedRemnants()
+                            viewModel.scanOrphanedAttachments()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Scan Remnants")
+                    }
+                    if (remnants.isNotEmpty()) {
+                        Button(
+                            onClick = { viewModel.deleteAllOrphanedRemnants() },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Delete All")
+                        }
+                    }
+                }
+
+                if (remnants.isNotEmpty()) {
+                    Text("Orphaned History & Conflicts", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                    remnants.forEach { file ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    try {
+                                        val f = if (vaultPath != null) java.io.File(vaultPath, file.relative_path) else java.io.File(file.relative_path)
+                                        val text = if (f.exists()) f.readText() else "File not found"
+                                        previewFileTitle = file.title
+                                        previewFilePath = f.absolutePath
+                                        previewFileContent = text
+                                        previewFileMime = null
+                                    } catch (e: Exception) {
+                                        previewFileTitle = file.title
+                                        previewFilePath = file.relative_path
+                                        previewFileContent = "Failed to read content: ${e.message}"
+                                        previewFileMime = null
+                                    }
+                                }
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(file.title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                                    Text("Path: ${file.relative_path}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Type: ${file.file_type} | Size: ${file.size_bytes} B", style = MaterialTheme.typography.labelSmall)
+                                }
+                                IconButton(onClick = { viewModel.deleteOrphanedFile(file.relative_path) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete remnant", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (attachments.isNotEmpty()) {
+                    Text("Orphaned Attachments", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                    attachments.forEach { attachment ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val filePath = "$vaultPath/.noda/attachments/${attachment.name}"
+                                    val isImage = attachment.name.endsWith(".jpg", ignoreCase = true) ||
+                                            attachment.name.endsWith(".png", ignoreCase = true) ||
+                                            attachment.name.endsWith(".jpeg", ignoreCase = true)
+                                    previewFileTitle = attachment.name
+                                    previewFilePath = filePath
+                                    previewFileContent = ""
+                                    previewFileMime = if (isImage) "image/jpeg" else "text/plain"
+                                }
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(attachment.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                                    Text("Size: ${attachment.size_bytes} bytes", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Preview Dialog Overlay
+    previewFileTitle?.let { title ->
+        com.bubi.nodanotes.ui.components.FilePreviewDialog(
+            title = title,
+            content = previewFileContent ?: "",
+            filePath = previewFilePath,
+            mimeType = previewFileMime,
+            onDismiss = {
+                previewFileTitle = null
+                previewFilePath = null
+                previewFileContent = null
+                previewFileMime = null
+            }
+        )
     }
 }

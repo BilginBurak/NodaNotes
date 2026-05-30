@@ -90,7 +90,9 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
         _saveState.value = SaveState.Unsaved
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(1500)
+            val settings = com.bubi.nodanotes.data.repository.SettingsRepository().getSettings().getOrNull()
+            val delayMs = settings?.editor?.auto_save_delay_ms?.toLong() ?: 3000L
+            delay(delayMs)
             saveNoteImmediately(note)
         }
     }
