@@ -39,6 +39,19 @@ class AttachmentsViewModel(application: Application) : AndroidViewModel(applicat
             )
         }
     }
+
+    fun deleteAttachment(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            attachmentRepository.deleteAttachment(name).fold(
+                onSuccess = {
+                    loadAttachments()
+                },
+                onFailure = { error ->
+                    _uiState.value = AttachmentsUiState.Error(error.message ?: "Failed to delete attachment")
+                }
+            )
+        }
+    }
 }
 
 sealed class AttachmentsUiState {

@@ -51,4 +51,19 @@ class AttachmentRepository : BaseRepository() {
             parseRustResult(result, AttachmentDataDto.serializer())
         }
     }
+
+    @Serializable
+    private data class DeleteAttachmentParams(val attachment_name: String)
+
+    @Serializable
+    data class SimpleSuccessResult(val success: Boolean)
+
+    suspend fun deleteAttachment(attachmentName: String): Result<SimpleSuccessResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val params = DeleteAttachmentParams(attachmentName)
+            val jsonInput = json.encodeToString(DeleteAttachmentParams.serializer(), params)
+            val result = RustCore.deleteAttachment(jsonInput)
+            parseRustResult(result, SimpleSuccessResult.serializer())
+        }
+    }
 }

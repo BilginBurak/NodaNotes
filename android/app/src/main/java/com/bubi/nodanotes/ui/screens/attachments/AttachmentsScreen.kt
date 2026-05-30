@@ -35,6 +35,7 @@ fun AttachmentsScreen(
     val vaultPath = viewModel.vaultPath
 
     var previewAttachment by remember { mutableStateOf<AttachmentInfoDto?>(null) }
+    var attachmentToDelete by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -147,20 +148,39 @@ fun AttachmentsScreen(
                                                 )
                                             }
                                         }
-                                        Column(modifier = Modifier.padding(8.dp)) {
-                                            Text(
-                                                text = attachment.name.substringAfter('_'),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.Bold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "${attachment.size_bytes / 1024} KB",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                            )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = attachment.name,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "${attachment.size_bytes / 1024} KB",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { attachmentToDelete = attachment.name },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Delete Attachment",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -185,11 +205,36 @@ fun AttachmentsScreen(
                 }
 
                 FilePreviewDialog(
-                    title = attachment.name.substringAfter('_'),
+                    title = attachment.name,
                     content = content,
                     filePath = filePath,
                     mimeType = attachment.mime_type,
                     onDismiss = { previewAttachment = null }
+                )
+            }
+
+            // Delete Confirmation Dialog
+            attachmentToDelete?.let { fileName ->
+                AlertDialog(
+                    onDismissRequest = { attachmentToDelete = null },
+                    title = { Text("Delete Attachment") },
+                    text = { Text("Are you sure you want to permanently delete '$fileName'?") },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.deleteAttachment(fileName)
+                                attachmentToDelete = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { attachmentToDelete = null }) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
         }

@@ -57,6 +57,7 @@ object RustCore {
     external fun addAttachment(inputJson: String): String
     external fun listAttachments(inputJson: String): String
     external fun getAttachmentData(inputJson: String): String
+    external fun deleteAttachment(inputJson: String): String
 
     // Sync Functions
     external fun saveSyncConfig(inputJson: String): String

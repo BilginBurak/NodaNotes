@@ -32,6 +32,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bubi.nodanotes.ui.components.FormattingToolbar
 import com.bubi.nodanotes.ui.components.NoteInfoSheet
 import com.bubi.nodanotes.ui.components.TagInputBar
+import com.bubi.nodanotes.ui.components.FilePreviewDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +50,7 @@ fun NoteEditorScreen(
 
     var showInfoSheet by remember { mutableStateOf(false) }
     var isEditorFocused by remember { mutableStateOf(false) }
+    var previewAttachmentName by remember { mutableStateOf<String?>(null) }
 
     // Media and File Picker for attachments
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -56,10 +58,10 @@ fun NoteEditorScreen(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
         uri?.let {
-            // Helper to get absolute path from Uri (usually we copy content to a temporary cache file first)
             try {
                 val inputStream = context.contentResolver.openInputStream(it)
-                val tempFile = java.io.File.createTempFile("noda_attach_", "_" + (it.lastPathSegment ?: "file"), context.cacheDir)
+                val originalName = getFileName(context, it) ?: "file"
+                val tempFile = java.io.File(context.cacheDir, originalName)
                 tempFile.deleteOnExit()
                 tempFile.outputStream().use { output ->
                     inputStream?.copyTo(output)
@@ -199,7 +201,24 @@ fun NoteEditorScreen(
                                 AndroidView(
                                     factory = { ctx ->
                                         WebView(ctx).apply {
-                                            webViewClient = WebViewClient()
+                                            webViewClient = object : WebViewClient() {
+                                                override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                                                    val url = request?.url?.toString()
+                                                    if (url != null) {
+                                                        if (url.startsWith("file://") && url.contains(".noda/attachments/")) {
+                                                            val name = url.substringAfter(".noda/attachments/")
+                                                            previewAttachmentName = name
+                                                            return true
+                                                        }
+                                                        if (url.startsWith("noda://attachments/")) {
+                                                            val name = url.substringAfter("noda://attachments/")
+                                                            previewAttachmentName = name
+                                                            return true
+                                                        }
+                                                    }
+                                                    return super.shouldOverrideUrlLoading(view, request)
+                                                }
+                                            }
                                             settings.javaScriptEnabled = false
                                             settings.allowFileAccess = true
                                             settings.allowContentAccess = true
@@ -297,7 +316,7 @@ fun NoteEditorScreen(
                                             </body>
                                             </html>
                                         """.trimIndent()
-                                        webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+                                        webView.loadDataWithBaseURL("file:///", html, "text/html", "utf-8", null)
                                     },
                                     modifier = Modifier.fillMaxSize()
                                 )
@@ -484,6 +503,39 @@ fun NoteEditorScreen(
                                 }
                             }
                         }
+                    }
+
+                    // File Preview Dialog Overlay for Reader Mode attachment clicks
+                    previewAttachmentName?.let { attachmentName ->
+                        val filePath = "${viewModel.vaultPath}/.noda/attachments/$attachmentName"
+                        val file = java.io.File(filePath)
+                        val ext = attachmentName.substringAfterLast('.', "").lowercase()
+                        val mimeType = when (ext) {
+                            "jpg", "jpeg" -> "image/jpeg"
+                            "png" -> "image/png"
+                            "gif" -> "image/gif"
+                            "webp" -> "image/webp"
+                            "pdf" -> "application/pdf"
+                            "txt", "md" -> "text/plain"
+                            else -> "application/octet-stream"
+                        }
+                        val content = if (file.exists() && !mimeType.startsWith("image/")) {
+                            try {
+                                file.readText()
+                            } catch (e: Exception) {
+                                "Binary or unreadable file content."
+                            }
+                        } else {
+                            ""
+                        }
+
+                        FilePreviewDialog(
+                            title = attachmentName,
+                            content = content,
+                            filePath = filePath,
+                            mimeType = mimeType,
+                            onDismiss = { previewAttachmentName = null }
+                        )
                     }
                 }
             }
@@ -741,5 +793,30 @@ fun parseInlineMarkdown(text: String, vaultPath: String?): String {
     // Inline Code `` `code` ``
     result = result.replace(Regex("`(.*?)`"), "<code>$1</code>")
 
+    return result
+}
+
+fun getFileName(context: android.content.Context, uri: android.net.Uri): String? {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        try {
+            if (cursor != null && cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index != -1) {
+                    result = cursor.getString(index)
+                }
+            }
+        } finally {
+            cursor?.close()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/')
+        if (cut != null && cut != -1) {
+            result = result?.substring(cut + 1)
+        }
+    }
     return result
 }

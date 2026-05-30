@@ -1980,6 +1980,46 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_addAttachment(
     env.new_string(result).unwrap().into_raw()
 }
 
+#[derive(serde::Deserialize)]
+struct DeleteAttachmentParams {
+    attachment_name: String,
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_deleteAttachment(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+
+    let params: DeleteAttachmentParams = match serde_json::from_str(&input) {
+        Ok(p) => p,
+        Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
+    };
+
+    let path = {
+        let state = BRIDGE_STATE.read().unwrap();
+        match &state.vault_path {
+            Some(v) => v.clone(),
+            None => return error_string(&mut env, "Vault path not initialized"),
+        }
+    };
+
+    let result = get_runtime().block_on(async {
+        match noda_core::attachments::delete_attachment(&path, &params.attachment_name).await {
+            Ok(_) => "{\"success\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"Delete attachment failed: {}\"}}", e),
+        }
+    });
+
+    env.new_string(result).unwrap().into_raw()
+}
+
+
 #[no_mangle]
 pub extern "system" fn Java_com_bubi_nodanotes_RustCore_listAttachments(
     mut env: JNIEnv,
