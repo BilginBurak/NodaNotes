@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bubi.nodanotes.data.model.TrashEntryDto
+import com.bubi.nodanotes.ui.components.FilePreviewDialog
+import androidx.compose.foundation.clickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,8 +26,10 @@ fun TrashScreen(
     viewModel: TrashViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val vaultPath = viewModel.vaultPath
     var noteToDeletePermanently by remember { mutableStateOf<TrashEntryDto?>(null) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
+    var previewNote by remember { mutableStateOf<TrashEntryDto?>(null) }
 
     Scaffold(
         topBar = {
@@ -111,7 +115,8 @@ fun TrashScreen(
                                 TrashEntryCard(
                                     entry = entry,
                                     onRestore = { viewModel.restore(entry.id) },
-                                    onDeletePermanently = { noteToDeletePermanently = entry }
+                                    onDeletePermanently = { noteToDeletePermanently = entry },
+                                    onCardClick = { previewNote = entry }
                                 )
                             }
                         }
@@ -168,6 +173,27 @@ fun TrashScreen(
             }
         )
     }
+
+    previewNote?.let { entry ->
+        val fileContent = remember(entry.id) {
+            try {
+                val f = if (vaultPath != null) {
+                    java.io.File(vaultPath, entry.trash_path)
+                } else {
+                    java.io.File(entry.trash_path)
+                }
+                if (f.exists()) f.readText() else "File not found at: ${f.absolutePath}"
+            } catch (e: Exception) {
+                "Failed to read trashed file body: ${e.message}"
+            }
+        }
+
+        FilePreviewDialog(
+            title = entry.title,
+            content = fileContent,
+            onDismiss = { previewNote = null }
+        )
+    }
 }
 
 @Composable
@@ -175,10 +201,13 @@ fun TrashEntryCard(
     entry: TrashEntryDto,
     onRestore: () -> Unit,
     onDeletePermanently: () -> Unit,
+    onCardClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onCardClick() },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)

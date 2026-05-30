@@ -19,6 +19,7 @@ sealed class TrashUiState {
 
 class TrashViewModel(application: Application) : AndroidViewModel(application) {
     private val trashRepository = TrashRepository()
+    val vaultPath: String? = com.bubi.nodanotes.data.preferences.VaultPreferences(application).getVaultPath()
 
     private val _uiState = MutableStateFlow<TrashUiState>(TrashUiState.Loading)
     val uiState: StateFlow<TrashUiState> = _uiState.asStateFlow()

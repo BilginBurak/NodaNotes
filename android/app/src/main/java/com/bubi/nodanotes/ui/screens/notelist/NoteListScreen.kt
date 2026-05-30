@@ -28,6 +28,7 @@ fun NoteListScreen(
     onMenuClick: () -> Unit,
     onSearchClick: () -> Unit,
     onNavigateToEditor: (String) -> Unit,
+    onNavigateToSyncReport: () -> Unit,
     viewModel: NoteListViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -39,6 +40,25 @@ fun NoteListScreen(
 
     var selectedSortOrder by remember { mutableStateOf(SortOrder.UPDATED) }
     var showSortMenu by remember { mutableStateOf(false) }
+
+    var showSyncToast by remember { mutableStateOf(false) }
+    var toastMessage by remember { mutableStateOf("") }
+    var isToastError by remember { mutableStateOf(false) }
+
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
+
+    LaunchedEffect(syncStatus) {
+        if (syncStatus.startsWith("Synced just now")) {
+            toastMessage = syncStatus
+            isToastError = false
+            showSyncToast = true
+        } else if (syncStatus.startsWith("Sync failed")) {
+            toastMessage = syncStatus
+            isToastError = true
+            showSyncToast = true
+        }
+    }
 
     LaunchedEffect(currentFolder) {
         viewModel.loadNotes(currentFolder)
@@ -66,9 +86,6 @@ fun NoteListScreen(
         }
     }
 
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val syncStatus by viewModel.syncStatus.collectAsState()
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -94,6 +111,9 @@ fun NoteListScreen(
                 actions = {
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
+                    IconButton(onClick = { viewModel.triggerSync() }) {
+                        Icon(Icons.Default.Sync, contentDescription = "Sync Now")
                     }
                     IconButton(onClick = { showSortMenu = true }) {
                         Icon(Icons.Default.Sort, contentDescription = "Sort Options")
@@ -133,6 +153,18 @@ fun NoteListScreen(
                                 }
                             }
                         )
+                        DropdownMenuItem(
+                            text = { Text("Created Date") },
+                            onClick = {
+                                selectedSortOrder = SortOrder.CREATED
+                                showSortMenu = false
+                            },
+                            leadingIcon = {
+                                if (selectedSortOrder == SortOrder.CREATED) {
+                                    Icon(Icons.Default.Check, contentDescription = null)
+                                }
+                            }
+                        )
                     }
                 }
             )
@@ -155,11 +187,14 @@ fun NoteListScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.fillMaxWidth()
@@ -185,7 +220,7 @@ fun NoteListScreen(
 
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
-                onRefresh = { viewModel.triggerSync() },
+                onRefresh = { viewModel.triggerFilesystemScan() },
                 modifier = Modifier.weight(1f)
             ) {
                 when (val state = uiState) {
@@ -225,6 +260,7 @@ fun NoteListScreen(
                             val sortedNotes = when (selectedSortOrder) {
                                 SortOrder.UPDATED -> notes.sortedByDescending { it.updated_at }
                                 SortOrder.TITLE -> notes.sortedBy { it.title.lowercase() }
+                                SortOrder.CREATED -> notes.sortedByDescending { it.id }
                             }
 
                             val pinnedNotes = sortedNotes.filter { it.pinned }
@@ -308,6 +344,68 @@ fun NoteListScreen(
                 }
             }
         }
+
+            AnimatedVisibility(
+                visible = showSyncToast,
+                enter = slideInVertically { -it } + fadeIn(),
+                exit = slideOutVertically { -it } + fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter)
+            ) {
+                val borderBrush = if (isToastError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                val containerColor = MaterialTheme.colorScheme.surfaceVariant
+                
+                Surface(
+                    onClick = {
+                        showSyncToast = false
+                        onNavigateToSyncReport()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    color = containerColor,
+                    border = androidx.compose.foundation.BorderStroke(2.dp, borderBrush),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isToastError) Icons.Default.Error else Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = borderBrush,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isToastError) "Sync Failed" else "Sync Successful",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = toastMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { showSyncToast = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+
+                // Automatically dismiss after 5 seconds
+                LaunchedEffect(showSyncToast) {
+                    if (showSyncToast) {
+                        kotlinx.coroutines.delay(5000)
+                        showSyncToast = false
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -352,5 +450,5 @@ fun EmptyStateView(folderName: String, onCreateNote: () -> Unit) {
 }
 
 enum class SortOrder {
-    UPDATED, TITLE
+    UPDATED, TITLE, CREATED
 }

@@ -91,6 +91,8 @@ fun SyncReportScreen(
                         ) {
                             SummaryItem(label = "Uploads", count = report.uploads, icon = Icons.Default.Upload)
                             SummaryItem(label = "Downloads", count = report.downloads, icon = Icons.Default.Download)
+                            SummaryItem(label = "Local Del", count = report.deletes_local, icon = Icons.Default.Delete)
+                            SummaryItem(label = "Remote Del", count = report.deletes_remote, icon = Icons.Default.DeleteForever)
                             SummaryItem(label = "Conflicts", count = report.conflicts, icon = Icons.Default.Warning, isWarning = report.conflicts > 0)
                         }
                     }

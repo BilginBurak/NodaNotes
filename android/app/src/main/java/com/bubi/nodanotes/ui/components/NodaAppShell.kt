@@ -36,8 +36,8 @@ fun NodaAppShell(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Disable drawer entirely on Vault Selector screen
-    val isDrawerEnabled = currentRoute != Screen.VaultSelector.route
+    // Disable drawer entirely on Vault Selector and Note Editor/Reader screens
+    val isDrawerEnabled = currentRoute != Screen.VaultSelector.route && currentRoute?.startsWith("note_editor") != true
 
     val vaultPath = vaultPreferences.getVaultPath()
     val vaultName = vaultPath?.substringAfterLast('/') ?: "No Vault"
@@ -286,12 +286,12 @@ fun NodaAppShell(
             )
 
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Build, contentDescription = null) },
-                label = { Text("Maintenance") },
-                selected = currentRoute == Screen.Maintenance.route,
+                icon = { Icon(Icons.Default.Attachment, contentDescription = null) },
+                label = { Text("Attachments") },
+                selected = currentRoute == Screen.Attachments.route,
                 onClick = {
                     scope.launch { drawerState.close() }
-                    navController.navigate(Screen.Maintenance.route)
+                    navController.navigate(Screen.Attachments.route)
                 },
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
             )

@@ -5,6 +5,10 @@ use reqwest::{Client, Method};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+use std::sync::OnceLock;
+
+static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RemoteEntry {
     pub href: String,
@@ -23,10 +27,15 @@ pub struct WebDavClient {
 
 impl WebDavClient {
     pub fn new(url: &str, username: &str, password: &str) -> Result<Self, NodaError> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| NodaError::Sync(e.to_string()))?;
+        let client = HTTP_CLIENT.get_or_init(|| {
+            Client::builder()
+                .timeout(Duration::from_secs(30))
+                .tcp_nodelay(true)
+                .pool_max_idle_per_host(10)
+                .pool_idle_timeout(Duration::from_secs(90))
+                .build()
+                .expect("Failed to build global HTTP client")
+        }).clone();
 
         Ok(Self {
             client,

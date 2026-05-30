@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 fun FormattingToolbar(
     onInsertText: (String) -> Unit,
     onAttachmentClick: () -> Unit,
+    onQuickAttachmentClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -52,6 +53,9 @@ fun FormattingToolbar(
             }
             item {
                 ToolbarButton(icon = Icons.Default.Attachment, label = "Attachment", onClick = onAttachmentClick)
+            }
+            item {
+                ToolbarButton(icon = Icons.Default.PhotoLibrary, label = "Recent Attachments", onClick = onQuickAttachmentClick)
             }
         }
     }

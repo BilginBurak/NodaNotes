@@ -138,6 +138,19 @@ fun NoteCard(
                         }
                     }
 
+                    val folderPath = note.file_path.substringBeforeLast('/', "")
+                    if (folderPath.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "📁 $folderPath",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Date & Tags

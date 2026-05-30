@@ -21,6 +21,7 @@ sealed class MaintenanceUiState {
 
 class MaintenanceViewModel(application: Application) : AndroidViewModel(application) {
     private val diagnosticsRepository = DiagnosticsRepository()
+    val vaultPath: String? = com.bubi.nodanotes.data.preferences.VaultPreferences(application).getVaultPath()
 
     private val _uiState = MutableStateFlow<MaintenanceUiState>(MaintenanceUiState.Idle)
     val uiState: StateFlow<MaintenanceUiState> = _uiState.asStateFlow()

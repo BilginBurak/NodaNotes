@@ -21,6 +21,7 @@ import com.bubi.nodanotes.ui.screens.settings.SettingsScreen
 
 import com.bubi.nodanotes.ui.screens.editor.NoteEditorScreen
 import com.bubi.nodanotes.ui.screens.notelist.NoteListScreen
+import com.bubi.nodanotes.ui.screens.attachments.AttachmentsScreen
 
 @Composable
 fun NodaNavGraph(
@@ -48,7 +49,8 @@ fun NodaNavGraph(
                 onSearchClick = { navController.navigate(Screen.Search.route) },
                 onNavigateToEditor = { noteId ->
                     navController.navigate(Screen.NoteEditor.createRoute(noteId))
-                }
+                },
+                onNavigateToSyncReport = { navController.navigate(Screen.SyncReport.route) }
             )
         }
 
@@ -107,6 +109,11 @@ fun NodaNavGraph(
         }
         composable(Screen.Maintenance.route) {
             com.bubi.nodanotes.ui.screens.maintenance.MaintenanceScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.Attachments.route) {
+            AttachmentsScreen(
                 onBackClick = { navController.popBackStack() }
             )
         }

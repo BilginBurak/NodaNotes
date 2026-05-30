@@ -51,9 +51,17 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
         _currentFolder.value = folderPath
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = NoteListUiState.Loading
-            noteRepository.listNotes(folderPath).fold(
-                onSuccess = { notes ->
-                    _uiState.value = NoteListUiState.Success(notes)
+            noteRepository.getAllNotes().fold(
+                onSuccess = { allNotes ->
+                    val filtered = if (folderPath == null) {
+                        allNotes
+                    } else {
+                        allNotes.filter { note ->
+                            val noteFolder = note.file_path.substringBeforeLast('/', "")
+                            noteFolder == folderPath || noteFolder.startsWith("$folderPath/")
+                        }
+                    }
+                    _uiState.value = NoteListUiState.Success(filtered)
                 },
                 onFailure = { error ->
                     _uiState.value = NoteListUiState.Error(error.message ?: "Failed to load notes")
@@ -69,7 +77,7 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
             syncRepository.syncNow().fold(
                 onSuccess = { report ->
                     _isRefreshing.value = false
-                    _syncStatus.value = "Synced just now"
+                    _syncStatus.value = "Synced just now: ↑${report.uploads} ↓${report.downloads}"
                     vaultPreferences.saveLastSyncReport(
                         kotlinx.serialization.json.Json.encodeToString(
                             SyncReportDto.serializer(),
@@ -81,7 +89,25 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
                 },
                 onFailure = { error ->
                     _isRefreshing.value = false
-                    _syncStatus.value = "Sync failed: ${error.message}"
+                    _syncStatus.value = "Sync failed"
+                }
+            )
+        }
+    }
+
+    fun triggerFilesystemScan() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isRefreshing.value = true
+            _syncStatus.value = "Scanning filesystem..."
+            com.bubi.nodanotes.data.repository.VaultRepository().refreshVault().fold(
+                onSuccess = {
+                    _isRefreshing.value = false
+                    _syncStatus.value = "Filesystem scan complete"
+                    loadNotes(FolderContext.currentFolder)
+                },
+                onFailure = { error ->
+                    _isRefreshing.value = false
+                    _syncStatus.value = "Scan failed: ${error.message}"
                 }
             )
         }

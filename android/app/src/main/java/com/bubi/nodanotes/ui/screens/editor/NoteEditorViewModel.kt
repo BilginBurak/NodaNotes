@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bubi.nodanotes.data.model.NoteDto
 import com.bubi.nodanotes.data.model.NoteMetadataDto
+import com.bubi.nodanotes.data.model.AttachmentInfoDto
 import com.bubi.nodanotes.data.repository.NoteRepository
 import com.bubi.nodanotes.data.repository.SearchRepository
 import com.bubi.nodanotes.data.preferences.VaultPreferences
@@ -37,6 +38,9 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _isReaderMode = MutableStateFlow(false)
     val isReaderMode: StateFlow<Boolean> = _isReaderMode.asStateFlow()
+
+    private val _recentAttachments = MutableStateFlow<List<AttachmentInfoDto>>(emptyList())
+    val recentAttachments: StateFlow<List<AttachmentInfoDto>> = _recentAttachments.asStateFlow()
 
     val vaultPath: String? = VaultPreferences(application).getVaultPath()
 
@@ -155,9 +159,24 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
             attachmentRepository.addAttachment(sourcePath).fold(
                 onSuccess = { result ->
                     onLinkGenerated(result.markdown_link)
+                    loadRecentAttachments() // reload recent attachments after addition
                 },
                 onFailure = { error ->
                     _uiState.value = NoteEditorUiState.Error(error.message ?: "Failed to add attachment")
+                }
+            )
+        }
+    }
+
+    fun loadRecentAttachments() {
+        viewModelScope.launch(Dispatchers.IO) {
+            attachmentRepository.listAttachments().fold(
+                onSuccess = { list ->
+                    val sorted = list.sortedByDescending { it.modified_at }.take(20)
+                    _recentAttachments.value = sorted
+                },
+                onFailure = {
+                    _recentAttachments.value = emptyList()
                 }
             )
         }

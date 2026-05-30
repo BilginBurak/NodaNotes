@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bubi.nodanotes.data.model.DuplicateNoteGroupDto
 import com.bubi.nodanotes.data.model.OrphanedFileDto
+import com.bubi.nodanotes.ui.components.FilePreviewDialog
+import androidx.compose.foundation.clickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,8 +32,14 @@ fun MaintenanceScreen(
     val duplicates by viewModel.duplicates.collectAsState()
     val remnants by viewModel.orphanedRemnants.collectAsState()
     val attachments by viewModel.orphanedAttachments.collectAsState()
+    val vaultPath = viewModel.vaultPath
 
     var activeTab by remember { mutableStateOf(0) }
+    
+    var previewFileTitle by remember { mutableStateOf<String?>(null) }
+    var previewFilePath by remember { mutableStateOf<String?>(null) }
+    var previewFileContent by remember { mutableStateOf<String?>(null) }
+    var previewFileMime by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -88,7 +96,18 @@ fun MaintenanceScreen(
                     is MaintenanceUiState.Idle -> {
                         when (activeTab) {
                             0 -> OptimizationsTab(viewModel = viewModel)
-                            1 -> DuplicatesTab(duplicates = duplicates, onDelete = { viewModel.deleteDuplicateFile(it) }, onScan = { viewModel.scanDuplicates() })
+                            1 -> DuplicatesTab(
+                                duplicates = duplicates,
+                                onDelete = { viewModel.deleteDuplicateFile(it) },
+                                onScan = { viewModel.scanDuplicates() },
+                                onPreview = { title, path, content ->
+                                    previewFileTitle = title
+                                    previewFilePath = path
+                                    previewFileContent = content
+                                    previewFileMime = null
+                                },
+                                vaultPath = vaultPath
+                            )
                             2 -> RemnantsTab(
                                 remnants = remnants,
                                 attachments = attachments,
@@ -97,11 +116,34 @@ fun MaintenanceScreen(
                                 onScan = {
                                     viewModel.scanOrphanedRemnants()
                                     viewModel.scanOrphanedAttachments()
-                                }
+                                },
+                                onPreview = { title, path, content, mime ->
+                                    previewFileTitle = title
+                                    previewFilePath = path
+                                    previewFileContent = content
+                                    previewFileMime = mime
+                                },
+                                vaultPath = vaultPath
                             )
                         }
                     }
                 }
+            }
+
+            // Preview Dialog Overlay
+            previewFileTitle?.let { title ->
+                FilePreviewDialog(
+                    title = title,
+                    content = previewFileContent ?: "",
+                    filePath = previewFilePath,
+                    mimeType = previewFileMime,
+                    onDismiss = {
+                        previewFileTitle = null
+                        previewFilePath = null
+                        previewFileContent = null
+                        previewFileMime = null
+                    }
+                )
             }
         }
     }
@@ -172,7 +214,9 @@ fun OptimizationsTab(viewModel: MaintenanceViewModel) {
 fun DuplicatesTab(
     duplicates: List<DuplicateNoteGroupDto>,
     onDelete: (String) -> Unit,
-    onScan: () -> Unit
+    onScan: () -> Unit,
+    onPreview: (String, String, String) -> Unit,
+    vaultPath: String?
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Button(onClick = onScan, modifier = Modifier.fillMaxWidth()) {
@@ -199,7 +243,18 @@ fun DuplicatesTab(
                             Spacer(modifier = Modifier.height(8.dp))
                             group.files.forEach { file ->
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            try {
+                                                val f = if (vaultPath != null) java.io.File(vaultPath, file.path) else java.io.File(file.path)
+                                                val text = if (f.exists()) f.readText() else "File not found"
+                                                onPreview(group.title, f.absolutePath, text)
+                                            } catch (e: Exception) {
+                                                onPreview(group.title, file.path, "Failed to read content: ${e.message}")
+                                            }
+                                        }
+                                        .padding(vertical = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -226,7 +281,9 @@ fun RemnantsTab(
     attachments: List<com.bubi.nodanotes.data.repository.DiagnosticsRepository.OrphanedAttachmentDto>,
     onDeleteRemnant: (String) -> Unit,
     onDeleteAllRemnants: () -> Unit,
-    onScan: () -> Unit
+    onScan: () -> Unit,
+    onPreview: (String, String, String, String?) -> Unit,
+    vaultPath: String?
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -258,7 +315,19 @@ fun RemnantsTab(
                         Text("Orphaned History & Conflicts", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 4.dp))
                     }
                     items(remnants) { file ->
-                        Card(modifier = Modifier.fillMaxWidth()) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    try {
+                                        val f = if (vaultPath != null) java.io.File(vaultPath, file.relative_path) else java.io.File(file.relative_path)
+                                        val text = if (f.exists()) f.readText() else "File not found"
+                                        onPreview(file.title, f.absolutePath, text, null)
+                                    } catch (e: Exception) {
+                                        onPreview(file.title, file.relative_path, "Failed to read content: ${e.message}", null)
+                                    }
+                                }
+                        ) {
                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(file.title, fontWeight = FontWeight.Bold)
@@ -272,14 +341,25 @@ fun RemnantsTab(
                         }
                     }
                 }
-
+ 
                 if (attachments.isNotEmpty()) {
                     item {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("Orphaned Attachments", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 4.dp))
                     }
                     items(attachments) { attachment ->
-                        Card(modifier = Modifier.fillMaxWidth()) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val filePath = "$vaultPath/.noda/attachments/${attachment.name}"
+                                    val isImage = attachment.name.endsWith(".jpg", ignoreCase = true) ||
+                                            attachment.name.endsWith(".png", ignoreCase = true) ||
+                                            attachment.name.endsWith(".jpeg", ignoreCase = true)
+                                    val mime = if (isImage) "image/jpeg" else "text/plain"
+                                    onPreview(attachment.name, filePath, "", mime)
+                                }
+                        ) {
                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(attachment.name, fontWeight = FontWeight.Bold)

@@ -19,6 +19,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -38,6 +45,7 @@ fun NoteEditorScreen(
     val saveState by viewModel.saveState.collectAsState()
     val metadata by viewModel.metadata.collectAsState()
     val tagSuggestions by viewModel.tagSuggestions.collectAsState()
+    var showRecentAttachmentsSheet by remember { mutableStateOf(false) }
 
     var showInfoSheet by remember { mutableStateOf(false) }
     var isEditorFocused by remember { mutableStateOf(false) }
@@ -332,6 +340,9 @@ fun NoteEditorScreen(
                                 },
                                 onAttachmentClick = {
                                     filePickerLauncher.launch("*/*")
+                                },
+                                onQuickAttachmentClick = {
+                                    showRecentAttachmentsSheet = true
                                 }
                             )
                         }
@@ -343,6 +354,136 @@ fun NoteEditorScreen(
                             metadata = metadata!!,
                             onDismissRequest = { showInfoSheet = false }
                         )
+                    }
+
+                    // Recent Attachments Bottom Sheet
+                    if (showRecentAttachmentsSheet) {
+                        val recentAttachments by viewModel.recentAttachments.collectAsState()
+                        val vaultPath = viewModel.vaultPath
+                        
+                        LaunchedEffect(Unit) {
+                            viewModel.loadRecentAttachments()
+                        }
+
+                        ModalBottomSheet(
+                            onDismissRequest = { showRecentAttachmentsSheet = false }
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "Recent Attachments",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 16.dp)
+                                )
+
+                                if (recentAttachments.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(150.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "No attachments found.",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Fixed(2),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 400.dp)
+                                    ) {
+                                        items(recentAttachments) { attachment ->
+                                            val isImage = attachment.mime_type.startsWith("image/")
+                                            val filePath = "$vaultPath/.noda/attachments/${attachment.name}"
+                                            
+                                            Card(
+                                                onClick = {
+                                                    val link = if (isImage) "![${attachment.name}](noda://attachments/${attachment.name})" else "[${attachment.name}](noda://attachments/${attachment.name})"
+                                                    viewModel.onContentChanged(note.body + "\n" + link)
+                                                    showRecentAttachmentsSheet = false
+                                                },
+                                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(48.dp)
+                                                            .background(
+                                                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                                                shape = RoundedCornerShape(6.dp)
+                                                            ),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        if (isImage && vaultPath != null) {
+                                                            val file = java.io.File(filePath)
+                                                            if (file.exists()) {
+                                                                val bitmap = remember(filePath) {
+                                                                    android.graphics.BitmapFactory.decodeFile(filePath)?.let { bmp ->
+                                                                        android.graphics.Bitmap.createScaledBitmap(bmp, 96, 96, true)
+                                                                    }
+                                                                }
+                                                                if (bitmap != null) {
+                                                                    androidx.compose.foundation.Image(
+                                                                        bitmap = bitmap.asImageBitmap(),
+                                                                        contentDescription = null,
+                                                                        modifier = Modifier.fillMaxSize(),
+                                                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                                    )
+                                                                } else {
+                                                                    Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                                }
+                                                            } else {
+                                                                Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                            }
+                                                        } else {
+                                                            Icon(
+                                                                imageVector = when {
+                                                                    attachment.mime_type.startsWith("text/") -> Icons.Default.Article
+                                                                    attachment.mime_type.startsWith("video/") -> Icons.Default.VideoFile
+                                                                    attachment.mime_type.startsWith("audio/") -> Icons.Default.AudioFile
+                                                                    else -> Icons.Default.InsertDriveFile
+                                                                },
+                                                                contentDescription = null,
+                                                                tint = MaterialTheme.colorScheme.primary
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = attachment.name.substringAfter('_'),
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            fontWeight = FontWeight.Medium,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            text = "${attachment.size_bytes / 1024} KB",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
