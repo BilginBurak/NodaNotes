@@ -206,12 +206,12 @@ fun NoteEditorScreen(
                                                     val url = request?.url?.toString()
                                                     if (url != null) {
                                                         if (url.startsWith("file://") && url.contains(".noda/attachments/")) {
-                                                            val name = url.substringAfter(".noda/attachments/")
+                                                            val name = android.net.Uri.decode(url.substringAfter(".noda/attachments/"))
                                                             previewAttachmentName = name
                                                             return true
                                                         }
                                                         if (url.startsWith("noda://attachments/")) {
-                                                            val name = url.substringAfter("noda://attachments/")
+                                                            val name = android.net.Uri.decode(url.substringAfter("noda://attachments/"))
                                                             previewAttachmentName = name
                                                             return true
                                                         }
@@ -782,18 +782,35 @@ fun parseInlineMarkdown(text: String, vaultPath: String?): String {
         "<a href=\"$url\" target=\"_blank\">$linkText</a>"
     }
 
-    // Bold `**text**` or `__text__`
-    result = result.replace(Regex("\\*\\*(.*?)\\*\\*"), "<strong>$1</strong>")
-    result = result.replace(Regex("__(.*?)__"), "<strong>$1</strong>")
+    // Tokenize HTML tags vs plain text to prevent formatting inside generated HTML tags (like href and src attributes)
+    val tagRegex = Regex("(<[^>]+>)")
+    val parts = result.split(tagRegex)
+    val matches = tagRegex.findAll(result).map { it.value }.toList()
+    
+    val formattedBuilder = StringBuilder()
+    for (i in parts.indices) {
+        var textPart = parts[i]
+        
+        // Bold `**text**` or `__text__`
+        textPart = textPart.replace(Regex("\\*\\*(.*?)\\*\\*"), "<strong>$1</strong>")
+        textPart = textPart.replace(Regex("__(.*?)__"), "<strong>$1</strong>")
 
-    // Italic `*text*` or `_text_`
-    result = result.replace(Regex("\\*(.*?)\\*"), "<em>$1</em>")
-    result = result.replace(Regex("_(.*?)_"), "<em>$1</em>")
+        // Italic `*text*`
+        textPart = textPart.replace(Regex("\\*(.*?)\\*"), "<em>$1</em>")
 
-    // Inline Code `` `code` ``
-    result = result.replace(Regex("`(.*?)`"), "<code>$1</code>")
+        // Italic `_text_` (GFM style: prevent matching underscores inside words/filenames)
+        textPart = textPart.replace(Regex("(?<=\\b|\\s|^|[^a-zA-Z0-9_])_(?=\\S)([^_]+?)(?<=\\S)_(?=\\b|\\s|$|[^a-zA-Z0-9_])"), "<em>$1</em>")
 
-    return result
+        // Inline Code `` `code` ``
+        textPart = textPart.replace(Regex("`(.*?)`"), "<code>$1</code>")
+
+        formattedBuilder.append(textPart)
+        if (i < matches.size) {
+            formattedBuilder.append(matches[i])
+        }
+    }
+
+    return formattedBuilder.toString()
 }
 
 fun getFileName(context: android.content.Context, uri: android.net.Uri): String? {
