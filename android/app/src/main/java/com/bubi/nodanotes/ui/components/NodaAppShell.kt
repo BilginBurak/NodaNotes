@@ -5,6 +5,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -68,56 +69,61 @@ fun NodaAppShell(
     // Text inputs for dialogs
     var folderInputName by remember { mutableStateOf("") }
 
-    // Reload folders when drawer opens
+    // We don't trigger full reload on open because CRUD operations already trigger reload,
+    // and periodic sync / other watchers can sync state correctly. This keeps the drawer perfectly smooth.
     LaunchedEffect(drawerState.isOpen) {
         if (drawerState.isOpen) {
+            // Only fetch light count updates and avoid full folder tree rebuild if unnecessary
             drawerViewModel.loadFolders()
         }
     }
 
     val drawerContent: @Composable () -> Unit = {
         ModalDrawerSheet(
-            modifier = Modifier.width(300.dp)
+            modifier = Modifier.width(280.dp),
+            drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Drawer Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Default.StickyNote2,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(28.dp)
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
                         text = "NodaNotes",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 16.sp
                     )
                     Text(
                         text = vaultName,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
                     )
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
-    val currentFolder by com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolderState.collectAsState()
+            val currentFolder by com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolderState.collectAsState()
 
             // Drawer Items
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                label = { Text("All Notes", fontWeight = FontWeight.SemiBold, fontSize = 14.sp) },
+                icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                label = { Text("All Notes", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) },
                 selected = currentRoute == Screen.NoteList.route && currentFolder == null,
                 onClick = {
                     scope.launch { drawerState.close() }
@@ -126,15 +132,17 @@ fun NodaAppShell(
                         popUpTo(Screen.NoteList.route) { inclusive = true }
                     }
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                    .height(40.dp)
             )
 
             // Folders Section Header
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -142,19 +150,20 @@ fun NodaAppShell(
                     text = "FOLDERS",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
                 )
                 IconButton(
                     onClick = {
                         folderInputName = ""
                         showCreateTopLevelFolderDialog = true
                     },
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(20.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.CreateNewFolder,
                         contentDescription = "New Folder",
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -166,34 +175,34 @@ fun NodaAppShell(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                if (isFoldersLoading) {
+                if (isFoldersLoading && folders.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
                     }
                 } else if (folders.isEmpty()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Default.Folder,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "No folders created yet",
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            fontSize = 14.sp
+                            fontSize = 12.sp
                         )
                     }
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        contentPadding = PaddingValues(vertical = 2.dp)
                     ) {
                         items(folders) { folder ->
                             FolderTreeItem(
@@ -204,12 +213,8 @@ fun NodaAppShell(
                                 onFolderClick = { path ->
                                     scope.launch { drawerState.close() }
                                     navController.navigate(Screen.NoteList.route) {
-                                        // Pass folder path parameters if needed or we update shared State or load directly
                                         popUpTo(Screen.NoteList.route) { inclusive = true }
                                     }
-                                    // Use a temporary static setter to change folder context in NoteListViewModel
-                                    // If NoteListViewModel is initialized, we trigger its loadNotes.
-                                    // Alternatively, we can let NoteListScreen viewModel load on dynamic folder context or static field.
                                     com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = path
                                 },
                                 onLongPressFolder = { folderSelected ->
@@ -224,26 +229,28 @@ fun NodaAppShell(
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 2.dp))
 
             val trashCount by drawerViewModel.trashCount.collectAsState()
+            val conflictCount by drawerViewModel.conflictCount.collectAsState()
+            val attachmentCount by drawerViewModel.attachmentCount.collectAsState()
 
             // Static links section at the bottom
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                icon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 label = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Trash", fontSize = 14.sp)
+                        Text("Trash", fontSize = 13.sp)
                         if (trashCount > 0) {
                             Badge(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
                                 contentColor = MaterialTheme.colorScheme.onErrorContainer
                             ) {
-                                Text(trashCount.toString(), fontSize = 10.sp)
+                                Text(trashCount.toString(), fontSize = 9.sp)
                             }
                         }
                     }
@@ -253,26 +260,26 @@ fun NodaAppShell(
                     scope.launch { drawerState.close() }
                     navController.navigate(Screen.Trash.route)
                 },
-                modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp)
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                    .height(40.dp)
             )
 
-            val conflictCount by drawerViewModel.conflictCount.collectAsState()
-
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Difference, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                icon = { Icon(Icons.Default.Difference, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 label = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Conflicts", fontSize = 14.sp)
+                        Text("Conflicts", fontSize = 13.sp)
                         if (conflictCount > 0) {
                             Badge(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
                                 contentColor = MaterialTheme.colorScheme.onErrorContainer
                             ) {
-                                Text(conflictCount.toString(), fontSize = 10.sp)
+                                Text(conflictCount.toString(), fontSize = 9.sp)
                             }
                         }
                     }
@@ -282,32 +289,54 @@ fun NodaAppShell(
                     scope.launch { drawerState.close() }
                     navController.navigate(Screen.Conflicts.route)
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                    .height(40.dp)
             )
 
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Attachment, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                label = { Text("Attachments", fontSize = 14.sp) },
+                icon = { Icon(Icons.Default.Attachment, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                label = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Attachments", fontSize = 13.sp)
+                        if (attachmentCount > 0) {
+                            Badge(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ) {
+                                Text(attachmentCount.toString(), fontSize = 9.sp)
+                            }
+                        }
+                    }
+                },
                 selected = currentRoute == Screen.Attachments.route,
                 onClick = {
                     scope.launch { drawerState.close() }
                     navController.navigate(Screen.Attachments.route)
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                    .height(40.dp)
             )
 
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                label = { Text("Settings", fontSize = 14.sp) },
+                icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                label = { Text("Settings", fontSize = 13.sp) },
                 selected = currentRoute == Screen.Settings.route,
                 onClick = {
                     scope.launch { drawerState.close() }
                     navController.navigate(Screen.Settings.route)
                 },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                    .height(40.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 

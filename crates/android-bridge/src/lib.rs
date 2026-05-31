@@ -2287,15 +2287,48 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_syncNow(
                     files.into_iter().map(|f| {
                         let path_buf = std::path::Path::new(&f);
                         if let Some(stem) = path_buf.file_stem().and_then(|s| s.to_str()) {
-                            if let Ok(ulid) = ulid::Ulid::from_string(stem) {
-                                if let Ok(Some(note)) = noda_core::database::queries::get_note(&conn, NoteId(ulid)) {
+                            // Check if the filename contains timestamp, like {note_id}_{timestamp}
+                            let id_part = stem.split('_').next().unwrap_or(stem);
+                            if let Ok(ulid) = ulid::Ulid::from_string(id_part) {
+                                let note_id = NoteId(ulid);
+                                
+                                // 1. Check live notes database cache
+                                if let Ok(Some(note)) = noda_core::database::queries::get_note(&conn, note_id) {
                                     return format!("{} ({})", note.title, f);
+                                }
+                                
+                                // 2. Check trash sidecar json for title
+                                let trash_json_path = path.join(".noda").join("trash").join(format!("{}.json", ulid.to_string()));
+                                if trash_json_path.exists() {
+                                    if let Ok(content) = std::fs::read_to_string(&trash_json_path) {
+                                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                                            if let Some(title) = val.get("title").and_then(|t| t.as_str()) {
+                                                return format!("{} (Deleted: {})", title, f);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 3. Try parsing frontmatter directly from the live or conflict file if it exists
+                                let full_file_path = path.join(&f);
+                                if full_file_path.exists() {
+                                    if let Ok(content) = std::fs::read_to_string(&full_file_path) {
+                                        let matter = gray_matter::Matter::<gray_matter::engine::YAML>::new();
+                                        let parsed = matter.parse(&content);
+                                        if let Some(data) = parsed.data {
+                                            if let Ok(fm) = data.deserialize::<noda_core::models::note::Frontmatter>() {
+                                                return format!("{} ({})", fm.title, f);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                         f
                     }).collect()
                 };
+
+                let now_str = chrono::Utc::now().to_rfc3339();
 
                 let dto = shared::dtos::SyncReportDto {
                     uploads: report.uploads,
@@ -2310,7 +2343,17 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_syncNow(
                     conflict_files: resolve_files(report.conflict_files),
                 };
 
-                serde_json::to_string(&dto).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
+                // Inject a custom field for sync_time in JSON directly or add a field if present in DTO.
+                // Since SyncReportDto doesn't have a sync_time field in shared library, we can serialize the DTO,
+                // and then parse it as a JSON Object, insert "sync_time": now_str, and serialize back to string!
+                if let Ok(mut val) = serde_json::to_value(&dto) {
+                    if let Some(obj) = val.as_object_mut() {
+                        obj.insert("sync_time".to_string(), serde_json::Value::String(now_str));
+                    }
+                    serde_json::to_string(&val).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
+                } else {
+                    serde_json::to_string(&dto).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
+                }
             }
             Err(e) => format!("{{\"error\":\"Sync failed: {}\"}}", e),
         }

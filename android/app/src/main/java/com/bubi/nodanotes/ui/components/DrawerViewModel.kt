@@ -34,13 +34,21 @@ class DrawerViewModel(application: Application) : AndroidViewModel(application) 
     private val trashRepository = com.bubi.nodanotes.data.repository.TrashRepository()
 
 
+    private val _attachmentCount = MutableStateFlow(0)
+    val attachmentCount: StateFlow<Int> = _attachmentCount.asStateFlow()
+
+    private val attachmentRepository = com.bubi.nodanotes.data.repository.AttachmentRepository()
+
     init {
         loadFolders()
     }
 
     fun loadFolders() {
         viewModelScope.launch(Dispatchers.IO) {
-            _isLoading.value = true
+            // Only show full loading spinner on initial empty load to prevent sidebar items from blinking
+            if (_folders.value.isEmpty()) {
+                _isLoading.value = true
+            }
             folderRepository.listFolders().fold(
                 onSuccess = { folderList ->
                     _folders.value = folderList
@@ -55,6 +63,9 @@ class DrawerViewModel(application: Application) : AndroidViewModel(application) 
             }
             trashRepository.listTrash().onSuccess { list ->
                 _trashCount.value = list.size
+            }
+            attachmentRepository.listAttachments().onSuccess { list ->
+                _attachmentCount.value = list.size
             }
         }
     }

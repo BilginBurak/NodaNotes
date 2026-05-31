@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.sp
 import com.bubi.nodanotes.data.model.SyncReportDto
 import com.bubi.nodanotes.data.preferences.VaultPreferences
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,6 +32,25 @@ fun SyncReportScreen(
         if (reportJson != null) {
             try {
                 Json.decodeFromString<SyncReportDto>(reportJson)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+    val syncTime = remember(reportJson) {
+        if (reportJson != null) {
+            try {
+                val element = Json.parseToJsonElement(reportJson)
+                val timeStr = element.jsonObject["sync_time"]?.jsonPrimitive?.content
+                if (timeStr != null) {
+                    val dt = java.time.ZonedDateTime.parse(timeStr)
+                    val formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy · HH:mm", java.util.Locale.getDefault())
+                    dt.withZoneSameInstant(java.time.ZoneId.systemDefault()).format(formatter)
+                } else {
+                    null
+                }
             } catch (e: Exception) {
                 null
             }
@@ -83,7 +104,20 @@ fun SyncReportScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            if (syncTime != null) {
+                                Text(
+                                    text = syncTime,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),

@@ -41,27 +41,20 @@ fun NoteListScreen(
     var selectedSortOrder by remember { mutableStateOf(SortOrder.UPDATED) }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    var showSyncToast by remember { mutableStateOf(false) }
-    var toastMessage by remember { mutableStateOf("") }
-    var isToastError by remember { mutableStateOf(false) }
-
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
 
-    LaunchedEffect(syncStatus) {
-        if (syncStatus.startsWith("Synced just now")) {
-            toastMessage = syncStatus
-            isToastError = false
-            showSyncToast = true
-        } else if (syncStatus.startsWith("Sync failed")) {
-            toastMessage = syncStatus
-            isToastError = true
-            showSyncToast = true
-        }
-    }
+    // Selection mode state variables
+    var isSelectionMode by remember { mutableStateOf(false) }
+    val selectedNotes = remember { mutableStateListOf<NoteListItemDto>() }
+
+    // Observe syncStatus but do not show toast anymore as it is removed by the user requirement.
+    // LaunchedEffect(syncStatus) logic removed completely.
 
     LaunchedEffect(currentFolder) {
         viewModel.loadNotes(currentFolder)
+        isSelectionMode = false
+        selectedNotes.clear()
     }
 
     // Lifecycle observer for ON_RESUME
@@ -90,87 +83,147 @@ fun NoteListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = {
                         Text(
-                            text = currentFolder ?: "All Notes",
+                            text = "${selectedNotes.size} selected",
                             fontWeight = FontWeight.Bold,
                             fontSize = 17.sp
                         )
-                        Text(
-                            text = vaultName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onMenuClick) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onSearchClick) {
-                        Icon(Icons.Default.Search, contentDescription = "Search")
-                    }
-                    IconButton(onClick = { viewModel.triggerSync() }) {
-                        Icon(Icons.Default.Sync, contentDescription = "Sync Now")
-                    }
-                    IconButton(onClick = { showSortMenu = true }) {
-                        Icon(Icons.Default.Sort, contentDescription = "Sort Options")
-                    }
-                    DropdownMenu(
-                        expanded = showSortMenu,
-                        onDismissRequest = { showSortMenu = false }
-                    ) {
-                        Text(
-                            text = "  Sort By",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Last Updated") },
-                            onClick = {
-                                selectedSortOrder = SortOrder.UPDATED
-                                showSortMenu = false
-                            },
-                            leadingIcon = {
-                                if (selectedSortOrder == SortOrder.UPDATED) {
-                                    Icon(Icons.Default.Check, contentDescription = null)
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            isSelectionMode = false
+                            selectedNotes.clear()
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel Selection")
+                        }
+                    },
+                    actions = {
+                        // Pin/Unpin action
+                        IconButton(onClick = {
+                            selectedNotes.forEach { note ->
+                                viewModel.togglePinNote(note)
+                            }
+                            isSelectionMode = false
+                            selectedNotes.clear()
+                        }) {
+                            Icon(Icons.Default.PushPin, contentDescription = "Pin/Unpin Selected")
+                        }
+                        // Delete action
+                        IconButton(onClick = {
+                            selectedNotes.forEach { note ->
+                                viewModel.deleteNoteWithUndo(note) { undoCallback ->
+                                    scope.launch {
+                                        val snackbarResult = snackbarHostState.showSnackbar(
+                                            message = "Note deleted",
+                                            actionLabel = "Undo",
+                                            duration = SnackbarDuration.Short
+                                        )
+                                        if (snackbarResult == SnackbarResult.ActionPerformed) {
+                                            undoCallback()
+                                        }
+                                    }
                                 }
                             }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Note Title") },
-                            onClick = {
-                                selectedSortOrder = SortOrder.TITLE
-                                showSortMenu = false
-                            },
-                            leadingIcon = {
-                                if (selectedSortOrder == SortOrder.TITLE) {
-                                    Icon(Icons.Default.Check, contentDescription = null)
+                            isSelectionMode = false
+                            selectedNotes.clear()
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete Selected")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = currentFolder ?: "All Notes",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp
+                            )
+                            Text(
+                                text = vaultName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onMenuClick) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = onSearchClick) {
+                            Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                        IconButton(onClick = { viewModel.triggerSync() }) {
+                            Icon(Icons.Default.Sync, contentDescription = "Sync Now")
+                        }
+                        IconButton(onClick = { showSortMenu = true }) {
+                            Icon(Icons.Default.Sort, contentDescription = "Sort Options")
+                        }
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                        ) {
+                            Text(
+                                text = "  Sort By",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Last Updated") },
+                                onClick = {
+                                    selectedSortOrder = SortOrder.UPDATED
+                                    showSortMenu = false
+                                },
+                                leadingIcon = {
+                                    if (selectedSortOrder == SortOrder.UPDATED) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
                                 }
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Created Date") },
-                            onClick = {
-                                selectedSortOrder = SortOrder.CREATED
-                                showSortMenu = false
-                            },
-                            leadingIcon = {
-                                if (selectedSortOrder == SortOrder.CREATED) {
-                                    Icon(Icons.Default.Check, contentDescription = null)
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Note Title") },
+                                onClick = {
+                                    selectedSortOrder = SortOrder.TITLE
+                                    showSortMenu = false
+                                },
+                                leadingIcon = {
+                                    if (selectedSortOrder == SortOrder.TITLE) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
                                 }
-                            }
-                        )
-                    }
-                },
-                windowInsets = WindowInsets(0, 0, 0, 0) // This stops double padding from window insets causing a manasiz space!
-            )
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Created Date") },
+                                onClick = {
+                                    selectedSortOrder = SortOrder.CREATED
+                                    showSortMenu = false
+                                },
+                                leadingIcon = {
+                                    if (selectedSortOrder == SortOrder.CREATED) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                }
+                            )
+                        }
+                    },
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                )
+            }
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
@@ -200,6 +253,7 @@ fun NoteListScreen(
             ) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                onClick = onNavigateToSyncReport,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -301,6 +355,19 @@ fun NoteListScreen(
                                                         }
                                                     }
                                                 }
+                                            },
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = selectedNotes.contains(note),
+                                            onToggleSelection = { toggledNote ->
+                                                if (selectedNotes.contains(toggledNote)) {
+                                                    selectedNotes.remove(toggledNote)
+                                                    if (selectedNotes.isEmpty()) {
+                                                        isSelectionMode = false
+                                                    }
+                                                } else {
+                                                    selectedNotes.add(toggledNote)
+                                                    isSelectionMode = true
+                                                }
                                             }
                                         )
                                     }
@@ -337,6 +404,19 @@ fun NoteListScreen(
                                                         }
                                                     }
                                                 }
+                                            },
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = selectedNotes.contains(note),
+                                            onToggleSelection = { toggledNote ->
+                                                if (selectedNotes.contains(toggledNote)) {
+                                                    selectedNotes.remove(toggledNote)
+                                                    if (selectedNotes.isEmpty()) {
+                                                        isSelectionMode = false
+                                                    }
+                                                } else {
+                                                    selectedNotes.add(toggledNote)
+                                                    isSelectionMode = true
+                                                }
                                             }
                                         )
                                     }
@@ -347,69 +427,8 @@ fun NoteListScreen(
                 }
             }
         }
-
-            AnimatedVisibility(
-                visible = showSyncToast,
-                enter = slideInVertically { -it } + fadeIn(),
-                exit = slideOutVertically { -it } + fadeOut(),
-                modifier = Modifier.align(Alignment.TopCenter)
-            ) {
-                val borderBrush = if (isToastError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                val containerColor = MaterialTheme.colorScheme.surfaceVariant
-                
-                Surface(
-                    onClick = {
-                        showSyncToast = false
-                        onNavigateToSyncReport()
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    color = containerColor,
-                    border = androidx.compose.foundation.BorderStroke(2.dp, borderBrush),
-                    shadowElevation = 6.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (isToastError) Icons.Default.Error else Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = borderBrush,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (isToastError) "Sync Failed" else "Sync Successful",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = toastMessage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(onClick = { showSyncToast = false }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-
-                // Automatically dismiss after 5 seconds
-                LaunchedEffect(showSyncToast) {
-                    if (showSyncToast) {
-                        kotlinx.coroutines.delay(5000)
-                        showSyncToast = false
-                    }
-                }
-            }
-        }
     }
+}
 }
 
 @Composable
