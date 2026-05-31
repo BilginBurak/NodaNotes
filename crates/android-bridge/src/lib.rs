@@ -2287,7 +2287,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_syncNow(
                     files.into_iter().map(|f| {
                         let path_buf = std::path::Path::new(&f);
                         if let Some(stem) = path_buf.file_stem().and_then(|s| s.to_str()) {
-                            // Check if the filename contains timestamp, like {note_id}_{timestamp}
+                            // Check if the filename is a ULID, or has ULID as a prefix
                             let id_part = stem.split('_').next().unwrap_or(stem);
                             if let Ok(ulid) = ulid::Ulid::from_string(id_part) {
                                 let note_id = NoteId(ulid);
@@ -2324,7 +2324,39 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_syncNow(
                                 }
                             }
                         }
-                        f
+                        
+                        // Fallback: If it's a history/conflict file, look up the note ID in the path/stem
+                        // Example: .noda/history/01KSBMXRFKZP1NJVR953Z3WBTA/20260531_002807_163.md
+                        // We can extract a 26-char ULID sequence from the path string.
+                        let mut resolved_title = None;
+                        for segment in f.split('/') {
+                            if segment.len() == 26 {
+                                if let Ok(ulid) = ulid::Ulid::from_string(segment) {
+                                    let note_id = NoteId(ulid);
+                                    if let Ok(Some(note)) = noda_core::database::queries::get_note(&conn, note_id) {
+                                        resolved_title = Some(note.title.clone());
+                                        break;
+                                    }
+                                    // Or try parsing live file or trash sidecar
+                                    let trash_json_path = path.join(".noda").join("trash").join(format!("{}.json", ulid.to_string()));
+                                    if trash_json_path.exists() {
+                                        if let Ok(content) = std::fs::read_to_string(&trash_json_path) {
+                                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                                                if let Some(title) = val.get("title").and_then(|t| t.as_str()) {
+                                                    resolved_title = Some(title.to_string());
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(title) = resolved_title {
+                            format!("{} ({})", title, f)
+                        } else {
+                            f
+                        }
                     }).collect()
                 };
 

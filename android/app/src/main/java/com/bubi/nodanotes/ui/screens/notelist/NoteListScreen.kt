@@ -33,6 +33,7 @@ fun NoteListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val currentFolder by FolderContext.currentFolderState.collectAsState()
+    val selectedTag by FolderContext.selectedTagState.collectAsState()
     val vaultName by viewModel.vaultName.collectAsState()
 
     val scope = rememberCoroutineScope()
@@ -51,7 +52,7 @@ fun NoteListScreen(
     // Observe syncStatus but do not show toast anymore as it is removed by the user requirement.
     // LaunchedEffect(syncStatus) logic removed completely.
 
-    LaunchedEffect(currentFolder) {
+    LaunchedEffect(currentFolder, selectedTag) {
         viewModel.loadNotes(currentFolder)
         isSelectionMode = false
         selectedNotes.clear()
@@ -146,7 +147,7 @@ fun NoteListScreen(
                     title = {
                         Column {
                             Text(
-                                text = currentFolder ?: "All Notes",
+                                text = (currentFolder ?: "All Notes") + (if (selectedTag != null) " • #$selectedTag" else ""),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 17.sp
                             )

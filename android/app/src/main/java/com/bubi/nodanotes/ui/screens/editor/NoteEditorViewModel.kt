@@ -188,6 +188,45 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
         _isReaderMode.value = !_isReaderMode.value
     }
 
+    fun togglePinNote() {
+        val successState = _uiState.value as? NoteEditorUiState.Success ?: return
+        val updatedNote = successState.note.copy(pinned = !successState.note.pinned)
+        _uiState.value = NoteEditorUiState.Success(updatedNote)
+        viewModelScope.launch(Dispatchers.IO) {
+            noteRepository.updateNote(
+                noteId = updatedNote.id,
+                title = updatedNote.title,
+                body = updatedNote.body,
+                tags = updatedNote.tags,
+                color = updatedNote.color,
+                pinned = updatedNote.pinned
+            ).fold(
+                onSuccess = {
+                    loadMetadata(updatedNote.id)
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteEditorUiState.Error(error.message ?: "Failed to update pin status")
+                }
+            )
+        }
+    }
+
+    fun deleteNote(onDeleted: () -> Unit) {
+        val successState = _uiState.value as? NoteEditorUiState.Success ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            noteRepository.deleteNote(successState.note.id).fold(
+                onSuccess = {
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onDeleted()
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteEditorUiState.Error(error.message ?: "Failed to delete note")
+                }
+            )
+        }
+    }
+
     override fun onCleared() {
         // Force save remaining changes when leaving
         val successState = _uiState.value as? NoteEditorUiState.Success

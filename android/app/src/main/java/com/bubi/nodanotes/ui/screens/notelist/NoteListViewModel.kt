@@ -57,7 +57,8 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
             }
             noteRepository.getAllNotes().fold(
                 onSuccess = { allNotes ->
-                    val filtered = if (folderPath == null) {
+                    val tagFilter = FolderContext.selectedTag
+                    val folderFiltered = if (folderPath == null) {
                         allNotes
                     } else {
                         allNotes.filter { note ->
@@ -65,7 +66,14 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
                             noteFolder == folderPath || noteFolder.startsWith("$folderPath/")
                         }
                     }
-                    val newState = NoteListUiState.Success(filtered)
+                    val finalFiltered = if (tagFilter == null) {
+                        folderFiltered
+                    } else {
+                        folderFiltered.filter { note ->
+                            note.tags.contains(tagFilter)
+                        }
+                    }
+                    val newState = NoteListUiState.Success(finalFiltered)
                     if (_uiState.value != newState) {
                         _uiState.value = newState
                     }

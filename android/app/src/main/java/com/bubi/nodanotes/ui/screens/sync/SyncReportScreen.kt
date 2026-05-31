@@ -118,6 +118,14 @@ fun SyncReportScreen(
                                 )
                             }
                         }
+                        if (syncTime != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Last Sync: $syncTime",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),

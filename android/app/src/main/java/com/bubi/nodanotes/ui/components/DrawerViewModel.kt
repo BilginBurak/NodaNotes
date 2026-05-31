@@ -37,7 +37,11 @@ class DrawerViewModel(application: Application) : AndroidViewModel(application) 
     private val _attachmentCount = MutableStateFlow(0)
     val attachmentCount: StateFlow<Int> = _attachmentCount.asStateFlow()
 
+    private val _tags = MutableStateFlow<List<String>>(emptyList())
+    val tags: StateFlow<List<String>> = _tags.asStateFlow()
+
     private val attachmentRepository = com.bubi.nodanotes.data.repository.AttachmentRepository()
+    private val noteRepository = com.bubi.nodanotes.data.repository.NoteRepository()
 
     init {
         loadFolders()
@@ -66,6 +70,9 @@ class DrawerViewModel(application: Application) : AndroidViewModel(application) 
             }
             attachmentRepository.listAttachments().onSuccess { list ->
                 _attachmentCount.value = list.size
+            }
+            noteRepository.getAllTags().onSuccess { list ->
+                _tags.value = list
             }
         }
     }

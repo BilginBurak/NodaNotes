@@ -38,13 +38,7 @@ fun NoteInfoSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 16.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+
                 Text(
                     text = "Note Information",
                     style = MaterialTheme.typography.titleLarge,
@@ -67,7 +61,6 @@ fun NoteInfoSheet(
                 value = metadata.last_upload_time?.let { formatDate(it) } ?: "Never"
             )
             
-            Spacer(modifier = Modifier.height(8.dp))
             InfoRow(label = "Created At", value = formatDate(metadata.created_at))
             InfoRow(label = "Modified At", value = formatDate(metadata.updated_at))
 

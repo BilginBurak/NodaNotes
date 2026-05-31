@@ -86,6 +86,8 @@ fun NoteEditorScreen(
         viewModel.loadNote(noteId)
     }
 
+    var showOverflowMenu by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             val successState = uiState as? NoteEditorUiState.Success
@@ -127,13 +129,54 @@ fun NoteEditorScreen(
                             contentDescription = if (isReaderMode) "Editor Mode" else "Reader Mode"
                         )
                     }
-                    IconButton(onClick = { onNavigateToHistory(noteId) }) {
-                        Icon(Icons.Default.History, contentDescription = "Version History")
+                    IconButton(onClick = { showOverflowMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
                     }
-                    IconButton(onClick = { showInfoSheet = true }) {
-                        Icon(Icons.Default.Info, contentDescription = "Note Info")
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Note Info") },
+                            onClick = {
+                                showOverflowMenu = false
+                                showInfoSheet = true
+                            },
+                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Version History") },
+                            onClick = {
+                                showOverflowMenu = false
+                                onNavigateToHistory(noteId)
+                            },
+                            leadingIcon = { Icon(Icons.Default.History, contentDescription = null) }
+                        )
+                        if (successState != null) {
+                            val isPinned = successState.note.pinned
+                            DropdownMenuItem(
+                                text = { Text(if (isPinned) "Unpin Note" else "Pin Note") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.onTagsChanged(successState.note.tags) // dummy trigger
+                                    viewModel.togglePinNote()
+                                },
+                                leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Move to Trash") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.deleteNote {
+                                        onBackClick()
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                            )
+                        }
                     }
-                }
+                },
+                windowInsets = WindowInsets.systemBars
             )
         }
     ) { paddingValues ->
