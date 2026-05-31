@@ -1,6 +1,7 @@
 package com.bubi.nodanotes.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -80,6 +81,18 @@ fun NodaAppShell(
     }
 
     val drawerContent: @Composable () -> Unit = {
+        var tagsExpanded by remember { mutableStateOf(false) }
+        val tagsWeight by animateFloatAsState(
+            targetValue = if (tagsExpanded) 0.2f else 0.01f,
+            animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            label = "tagsWeight"
+        )
+        val foldersWeight by animateFloatAsState(
+            targetValue = if (tagsExpanded) 0.6f else 0.9f,
+            animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            label = "foldersWeight"
+        )
+
         ModalDrawerSheet(
             modifier = Modifier.width(280.dp),
             drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
@@ -175,7 +188,7 @@ fun NodaAppShell(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.5f)
+                    .weight(foldersWeight)
             ) {
                 if (isFoldersLoading && folders.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -237,7 +250,6 @@ fun NodaAppShell(
             // TAGS Section Header (Collapsible)
             val tags by drawerViewModel.tags.collectAsState()
             val selectedTag by com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTagState.collectAsState()
-            var tagsExpanded by remember { mutableStateOf(false) }
 
             Surface(
                 onClick = { tagsExpanded = !tagsExpanded },
@@ -278,11 +290,11 @@ fun NodaAppShell(
 
             AnimatedVisibility(
                 visible = tagsExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
+                enter = expandVertically(animationSpec = tween(500)) + fadeIn(animationSpec = tween(500)),
+                exit = shrinkVertically(animationSpec = tween(500)) + fadeOut(animationSpec = tween(500)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(if (tagsExpanded) 0.5f else 0.001f, fill = tagsExpanded)
+                    .weight(tagsWeight)
             ) {
                 Box(
                     modifier = Modifier.fillMaxWidth()
@@ -329,7 +341,7 @@ fun NodaAppShell(
                                     },
                                     modifier = Modifier
                                         .padding(vertical = 1.dp)
-                                        .height(36.dp)
+                                        .height(28.dp)
                                 )
                             }
                         }

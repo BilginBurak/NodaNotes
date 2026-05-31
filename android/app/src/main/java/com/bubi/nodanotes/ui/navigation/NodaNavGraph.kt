@@ -40,27 +40,31 @@ fun NodaNavGraph(
         modifier = Modifier.fillMaxSize(),
         enterTransition = {
             slideIntoContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.Left,
-                animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + fadeIn(animationSpec = androidx.compose.animation.core.tween(300))
+                towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                animationSpec = androidx.compose.animation.core.tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                initialOffset = { it / 6 }
+            ) + fadeIn(animationSpec = androidx.compose.animation.core.tween(400))
         },
         exitTransition = {
             slideOutOfContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.Left,
-                animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
+                towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                animationSpec = androidx.compose.animation.core.tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                targetOffset = { -it / 6 }
+            ) + fadeOut(animationSpec = androidx.compose.animation.core.tween(400))
         },
         popEnterTransition = {
             slideIntoContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.Right,
-                animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + fadeIn(animationSpec = androidx.compose.animation.core.tween(300))
+                towards = AnimatedContentTransitionScope.SlideDirection.End,
+                animationSpec = androidx.compose.animation.core.tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                initialOffset = { -it / 6 }
+            ) + fadeIn(animationSpec = androidx.compose.animation.core.tween(400))
         },
         popExitTransition = {
             slideOutOfContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.Right,
-                animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
+                towards = AnimatedContentTransitionScope.SlideDirection.End,
+                animationSpec = androidx.compose.animation.core.tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                targetOffset = { it / 6 }
+            ) + fadeOut(animationSpec = androidx.compose.animation.core.tween(400))
         }
     ) {
         composable(Screen.VaultSelector.route) {

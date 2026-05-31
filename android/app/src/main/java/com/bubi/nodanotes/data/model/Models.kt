@@ -94,6 +94,7 @@ data class SyncReportDto(
     val deleted_local_files: List<String> = emptyList(),
     val deleted_remote_files: List<String> = emptyList(),
     val conflict_files: List<String> = emptyList(),
+    val sync_time: String? = null,
 )
 
 @Serializable
