@@ -1,5 +1,6 @@
 package com.bubi.nodanotes.ui.components
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -233,81 +234,104 @@ fun NodaAppShell(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
 
-            // TAGS Section Header
+            // TAGS Section Header (Collapsible)
             val tags by drawerViewModel.tags.collectAsState()
             val selectedTag by com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTagState.collectAsState()
+            var tagsExpanded by remember { mutableStateOf(false) }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                onClick = { tagsExpanded = !tagsExpanded },
+                color = androidx.compose.ui.graphics.Color.Transparent,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    imageVector = Icons.Default.LocalOffer,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "TAGS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.5f)
-            ) {
-                if (tags.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.LocalOffer,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "No tags found",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            fontSize = 14.sp
+                            text = "TAGS",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
                         )
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                    ) {
-                        items(tags) { tag ->
-                            val isSelected = selectedTag == tag
-                            NavigationDrawerItem(
-                                icon = {
-                                    Icon(
-                                        imageVector = Icons.Default.LocalOffer,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        text = tag,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 14.sp
-                                    )
-                                },
-                                selected = isSelected,
-                                onClick = {
-                                    scope.launch { drawerState.close() }
-                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
-                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = tag
-                                    navController.navigate(Screen.NoteList.route) {
-                                        popUpTo(Screen.NoteList.route) { inclusive = true }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .padding(vertical = 1.dp)
-                                    .height(36.dp)
+                    Icon(
+                        imageVector = if (tagsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (tagsExpanded) "Collapse Tags" else "Expand Tags",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = tagsExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(if (tagsExpanded) 0.5f else 0.001f, fill = tagsExpanded)
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (tags.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "No tags found",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                fontSize = 14.sp
                             )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            items(tags) { tag ->
+                                val isSelected = selectedTag == tag
+                                NavigationDrawerItem(
+                                    icon = {
+                                        Icon(
+                                            imageVector = Icons.Default.LocalOffer,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = tag,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    selected = isSelected,
+                                    onClick = {
+                                        scope.launch { drawerState.close() }
+                                        com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
+                                        com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = tag
+                                        navController.navigate(Screen.NoteList.route) {
+                                            popUpTo(Screen.NoteList.route) { inclusive = true }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .padding(vertical = 1.dp)
+                                        .height(36.dp)
+                                )
+                            }
                         }
                     }
                 }

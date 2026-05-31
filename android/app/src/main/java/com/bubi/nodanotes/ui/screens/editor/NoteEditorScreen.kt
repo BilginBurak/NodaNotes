@@ -176,7 +176,7 @@ fun NoteEditorScreen(
                         }
                     }
                 },
-                windowInsets = WindowInsets.systemBars
+                windowInsets = WindowInsets(0, 0, 0, 0)
             )
         }
     ) { paddingValues ->

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,19 +30,23 @@ fun NoteCard(
     onToggleSelection: (NoteListItemDto) -> Unit = {}
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         ),
         border = if (isSelected) {
-            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+            androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         } else {
-            androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
         },
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 1.dp else 1.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.dp),
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 6.dp)
             .combinedClickable(
                 onClick = {
                     if (isSelectionMode) {
@@ -56,7 +61,7 @@ fun NoteCard(
             )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(18.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -66,9 +71,11 @@ fun NoteCard(
                 // Title
                 Text(
                     text = note.title.ifEmpty { "Untitled" },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.2).sp
+                    ),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -89,18 +96,26 @@ fun NoteCard(
 
             val folderPath = note.file_path.substringBeforeLast('/', "")
             if (folderPath.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "📁 $folderPath",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = folderPath,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Date & Tags
             Row(
@@ -110,8 +125,8 @@ fun NoteCard(
             ) {
                 Text(
                     text = formatDate(note.updated_at),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
 
                 // Render tags dynamically as chips (maximum 3 in card preview)
@@ -121,11 +136,25 @@ fun NoteCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         note.tags.take(3).forEach { tag ->
-                            SuggestionChip(
-                                onClick = {},
-                                label = { Text(tag, fontSize = 10.sp) },
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
                                 modifier = Modifier.height(20.dp)
-                            )
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "#$tag",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                            }
                         }
                     }
                 }

@@ -1,5 +1,7 @@
 package com.bubi.nodanotes.ui.navigation
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
@@ -9,9 +11,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.NavBackStackEntry
+import androidx.compose.animation.AnimatedContentTransitionScope
 
 import com.bubi.nodanotes.ui.screens.history.HistoryScreen
 import com.bubi.nodanotes.ui.screens.vault.VaultSelectorScreen
@@ -32,7 +37,31 @@ fun NodaNavGraph(
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        enterTransition = {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = androidx.compose.animation.core.tween(300))
+        },
+        exitTransition = {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = androidx.compose.animation.core.tween(300))
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
+        }
     ) {
         composable(Screen.VaultSelector.route) {
             VaultSelectorScreen(
