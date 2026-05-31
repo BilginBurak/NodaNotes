@@ -83,12 +83,12 @@ fun NodaAppShell(
     val drawerContent: @Composable () -> Unit = {
         var tagsExpanded by remember { mutableStateOf(false) }
         val tagsWeight by animateFloatAsState(
-            targetValue = if (tagsExpanded) 0.2f else 0.01f,
+            targetValue = if (tagsExpanded) 0.22f else 0.01f,
             animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
             label = "tagsWeight"
         )
         val foldersWeight by animateFloatAsState(
-            targetValue = if (tagsExpanded) 0.6f else 0.9f,
+            targetValue = if (tagsExpanded) 0.58f else 0.9f,
             animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
             label = "foldersWeight"
         )
@@ -259,7 +259,7 @@ fun NodaAppShell(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {

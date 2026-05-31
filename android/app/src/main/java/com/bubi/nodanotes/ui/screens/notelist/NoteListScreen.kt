@@ -1,6 +1,8 @@
 package com.bubi.nodanotes.ui.screens.notelist
 
 import androidx.compose.animation.*
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -48,6 +50,57 @@ fun NoteListScreen(
     // Selection mode state variables
     var isSelectionMode by remember { mutableStateOf(false) }
     val selectedNotes = remember { mutableStateListOf<NoteListItemDto>() }
+
+    var showExitDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = true) {
+        showExitDialog = true
+    }
+
+    if (showExitDialog) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    text = "Exit App",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to exit NodaNotes?",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExitDialog = false
+                        (context as? android.app.Activity)?.finish()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("Exit")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     // Observe syncStatus but do not show toast anymore as it is removed by the user requirement.
     // LaunchedEffect(syncStatus) logic removed completely.
