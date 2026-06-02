@@ -12,3 +12,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.37", features = ["full"] }
 thiserror = "1.0"
+
+[profile.release]
+opt-level = "s"      # Size optimizations, keeping execution fast and reducing memory/cache footprints
+lto = true           # Full Link-Time Optimization across all crates
+codegen-units = 1    # Reduces parallel codegen units to maximize LLVM optimizations
+panic = "abort"      # Disables panic unwinding to shrink binary size
+strip = true         # Strips all debug symbols from the final binary
+
