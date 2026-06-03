@@ -506,3 +506,53 @@ Sayfanın tüm onarım, temizleme ve indeksleme fonksiyonları asıllarına sad�
 
 ### Sonuç
 Noda'nın "dumb monitor" ön yüz vizyonuna sadık kalınarak tüm bu gelişmiş arama ve kelime parçalama mantığı tamamen Rust katmanında çözülmüştür. Sıfır çökme garantili, attachment isimlerini, dosya uzantılarını ve dosya kimliklerini anında en üst sırada görsel olarak vurgulayarak getiren premium bir arama motoru elde edilmiştir.
+
+---
+
+## 20. Snapshot & History Reason Upgrades, Tag Filtering Fixes, and Reading/Live Preview Checkbox Toggles
+
+### Encountered Problems
+* **Redundant Snapshots & Autosave Conflicts:** Snapshots were being generated on note change (blur) even if no changes were made. Additionally, autosave conflicted with manual snapshots, and close/sync snapshots were not triggered properly.
+* **Tag Filtering Ignored Inline Tags:** Clicking a tag in the sidebar only filtered notes by YAML frontmatter tags, ignoring `#inline` tags.
+* **Non-Functional Task Checkboxes in Preview/Reading Mode:** Clicks/double-clicks on task list checkboxes in Reading (Preview) mode did not toggle their state or update the backend database.
+
+### Resolution & Implementation Detail
+* **Snapshot Milestones & Reason Tracking:**
+  - Added a `reason` text field to the `history_snapshots` table in SQLite schema.
+  - Updated snapshot file serialization to encode the reason in the filename (`{timestamp}_{reason}.md`), keeping the filesystem as the single source of truth.
+  - Implemented 4 precise snapshot milestones with reasons: `Blur`, `AutoSave`, `Pre-Sync`, and `App-Exit`.
+  - Added a dirty check in Svelte/Rust before saving: snapshots are only taken if the note actually has pending modifications.
+  - Displayed the reason tag in the Svelte Version History panel with color-coded badges.
+* **Dual-Source Tag Filtering:**
+  - Modified the note filtering logic in `NoteList.svelte` to check both YAML tags (`n.tags`) and inline tags (`n.inline_tags`) against the selected tag.
+* **Unified IPC Task Checkbox Toggling:**
+  - Implemented `toggle_task_status` Tauri IPC command in Rust which locates the corresponding task line in the raw Markdown file, toggles the state, updates SQLite, and writes it back to disk.
+  - Bound the preview checkboxes click/double-click handlers in `Preview.svelte` to invoke the new FFI command and instantly refresh Svelte stores.
+
+### Result
+The application now tracks historical snapshots with distinct reasons, filters tags correctly including inline references, and allows interactive task list toggling directly from the Preview (Reading) view.
+
+---
+
+## 21. Fix Manual & Blur Snapshot Triggers (Autosave Bypass)
+
+### Encountered Problems
+* **Autosave Intercepting Blur Snapshots:** When autosave successfully saves changes, it clears the note's dirty state (`isDirty = false`). As a result, switching to another note (Blur) failed to trigger a snapshot with the `"Blur"` milestone, because Svelte saw `isDirty = false` and the Rust backend aborted the snapshot block since the disk content was already identical to the current note body.
+* **Lack of "Manual" Snapshot Reason:** Saving manually via `Cmd+S` did not explicitly save a snapshot with the `"Manual"` reason.
+
+### Resolution & Implementation Detail
+* **Session Modification Tracker:**
+  - Introduced `activeNoteSessionModified` store in Svelte `notes.ts`. This store tracks whether the note has been edited at all since it was loaded, rather than checking if it's currently dirty (which is cleared by autosave).
+  - Reset `activeNoteSessionModified` to `false` when loading a note, deleting it, or when a manual or blur snapshot is successfully completed.
+  - Set it to `true` on note content, frontmatter, or tags updates.
+* **Refactored Svelte Save & Select:**
+  - Updated `selectNote` to check `activeNoteSessionModified` instead of `activeNoteDirty` to decide whether to trigger a `"Blur"` snapshot.
+  - Updated `saveActiveNote` early-return guards: it now allows snapshot requests to bypass the `!isDirty` check if a snapshot is explicitly triggered and the note has been modified in the current session.
+* **Rust Backend Update:**
+  - Removed the `content_changed` constraint from the `trigger_snapshot` check in the `update_note` command. If the frontend requests a milestone snapshot (`trigger_snapshot == true`), the backend unconditionally takes the snapshot of the note, even if it has the same content as the file currently on disk.
+* **Manual Save Trigger:**
+  - Updated `handleManualSave` in `Editor.svelte` to invoke `saveActiveNote(true, 'Manual')`, which forces a snapshot with the `"Manual"` milestone.
+
+### Result
+Milestone snapshots for `"Blur"` and `"Manual"` are now captured reliably even if autosave has already written the changes to the disk, while preventing duplicate snapshots if the note wasn't modified during the session.
+

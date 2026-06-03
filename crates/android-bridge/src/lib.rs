@@ -958,7 +958,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
 
         if content_changed {
             let vault_path = service.base_path();
-            let _ = noda_core::history::snapshot(vault_path, &existing_note).await;
+            let _ = noda_core::history::snapshot(vault_path, &existing_note, "Android").await;
         }
 
         // 1. Write to local disk
@@ -1454,6 +1454,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_listSnapshots(
                     timestamp: s.timestamp.to_rfc3339(),
                     file_path: relative_path,
                     size_bytes,
+                    reason: s.reason.clone(),
                 }
             })
             .collect();
@@ -1621,7 +1622,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreSnapshot(
         };
 
         if let Some(ref current) = current_note {
-            let _ = noda_core::history::snapshot(&path, current).await;
+            let _ = noda_core::history::snapshot(&path, current, "Pre-Restore").await;
         }
 
         let merged_note = match &current_note {

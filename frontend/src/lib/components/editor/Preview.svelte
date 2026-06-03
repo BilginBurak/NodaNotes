@@ -1,6 +1,7 @@
 <script lang="ts">
   import { marked } from 'marked';
-  import { updateActiveNoteBody, saveActiveNote } from '../../stores/notes';
+  import { activeNote } from '../../stores/notes';
+  import * as ipc from '../../services/ipc';
 
   export let content: string = '';
 
@@ -9,44 +10,25 @@
   function handlePreviewClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox') {
-      // Previews are disabled by default, we intercept click
+      // Previews are disabled by default, we intercept click/doubleclick
       e.preventDefault();
+      e.stopPropagation();
       
-      const checkboxes = Array.from((e.currentTarget as HTMLElement).querySelectorAll('input[type="checkbox"]'));
-      const index = checkboxes.indexOf(target as HTMLInputElement);
-      if (index !== -1) {
-        toggleMarkdownTask(index);
-      }
-    }
-  }
-
-  function toggleMarkdownTask(index: number) {
-    const taskRegex = /^(\s*[-*+]\s+\[([ xX])\])/;
-    let lines = content.split('\n');
-    let taskCount = 0;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const match = lines[i].match(taskRegex);
-      if (match) {
-        if (taskCount === index) {
-          const currentMarker = match[1];
-          const currentStatus = match[2];
-          const nextStatus = currentStatus === ' ' ? 'x' : ' ';
-          const newMarker = currentMarker.replace(`[${currentStatus}]`, `[${nextStatus}]`);
-          lines[i] = lines[i].replace(currentMarker, newMarker);
-          
-          const newBody = lines.join('\n');
-          updateActiveNoteBody(newBody);
-          saveActiveNote(false);
-          break;
-        }
-        taskCount++;
+      const parentLi = target.closest('li');
+      const lineContent = parentLi ? parentLi.textContent?.trim() || '' : '';
+      const note = $activeNote;
+      if (note && lineContent) {
+        ipc.toggleTaskStatus(note.id, lineContent).then((updated) => {
+          activeNote.set(updated);
+        }).catch((err) => {
+          console.error("Failed to toggle task status:", err);
+        });
       }
     }
   }
 </script>
 
-<div class="markdown-preview scrollbar-thin" onclick={handlePreviewClick} role="presentation">
+<div class="markdown-preview scrollbar-thin" onclick={handlePreviewClick} ondblclick={handlePreviewClick} role="presentation">
   <!-- eslint-disable-next-line svelte/no-at-html-tags -->
   {@html html}
 </div>

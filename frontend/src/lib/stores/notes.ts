@@ -7,6 +7,7 @@ export const notesList      = writable<NoteListItemDto[]>([]);
 export const activeNote     = writable<NoteDto | null>(null);
 export const loadingNote    = writable<boolean>(false);
 export const activeNoteDirty = writable<boolean>(false);
+export const activeNoteSessionModified = writable<boolean>(false);
 export const selectedFolder  = writable<string | null>(null);
 export const selectedTag     = writable<string | null>(null);
 export const tagsList        = writable<TagWithCountDto[]>([]);
@@ -50,6 +51,7 @@ export async function triggerDailyNote() {
     await loadNotes();
     activeNote.set(dailyNote);
     activeNoteDirty.set(false);
+    activeNoteSessionModified.set(false);
     
     selectedFolder.set('Daily Notes');
     selectedTag.set(null);
@@ -66,9 +68,9 @@ export async function triggerDailyNote() {
 
 export async function selectNote(id: string) {
   const currentActive = get(activeNote);
-  const isDirty = get(activeNoteDirty);
-  if (currentActive && isDirty) {
-    await saveActiveNote(true);
+  const wasModified = get(activeNoteSessionModified);
+  if (currentActive && wasModified) {
+    await saveActiveNote(true, 'Blur');
   }
 
   loadingNote.set(true);
@@ -77,6 +79,7 @@ export async function selectNote(id: string) {
     const note = await ipc.getNote(id);
     activeNote.set(note);
     activeNoteDirty.set(false);
+    activeNoteSessionModified.set(false);
     viewingTrashNote.set(false);
     viewingConflictNote.set(null);
     
@@ -99,6 +102,7 @@ export async function selectTrashNote(id: string) {
     const note = await ipc.getTrashNote(id);
     activeNote.set(note);
     activeNoteDirty.set(false);
+    activeNoteSessionModified.set(false);
     viewingTrashNote.set(true);
     viewingConflictNote.set(null);
   } catch (e: any) {
@@ -116,6 +120,7 @@ export async function selectConflictNote(noteId: string, archivedPath: string) {
     const note = await ipc.getConflictNote(archivedPath);
     activeNote.set(note);
     activeNoteDirty.set(false);
+    activeNoteSessionModified.set(false);
     viewingTrashNote.set(false);
     viewingConflictNote.set({ noteId, archivedPath });
   } catch (e: any) {
@@ -126,10 +131,14 @@ export async function selectConflictNote(noteId: string, archivedPath: string) {
   }
 }
 
-export async function saveActiveNote(triggerSnapshot: boolean = false) {
+export async function saveActiveNote(triggerSnapshot: boolean = false, reason: string | null = null) {
   const currentActive = get(activeNote);
   const isDirty = get(activeNoteDirty);
-  if (!currentActive || !isDirty) return;
+  const wasModified = get(activeNoteSessionModified);
+
+  if (!currentActive) return;
+  if (!isDirty && !triggerSnapshot) return;
+  if (triggerSnapshot && !wasModified) return;
 
   try {
     const updated = await ipc.updateNote(
@@ -140,10 +149,14 @@ export async function saveActiveNote(triggerSnapshot: boolean = false) {
       currentActive.color ?? null,
       currentActive.pinned ?? false,
       currentActive.tags ?? [],
-      triggerSnapshot
+      triggerSnapshot,
+      reason
     );
     activeNote.set(updated);
     activeNoteDirty.set(false);
+    if (reason === 'Manual' || reason === 'Blur') {
+      activeNoteSessionModified.set(false);
+    }
     lastSavedAt.set(new Date());
     await loadNotes();
 
@@ -168,6 +181,7 @@ export async function createNewNote(targetDir: string | null = null) {
     const noteWithCorrectPath = await ipc.getNote(newNote.id);
     activeNote.set(noteWithCorrectPath);
     activeNoteDirty.set(false);
+    activeNoteSessionModified.set(false);
     return noteWithCorrectPath;
   } catch (e: any) {
     notesError.set(e.message || 'Failed to create note');
@@ -212,6 +226,7 @@ export async function deleteActiveNote() {
     await ipc.deleteNote(currentActive.id);
     activeNote.set(null);
     activeNoteDirty.set(false);
+    activeNoteSessionModified.set(false);
     await loadNotes();
   } catch (e: any) {
     notesError.set(e.message || 'Failed to delete note');
@@ -225,6 +240,7 @@ export function updateActiveNoteBody(body: string) {
     return { ...note, body };
   });
   activeNoteDirty.set(true);
+  activeNoteSessionModified.set(true);
 }
 
 export function updateActiveNoteFrontmatter(frontmatter: Record<string, any>) {
@@ -246,6 +262,7 @@ export function updateActiveNoteFrontmatter(frontmatter: Record<string, any>) {
     };
   });
   activeNoteDirty.set(true);
+  activeNoteSessionModified.set(true);
 }
 
 export function updateActiveNoteTags(tags: string[]) {
@@ -254,6 +271,7 @@ export function updateActiveNoteTags(tags: string[]) {
     return { ...note, tags };
   });
   activeNoteDirty.set(true);
+  activeNoteSessionModified.set(true);
 }
 
 // ── Folder Stores & Functions ───────────────────────────────
@@ -344,6 +362,7 @@ export async function deleteFolder(relPath: string) {
     if (active && (active.file_path.startsWith(relPath + '/') || active.file_path === relPath)) {
       activeNote.set(null);
       activeNoteDirty.set(false);
+      activeNoteSessionModified.set(false);
     }
   } catch (e: any) {
     notesError.set(e.message || 'Failed to delete folder');

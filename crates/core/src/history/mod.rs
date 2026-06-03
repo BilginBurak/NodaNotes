@@ -18,8 +18,9 @@ use crate::models::note::Frontmatter;
 pub async fn snapshot<P: AsRef<Path>>(
     vault_path: P,
     note: &Note,
+    reason: &str,
 ) -> Result<Snapshot, NodaError> {
-    let snap = save_snapshot(&vault_path, note).await?;
+    let snap = save_snapshot(&vault_path, note, reason).await?;
     let config = crate::settings::AppConfig::load(&vault_path).await.unwrap_or_default();
     let policy = RetentionPolicy {
         max_count: config.history.max_snapshots_per_note as usize,
@@ -118,7 +119,7 @@ mod tests {
         note.body = "Hello".to_string();
         
         // Take snapshot 1
-        let snap1 = snapshot(dir.path(), &note).await.unwrap();
+        let snap1 = snapshot(dir.path(), &note, "Blur").await.unwrap();
         
         // Wait 50ms to ensure the second file gets a different %3f timestamp
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -127,7 +128,7 @@ mod tests {
         note.body = "World".to_string();
         
         // Take snapshot 2
-        let snap2 = snapshot(dir.path(), &note).await.unwrap();
+        let snap2 = snapshot(dir.path(), &note, "AutoSave").await.unwrap();
         
         // List snapshots
         let list = list_snapshots(dir.path(), note.id).await.unwrap();

@@ -116,6 +116,7 @@ pub async fn update_note(
     pinned: bool,
     tags: Vec<String>,
     trigger_snapshot: bool,
+    snapshot_reason: Option<String>,
 ) -> Result<NoteDto, AppError> {
     let service = {
         let guard = state.vault_service.read();
@@ -178,11 +179,25 @@ pub async fn update_note(
     };
 
     // Check if content actually changed
-    let content_changed = existing_note_full.title != note.title || existing_note_full.body != note.body || existing_note_full.color != note.color || existing_note_full.pinned != note.pinned || existing_note_full.tags != note.tags;
+    let _content_changed = existing_note_full.title != note.title || existing_note_full.body != note.body || existing_note_full.color != note.color || existing_note_full.pinned != note.pinned || existing_note_full.tags != note.tags;
 
-    if content_changed && trigger_snapshot {
+    if trigger_snapshot {
         // Take a snapshot of the PREVIOUS state before we overwrite it
-        let _ = history::snapshot(&vault_path, &existing_note_full).await;
+        let reason = snapshot_reason.as_deref().unwrap_or("Unknown");
+        if let Ok(snap) = history::snapshot(&vault_path, &existing_note_full, reason).await {
+            let conn = db.conn.lock();
+            let timestamp_utc = snap.timestamp;
+            let rel_path = snap.absolute_path.strip_prefix(&vault_path)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| snap.absolute_path.to_string_lossy().to_string());
+            let _ = queries::insert_history_snapshot(
+                &conn,
+                &existing_note_full.id.0.to_string(),
+                &timestamp_utc.to_rfc3339(),
+                reason,
+                &rel_path,
+            );
+        }
     }
 
     // 1. Write to local disk
@@ -651,4 +666,106 @@ pub async fn trigger_daily_note(
     };
 
     Ok(note_dto)
+}
+
+#[tauri::command]
+pub async fn toggle_task_status(
+    state: State<'_, AppState>,
+    note_id: String,
+    line_content: String,
+) -> Result<NoteDto, AppError> {
+    let service = {
+        let guard = state.vault_service.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    let db = {
+        let guard = state.database.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+    
+    let parsed_id = NoteId(Ulid::from_string(&note_id).map_err(|e| AppError {
+        code: "INVALID_ID".to_string(),
+        message: format!("Invalid NoteId: {}", e),
+    })?);
+
+    // Read freshest note from disk
+    let mut note = service.read_note(parsed_id).await.map_err(AppError::from)?;
+    
+    // Split note body into lines
+    let mut lines: Vec<String> = note.body.lines().map(|s| s.to_string()).collect();
+    let mut modified = false;
+    
+    // Find the matching task line
+    // The markdown task line looks like: "- [ ] task text" or "- [x] task text"
+    // The user passed `line_content` which is the text content of the task (e.g. "task text" or similar).
+    let cleaned_target = line_content.trim().to_lowercase();
+    
+    for line in &mut lines {
+        let trimmed_line = line.trim();
+        if trimmed_line.starts_with("- [ ]") || trimmed_line.starts_with("- [x]") || trimmed_line.starts_with("- [X]")
+           || trimmed_line.starts_with("* [ ]") || trimmed_line.starts_with("* [x]") || trimmed_line.starts_with("* [X]")
+           || trimmed_line.starts_with("+ [ ]") || trimmed_line.starts_with("+ [x]") || trimmed_line.starts_with("+ [X]") {
+            
+            let text_part = if trimmed_line.len() > 5 {
+                trimmed_line[5..].trim().to_lowercase()
+            } else {
+                continue;
+            };
+            
+            if text_part == cleaned_target {
+                if trimmed_line.contains("[ ]") {
+                    *line = line.replace("[ ]", "[x]");
+                } else if trimmed_line.contains("[x]") {
+                    *line = line.replace("[x]", "[ ]");
+                } else if trimmed_line.contains("[X]") {
+                    *line = line.replace("[X]", "[ ]");
+                }
+                modified = true;
+                break;
+            }
+        }
+    }
+    
+    if !modified {
+        for line in &mut lines {
+            let trimmed_line = line.trim();
+            if trimmed_line.starts_with("- [ ") || trimmed_line.starts_with("* [ ") || trimmed_line.starts_with("+ [ ") {
+                if trimmed_line.to_lowercase().contains(&cleaned_target) {
+                    if trimmed_line.contains("[ ]") {
+                        *line = line.replace("[ ]", "[x]");
+                    } else if trimmed_line.contains("[x]") {
+                        *line = line.replace("[x]", "[ ]");
+                    } else if trimmed_line.contains("[X]") {
+                        *line = line.replace("[X]", "[ ]");
+                    }
+                    modified = true;
+                    break;
+                }
+            }
+        }
+    }
+    
+    if modified {
+        note.body = lines.join("\n");
+        note.inline_tags = Note::parse_inline_tags(&note.body);
+        note.updated_at = Utc::now();
+        
+        service.write_note(&note).await.map_err(AppError::from)?;
+        
+        let relative_path = note.file_path.clone();
+        {
+            let conn = db.conn.lock();
+            queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
+                .map_err(AppError::from)?;
+        }
+    }
+    
+    Ok(NoteDto::from(note))
 }

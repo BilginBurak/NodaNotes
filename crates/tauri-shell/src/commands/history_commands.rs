@@ -96,7 +96,20 @@ pub async fn restore_snapshot(
     };
     
     if let Some(ref current_note) = current_note {
-        let _ = core_snapshot(&vault_path, current_note).await;
+        if let Ok(snap) = core_snapshot(&vault_path, current_note, "Pre-Restore").await {
+            let conn = db.conn.lock();
+            let timestamp_utc = snap.timestamp;
+            let rel_path = snap.absolute_path.strip_prefix(&vault_path)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| snap.absolute_path.to_string_lossy().to_string());
+            let _ = queries::insert_history_snapshot(
+                &conn,
+                &current_note.id.0.to_string(),
+                &timestamp_utc.to_rfc3339(),
+                "Pre-Restore",
+                &rel_path,
+            );
+        }
     }
 
     // Merge past content with current metadata and set updated_at to Utc::now() to prevent sync issues
@@ -233,6 +246,19 @@ pub async fn delete_snapshot(
     core_delete_snapshot(&vault_path, parsed_note_id, parsed_timestamp)
         .await
         .map_err(AppError::from)?;
+
+    {
+        let db = {
+            let guard = state.database.read();
+            guard.clone().ok_or_else(|| AppError {
+                code: "VAULT_NOT_OPEN".to_string(),
+                message: "No active vault is currently open".to_string(),
+            })?
+        };
+        let conn = db.conn.lock();
+        queries::delete_history_snapshot(&conn, &note_id, &parsed_timestamp.to_rfc3339())
+            .map_err(AppError::from)?;
+    }
 
     Ok(())
 }

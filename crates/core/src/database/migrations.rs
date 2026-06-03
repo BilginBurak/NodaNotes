@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::schema::INIT_SCHEMA;
 use tracing::info;
 
-const CURRENT_SCHEMA_VERSION: i32 = 2;
+const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     // Check if schema_version table exists
@@ -24,7 +24,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         .unwrap_or(0)
     } else {
         // First run, apply initial schema
-        info!("Applying initial database schema (v2)");
+        info!("Applying initial database schema (v3)");
         conn.execute_batch(INIT_SCHEMA)
             .map_err(|e| NodaError::Database(format!("Failed to apply initial schema: {}", e)))?;
         
@@ -63,6 +63,27 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         current_version = 2;
     }
 
+    if current_version < 3 {
+        info!("Applying database migration v3: adding history_snapshots");
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS history_snapshots (
+                note_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                PRIMARY KEY (note_id, timestamp)
+            );
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v3: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (3)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 3;
+    }
+
     info!("Database is up to date (version {})", current_version);
     Ok(())
 }
+

@@ -61,6 +61,7 @@ export interface Snapshot {
   note_id: string;
   timestamp: string;
   absolute_path: string;
+  reason: string;
 }
 
 export interface DiffChunk {

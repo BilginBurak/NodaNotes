@@ -287,7 +287,7 @@
   async function handleManualSave() {
     if (saveTimeout) clearTimeout(saveTimeout);
     try {
-      await saveActiveNote(true);
+      await saveActiveNote(true, 'Manual');
       lastSnapshotTime = Date.now();
     } catch (err) {
       console.error('Manual save failed:', err);
@@ -1261,7 +1261,12 @@
               {#each $snapshotsList as snap (snap.timestamp)}
                 <div class="snap-card">
                   <div class="snap-info">
-                    <span class="snap-date">{formatDate(snap.timestamp)}</span>
+                    <div class="snap-meta-row">
+                      <span class="snap-date">{formatDate(snap.timestamp)}</span>
+                      {#if snap.reason}
+                        <span class="snap-reason-badge" class:badge-blur={snap.reason === 'Blur'} class:badge-autosave={snap.reason === 'AutoSave'} class:badge-presync={snap.reason === 'Pre-Sync'} class:badge-appexit={snap.reason === 'App-Exit'}>{snap.reason}</span>
+                      {/if}
+                    </div>
                     <span class="snap-file">{snap.absolute_path ? snap.absolute_path.split('/').pop() : 'Unknown'}</span>
                   </div>
                   <div class="snap-actions">
@@ -1716,7 +1721,33 @@
   .snap-card:hover { border-color: var(--accent-border); }
 
   .snap-info { display: flex; flex-direction: column; gap: 2px; }
+  .snap-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .snap-date { color: var(--text-secondary); font-size: 11px; font-weight: 500; }
+  .snap-reason-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    background-color: var(--color-orange-muted);
+    color: var(--color-orange);
+  }
+  .snap-reason-badge.badge-blur {
+    background-color: hsla(210, 80%, 50%, 0.15);
+    color: hsl(210, 80%, 55%);
+  }
+  .snap-reason-badge.badge-autosave {
+    background-color: hsla(140, 70%, 45%, 0.15);
+    color: hsl(140, 70%, 50%);
+  }
+  .snap-reason-badge.badge-presync {
+    background-color: hsla(280, 70%, 50%, 0.15);
+    color: hsl(280, 70%, 55%);
+  }
+  .snap-reason-badge.badge-appexit {
+    background-color: hsla(0, 70%, 50%, 0.15);
+    color: hsl(0, 70%, 55%);
+  }
   .snap-file { color: var(--text-tertiary); font-size: 10px; font-family: var(--font-mono); }
 
   .restore-btn {

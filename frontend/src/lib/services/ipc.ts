@@ -74,7 +74,8 @@ export const updateNote = (
   color: string | null = null,
   pinned = false,
   tags: string[] = [],
-  triggerSnapshot = false
+  triggerSnapshot = false,
+  snapshotReason: string | null = null
 ) => call<NoteDto>('update_note', {
   id,
   title,
@@ -84,10 +85,12 @@ export const updateNote = (
   pinned,
   tags,
   triggerSnapshot,
+  snapshotReason,
 });
 
 export const renameNote  = (id: string, newTitle: string) => call<NoteDto>('rename_note',  { id, newTitle });
 export const deleteNote  = (id: string)                   => call<void>('delete_note',     { id });
+export const toggleTaskStatus = (noteId: string, lineContent: string) => call<NoteDto>('toggle_task_status', { noteId, lineContent });
 
 // ── Search Commands ─────────────────────────────────────────
 export interface SearchResult {

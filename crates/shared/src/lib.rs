@@ -92,6 +92,7 @@ pub mod dtos {
         pub timestamp: String,
         pub file_path: String,
         pub size_bytes: u64,
+        pub reason: String,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -261,6 +261,38 @@ impl SyncEngine {
             }
         };
 
+        // Pre-Sync snapshots for modified notes
+        for note in &local_notes {
+            if let Ok(snaps) = crate::history::list_snapshots(vault_path, note.id).await {
+                let needs_snapshot = if let Some(latest_snap) = snaps.first() {
+                    if let Ok(restored_note) = crate::history::restore(vault_path, latest_snap).await {
+                        note.body != restored_note.body || note.title != restored_note.title || note.tags != restored_note.tags
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                };
+
+                if needs_snapshot {
+                    if let Ok(snap) = crate::history::snapshot(vault_path, note, "Pre-Sync").await {
+                        let conn = database.conn.lock();
+                        let timestamp_utc = snap.timestamp;
+                        let rel_path = snap.absolute_path.strip_prefix(vault_path)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| snap.absolute_path.to_string_lossy().to_string());
+                        let _ = crate::database::queries::insert_history_snapshot(
+                            &conn,
+                            &note.id.0.to_string(),
+                            &timestamp_utc.to_rfc3339(),
+                            "Pre-Sync",
+                            &rel_path,
+                        );
+                    }
+                }
+            }
+        }
+
         let mut remote_state = load_remote_state(vault_path).await.unwrap_or_default();
         let mut sync_queue = SyncQueue::load(vault_path).await?;
         let vault_service = VaultService::new(vault_path).map_err(|e| NodaError::Vault(e.to_string()))?;

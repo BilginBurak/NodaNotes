@@ -12,12 +12,14 @@ pub struct Snapshot {
     pub note_id: NoteId,
     pub timestamp: DateTime<Utc>,
     pub absolute_path: PathBuf,
+    pub reason: String,
 }
 
 /// Saves a snapshot of the given note into the `.noda/history/{note_id}/` folder
 pub async fn save_snapshot<P: AsRef<Path>>(
     vault_path: P,
     note: &Note,
+    reason: &str,
 ) -> Result<Snapshot, NodaError> {
     let vault_root = vault_path.as_ref();
     let history_dir = vault_root
@@ -30,7 +32,7 @@ pub async fn save_snapshot<P: AsRef<Path>>(
         .map_err(NodaError::Io)?;
 
     let now = Utc::now();
-    let filename = format!("{}.md", now.format("%Y%m%d_%H%M%S_%3f"));
+    let filename = format!("{}_{}.md", now.format("%Y%m%d_%H%M%S_%3f"), reason);
     let absolute_path = history_dir.join(filename);
 
     let markdown = note.to_markdown().map_err(|e| {
@@ -45,6 +47,7 @@ pub async fn save_snapshot<P: AsRef<Path>>(
         note_id: note.id,
         timestamp: now,
         absolute_path,
+        reason: reason.to_string(),
     })
 }
 
@@ -72,13 +75,23 @@ pub async fn list_snapshots<P: AsRef<Path>>(
         let path = entry.path();
         if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
             if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
-                if let Ok(timestamp) = chrono::NaiveDateTime::parse_from_str(name, "%Y%m%d_%H%M%S_%3f") {
-                    let timestamp = DateTime::<Utc>::from_naive_utc_and_offset(timestamp, Utc);
-                    snapshots.push(Snapshot {
-                        note_id,
-                        timestamp,
-                        absolute_path: path,
-                    });
+                let parts: Vec<&str> = name.split('_').collect();
+                if parts.len() >= 3 {
+                    let ts_str = format!("{}_{}_{}", parts[0], parts[1], parts[2]);
+                    if let Ok(timestamp) = chrono::NaiveDateTime::parse_from_str(&ts_str, "%Y%m%d_%H%M%S_%3f") {
+                        let timestamp = DateTime::<Utc>::from_naive_utc_and_offset(timestamp, Utc);
+                        let reason = if parts.len() >= 4 {
+                            parts[3..].join("_")
+                        } else {
+                            "Unknown".to_string()
+                        };
+                        snapshots.push(Snapshot {
+                            note_id,
+                            timestamp,
+                            absolute_path: path,
+                            reason,
+                        });
+                    }
                 }
             }
         }

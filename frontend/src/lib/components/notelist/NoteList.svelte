@@ -62,7 +62,9 @@
   // Filtered notes only used in normal or daily mode
   const filteredNotes = $derived(viewMode !== 'normal' && viewMode !== 'daily' ? [] : notes.filter((n) => {
     if ($selectedTag) {
-      if (!n.tags || !n.tags.includes($selectedTag)) {
+      const hasYamlTag = n.tags && n.tags.includes($selectedTag);
+      const hasInlineTag = n.inline_tags && n.inline_tags.includes($selectedTag);
+      if (!hasYamlTag && !hasInlineTag) {
         return false;
       }
     }

@@ -435,8 +435,53 @@ pub fn find_daily_note_id(conn: &Connection, date_str: &str) -> Result<Option<No
     }
 }
 
+pub fn insert_history_snapshot(
+    conn: &Connection,
+    note_id: &str,
+    timestamp: &str,
+    reason: &str,
+    file_path: &str,
+) -> Result<(), NodaError> {
+    conn.execute(
+        "INSERT OR REPLACE INTO history_snapshots (note_id, timestamp, reason, file_path) VALUES (?1, ?2, ?3, ?4)",
+        params![note_id, timestamp, reason, file_path],
+    ).map_err(|e| NodaError::Database(format!("Failed to insert history snapshot: {}", e)))?;
+    Ok(())
+}
+
+pub fn delete_history_snapshot(
+    conn: &Connection,
+    note_id: &str,
+    timestamp: &str,
+) -> Result<(), NodaError> {
+    conn.execute(
+        "DELETE FROM history_snapshots WHERE note_id = ?1 AND timestamp = ?2",
+        params![note_id, timestamp],
+    ).map_err(|e| NodaError::Database(format!("Failed to delete history snapshot: {}", e)))?;
+    Ok(())
+}
+
+pub fn list_history_snapshots(
+    conn: &Connection,
+    note_id: &str,
+) -> Result<Vec<(String, String, String)>, NodaError> {
+    let mut stmt = conn.prepare(
+        "SELECT timestamp, reason, file_path FROM history_snapshots WHERE note_id = ?1 ORDER BY timestamp DESC"
+    ).map_err(|e| NodaError::Database(format!("Prepare list_history_snapshots failed: {}", e)))?;
+
+    let rows = stmt.query_map(params![note_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+    }).map_err(|e| NodaError::Database(format!("Query map list_history_snapshots failed: {}", e)))?;
+
+    let mut list = Vec::new();
+    for row in rows {
+        list.push(row.map_err(|e| NodaError::Database(e.to_string()))?);
+    }
+    Ok(list)
+}
 
 #[cfg(test)]
+
 mod tests {
     use super::*;
     use crate::database::Database;
