@@ -10,11 +10,13 @@
     renameFolder,
     renamingNote,
     renameNoteById,
-    activeViewMode
+    activeViewMode,
+    selectedTag
   } from '../../stores/notes';
   import { openContextMenu } from '../../stores/contextMenu';
   import type { TreeNode } from '../../types';
   import FolderTreeItem from './FolderTreeItem.svelte';
+  import { get } from 'svelte/store';
 
   let {
     node,
@@ -35,6 +37,7 @@
 
   function handleRowClick(e: MouseEvent) {
     e.stopPropagation();
+    selectedTag.set(null);
     if (node.type === 'folder') {
       selectedFolder.set(node.relPath);
       activeViewMode.set('normal');
@@ -78,7 +81,6 @@
   }
 
   function handleDragOver(e: DragEvent) {
-    if (node.type !== 'folder') return;
     e.preventDefault();
     e.stopPropagation();
     dragOverActive = true;
@@ -90,10 +92,16 @@
   }
 
   async function handleDrop(e: DragEvent) {
-    if (node.type !== 'folder') return;
     e.preventDefault();
     e.stopPropagation();
     dragOverActive = false;
+
+    // Resolve target folder path (if dropped on a note, get its parent folder)
+    let targetFolder = node.relPath;
+    if (node.type === 'note') {
+      const lastSlash = node.relPath.lastIndexOf('/');
+      targetFolder = lastSlash !== -1 ? node.relPath.substring(0, lastSlash) : '';
+    }
 
     // ── External Finder/OS File Drop ──
     if (e.dataTransfer && e.dataTransfer.files.length > 0) {
@@ -106,7 +114,7 @@
           try {
             const text = await file.text();
             const originalName = file.name.replace(/\.md$|\.txt$/, '');
-            const newNote = await importNoteFromContent(originalName, text, node.relPath);
+            const newNote = await importNoteFromContent(originalName, text, targetFolder);
             await loadNotes();
             await selectNote(newNote.id);
           } catch (err) {
@@ -119,7 +127,7 @@
     }
 
     // Use global draggedItem store for extreme reliability in WKWebView
-    let data = $draggedItem;
+    let data = get(draggedItem);
 
     if (!data && e.dataTransfer) {
       const rawData = e.dataTransfer.getData('text/plain');
@@ -138,14 +146,14 @@
 
     try {
       if (data.type === 'note') {
-        await moveNote(data.id, node.relPath);
+        await moveNote(data.id, targetFolder);
       } else if (data.type === 'folder') {
-        if (draggedPath === node.relPath || node.relPath.startsWith(draggedPath + '/')) {
+        if (draggedPath === targetFolder || targetFolder.startsWith(draggedPath + '/')) {
           alert('Cannot move a folder into itself or its subfolder.');
           return;
         }
         const folderName = draggedPath.split('/').pop() || '';
-        const newPath = node.relPath ? `${node.relPath}/${folderName}` : folderName;
+        const newPath = targetFolder ? `${targetFolder}/${folderName}` : folderName;
         await moveFolder(draggedPath, newPath);
       }
       draggedItem.set(null);
@@ -230,7 +238,7 @@
   style="padding-left: {depth * 12 + 12}px"
   draggable="true"
   ondragstart={handleDragStart}
-  ondragend={() => { draggedItem.set(null); dragOverActive = false; }}
+  ondragend={() => { setTimeout(() => draggedItem.set(null), 150); dragOverActive = false; }}
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}

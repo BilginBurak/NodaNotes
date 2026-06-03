@@ -16,11 +16,12 @@ fn is_hidden_or_noda(entry: &DirEntry) -> bool {
         return false;
     }
 
-    // Skip all hidden files and folders, particularly ".noda"
+    // Skip all hidden files and folders, particularly ".noda",
+    // but allow the ".templates" directory.
     entry
         .file_name()
         .to_str()
-        .map(|s| s.starts_with('.'))
+        .map(|s| s.starts_with('.') && s != ".templates")
         .unwrap_or(false)
 }
 

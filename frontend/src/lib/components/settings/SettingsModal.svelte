@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount, createEventDispatcher } from 'svelte';
+  import { onMount } from 'svelte';
   import { fade, scale, slide } from 'svelte/transition';
   import { appConfig, saveSettings, loadSettings, loadingSettings, settingsError } from '../../stores/settings';
+  import { notesList } from '../../stores/notes';
   import {
     validateSyncConfig,
     rebuildDatabaseCache,
@@ -20,11 +21,15 @@
   import type { OrphanedAttachment, DuplicateNoteGroup, OrphanedRemnants } from '../../services/ipc';
   import type { AppConfig } from '../../types';
 
-  const dispatch = createEventDispatcher();
-
-  export let isOpen = false;
-
-  export let activeTab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' = 'appearance';
+  let {
+    isOpen = $bindable(false),
+    activeTab = $bindable('appearance'),
+    onclose
+  } = $props<{
+    isOpen?: boolean;
+    activeTab?: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' | 'templates';
+    onclose?: () => void;
+  }>();
 
   // Config copy for editing
   let localConfig: AppConfig = {
@@ -33,6 +38,10 @@
     sync: { webdav_url: '', webdav_username: '', webdav_password: '', interval_secs: 300 },
     history: { retention_days: 30, max_snapshots_per_note: 50, empty_trash_after_days: 30 }
   };
+
+  const templateNotes = $derived(
+    $notesList.filter(n => n.file_path.startsWith('.templates/'))
+  );
 
   // Sync state
   let webdavPassword = '';
@@ -337,15 +346,15 @@
       // Apply theme changes to document attribute if needed
       document.documentElement.setAttribute('data-theme', localConfig.appearance.theme);
       
-      // Dispatch close
-      dispatch('close');
+      // Close callback
+      onclose?.();
     } catch (e) {
       console.error('Failed to save settings:', e);
     }
   }
 
   function handleClose() {
-    dispatch('close');
+    onclose?.();
   }
 </script>
 
@@ -403,6 +412,15 @@
             <line x1="5" y1="4" x2="11" y2="4"/>
           </svg>
           Vaults
+        </button>
+
+        <button class="nav-tab" class:active={activeTab === 'templates'} on:click={() => activeTab = 'templates'}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="12" height="12" rx="2"/>
+            <line x1="6" y1="6" x2="10" y2="6"/>
+            <line x1="6" y1="10" x2="10" y2="10"/>
+          </svg>
+          Templates
         </button>
 
         <button class="nav-tab nav-tab-maintenance" class:active={activeTab === 'maintenance'} on:click={() => { activeTab = 'maintenance'; clearMaintenanceMessages(); }}>
@@ -1058,6 +1076,37 @@
               </button>
             </div>
           </div>
+        </div>
+      {:else if activeTab === 'templates'}
+        <div class="content-header">
+          <h2>Templates</h2>
+          <p>Configure defaults and select template files for your notes.</p>
+        </div>
+
+        <div class="settings-section">
+          <div class="form-group">
+            <label for="default-daily-template">Default Daily Note Template</label>
+            <select id="default-daily-template" bind:value={localConfig.editor.default_daily_template} class="select-control">
+              <option value="">None (Empty Note)</option>
+              {#each templateNotes as template}
+                <option value={template.id}>{template.title} ({template.file_path})</option>
+              {/each}
+            </select>
+            <span class="input-desc">
+              Select the default template file from the <code>.templates/</code> directory to be used for your daily notes.
+            </span>
+          </div>
+
+          {#if templateNotes.length === 0}
+            <div class="alert alert-info">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="8" cy="8" r="6"/>
+                <line x1="8" y1="5" x2="8" y2="8"/>
+                <line x1="8" y1="11" x2="8" y2="11"/>
+              </svg>
+              <span>No templates found in the <code>.templates/</code> folder. Create a folder named <code>.templates</code> and add markdown notes to define templates.</span>
+            </div>
+          {/if}
         </div>
       {/if}
     </div>

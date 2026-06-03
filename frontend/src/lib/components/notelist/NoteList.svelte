@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { notesList, activeNote, selectedFolder, draggedItem, moveNote, activeViewMode, selectTrashNote, selectConflictNote } from '../../stores/notes';
+  import { notesList, activeNote, selectedFolder, draggedItem, moveNote, activeViewMode, selectTrashNote, selectConflictNote, selectedTag } from '../../stores/notes';
+  import { get } from 'svelte/store';
   import { trashList, attachmentsWithMetadataList, loadAttachmentsWithMetadata, removeAttachment, triggerQuickLook } from '../../stores/editor';
   import { syncConflicts } from '../../stores/sync';
   import { vaultInfo } from '../../stores/vault';
@@ -52,17 +53,32 @@
     viewMode === 'trash' ? 'Deleted Notes' :
     viewMode === 'conflicts' ? 'Sync Conflicts' :
     viewMode === 'attachments' ? 'Attachments' :
+    viewMode === 'daily' ? 'Daily Notes' :
+    $selectedTag ? `Tag: #${$selectedTag}` :
     currentFolder === '' ? (info?.name ?? 'Vault Root') :
     currentFolder ? currentFolder.split('/').pop() ?? 'Folder' : 'All Notes'
   );
 
-  // Filtered notes only used in normal mode
-  const filteredNotes = $derived(viewMode !== 'normal' ? [] : notes.filter((n) => {
-    if (currentFolder !== null && currentFolder !== '__trash__' && currentFolder !== '__conflicts__') {
-      const lastSlash = n.file_path.lastIndexOf('/');
-      const noteDir = lastSlash !== -1 ? n.file_path.substring(0, lastSlash) : '';
-      if (noteDir !== currentFolder && !noteDir.startsWith(currentFolder + '/')) {
+  // Filtered notes only used in normal or daily mode
+  const filteredNotes = $derived(viewMode !== 'normal' && viewMode !== 'daily' ? [] : notes.filter((n) => {
+    if ($selectedTag) {
+      if (!n.tags || !n.tags.includes($selectedTag)) {
         return false;
+      }
+    }
+    
+    if (viewMode === 'daily') {
+      if (!n.file_path.startsWith('Daily Notes/')) {
+        return false;
+      }
+    } else if (!$selectedTag) {
+      // Normal folder filter only if not viewing all notes for a tag
+      if (currentFolder !== null && currentFolder !== '__trash__' && currentFolder !== '__conflicts__') {
+        const lastSlash = n.file_path.lastIndexOf('/');
+        const noteDir = lastSlash !== -1 ? n.file_path.substring(0, lastSlash) : '';
+        if (noteDir !== currentFolder && !noteDir.startsWith(currentFolder + '/')) {
+          return false;
+        }
       }
     }
     if (!localFilter.trim()) return true;
@@ -70,6 +86,11 @@
     const titleMatch = (n.title || '').toLowerCase().includes(term);
     const tagMatch = n.tags ? n.tags.some((t) => t.toLowerCase().includes(term)) : false;
     return titleMatch || tagMatch;
+  }).sort((a, b) => {
+    if (viewMode === 'daily') {
+      return (b.title || '').localeCompare(a.title || '');
+    }
+    return 0;
   }));
 
   // Filtered trash items
@@ -137,7 +158,7 @@
     e.stopPropagation();
     dragOverActive = false;
 
-    let data = $draggedItem;
+    let data = get(draggedItem);
 
     if (!data && e.dataTransfer) {
       const rawData = e.dataTransfer.getData('text/plain');
@@ -317,7 +338,7 @@
                 role="option"
                 aria-selected={false}
                 draggable="true"
-                ondragstart={(e) => e.dataTransfer.setData('text/noda-attachment', attachment.name)}
+                ondragstart={(e) => e.dataTransfer && e.dataTransfer.setData('text/noda-attachment', attachment.name)}
               >
                 {#if isImg}
                    <div class="attachment-thumb" aria-hidden="true">

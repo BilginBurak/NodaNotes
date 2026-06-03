@@ -140,6 +140,12 @@ export interface EditorSettings {
   typography: string; // "sans", "serif", "mono"
   show_word_count: boolean;
   auto_save_delay_ms: number;
+  default_daily_template?: string | null;
+}
+
+export interface TagWithCountDto {
+  name: string;
+  count: number;
 }
 
 export interface HistorySettings {

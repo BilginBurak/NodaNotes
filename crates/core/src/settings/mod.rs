@@ -24,6 +24,7 @@ pub struct EditorSettings {
     pub typography: String, // "sans", "serif", "mono"
     pub show_word_count: bool,
     pub auto_save_delay_ms: u32,
+    pub default_daily_template: Option<String>,
 }
 
 impl Default for EditorSettings {
@@ -33,6 +34,7 @@ impl Default for EditorSettings {
             typography: "sans".to_string(),
             show_word_count: true,
             auto_save_delay_ms: 1500,
+            default_daily_template: None,
         }
     }
 }

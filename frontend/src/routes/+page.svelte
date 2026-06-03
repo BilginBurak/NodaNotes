@@ -14,20 +14,19 @@
   import SearchModal from '../lib/components/search/SearchModal.svelte';
   import { quickLookOpen, quickLookAttachment, triggerQuickLook, removeAttachment } from '../lib/stores/editor';
   import QuickLookModal from '../lib/components/common/QuickLookModal.svelte';
+  import { triggerDailyNote } from '../lib/stores/notes';
 
   $: info = $vaultInfo;
   $: error = $vaultError;
   $: loading = $loadingVault;
 
   let showSettingsModal = false;
-  let settingsTab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' = 'appearance';
+  let settingsTab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' | 'templates' = 'appearance';
 
-  onMount(async () => {
-    try {
-      await loadSettings();
-    } catch (e) {
+  onMount(() => {
+    loadSettings().catch((e) => {
       console.error('Failed to load settings on startup:', e);
-    }
+    });
 
     const handleGlobalLinkClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest('a');
@@ -40,10 +39,20 @@
         }
       }
     };
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        triggerDailyNote().catch(console.error);
+      }
+    };
+
     window.addEventListener('click', handleGlobalLinkClick, true);
+    window.addEventListener('keydown', handleGlobalKeyDown);
 
     return () => {
       window.removeEventListener('click', handleGlobalLinkClick, true);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
     };
   });
 
@@ -114,10 +123,7 @@
       <!-- Marka -->
       <div class="launcher-brand">
         <div class="brand-logo" aria-hidden="true">
-          <svg viewBox="0 0 48 48" fill="none">
-            <rect width="48" height="48" rx="12" fill="#0a84ff"/>
-            <path d="M13 36V12l11 18 11-18v24" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <img src="/logo.png" alt="Noda Logo" />
         </div>
         <div class="brand-text">
           <h1>Noda</h1>
@@ -203,7 +209,7 @@
   <div class="app-container">
     <Toolbar />
     <div class="app-workspace">
-      <Sidebar onOpenSettings={(tab) => { showSettingsModal = true; settingsTab = tab; }} />
+      <Sidebar onOpenSettings={(tab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' | 'templates') => { showSettingsModal = true; settingsTab = tab; }} />
       <NoteList />
       <div class="main-content">
         <Editor />
@@ -213,7 +219,7 @@
     <SyncReportModal />
 
     {#if showSettingsModal}
-      <SettingsModal isOpen={showSettingsModal} bind:activeTab={settingsTab} on:close={() => showSettingsModal = false} />
+      <SettingsModal bind:isOpen={showSettingsModal} bind:activeTab={settingsTab} onclose={() => showSettingsModal = false} />
     {/if}
 
     <ContextMenu />
@@ -293,10 +299,11 @@
     box-shadow: 0 8px 24px rgba(10, 132, 255, 0.25), 0 2px 6px rgba(0,0,0,0.5);
   }
 
-  .brand-logo svg {
+  .brand-logo img {
     width: 100%;
     height: 100%;
     display: block;
+    object-fit: cover;
   }
 
   .brand-text {

@@ -8,7 +8,7 @@
     activeNote, updateActiveNoteBody, saveActiveNote, renameActiveNote,
     activeNoteDirty, lastSavedAt, updateActiveNoteTags, notesList,
     viewingTrashNote, viewingConflictNote, activeViewMode, selectedFolder,
-    selectNote
+    selectNote, focusEditorAtEnd
   } from '../../stores/notes';
   import { recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
   import { resolveKeepLocal, resolveKeepRemote } from '../../stores/sync';
@@ -221,6 +221,21 @@
     if (viewMode !== 'preview') {
       setTimeout(() => editorView?.requestMeasure(), 0);
     }
+  }
+
+  // focusEditorAtEnd tetiklendiğinde kürsörü en sona al ve odakla
+  $: if ($focusEditorAtEnd && editorView && currentNote) {
+    focusEditorAtEnd.set(false);
+    setTimeout(() => {
+      if (editorView) {
+        const docLength = editorView.state.doc.length;
+        editorView.dispatch({
+          selection: { anchor: docLength, head: docLength },
+          scrollIntoView: true
+        });
+        editorView.focus();
+      }
+    }, 50);
   }
 
   function updateStats(content: string) {
@@ -1044,7 +1059,7 @@
                               class="dropdown-item"
                               onclick={() => { handleInsertAttachmentMarkup(item.name); showRecentDropdown = false; }}
                               draggable="true"
-                              ondragstart={(e) => e.dataTransfer.setData('text/noda-attachment', item.name)}
+                              ondragstart={(e) => e.dataTransfer && e.dataTransfer.setData('text/noda-attachment', item.name)}
                             >
                               {#if isImg}
                                 <img class="item-preview" src="noda://attachments/{item.name}" alt={item.name} loading="lazy" />

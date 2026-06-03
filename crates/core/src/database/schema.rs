@@ -55,4 +55,20 @@ CREATE TABLE IF NOT EXISTS schema_version (
 CREATE INDEX IF NOT EXISTS idx_notes_title ON notes(title);
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated);
 CREATE INDEX IF NOT EXISTS idx_notes_status ON notes(status);
+
+-- 1. Tüm benzersiz taglerin tutulduğu ana sözlük tablosu
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL
+);
+
+-- 2. Notlar ile Tagleri bağlayan Çoktan-Çoğa (Many-to-Many) ilişki tablosu
+CREATE TABLE IF NOT EXISTS note_tags (
+    note_id TEXT NOT NULL,
+    tag_id INTEGER NOT NULL,
+    source TEXT NOT NULL, -- 'yaml' veya 'inline' (Nereden geldiğini bilmek için kritik!)
+    PRIMARY KEY (note_id, tag_id),
+    FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
+    FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
 "#;

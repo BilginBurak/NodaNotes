@@ -3078,6 +3078,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getSettings(
                         typography: config.editor.typography,
                         show_word_count: config.editor.show_word_count,
                         auto_save_delay_ms: config.editor.auto_save_delay_ms,
+                        default_daily_template: config.editor.default_daily_template,
                     },
                     sync: shared::dtos::SyncConfigDto {
                         webdav_url: config.sync.webdav_url,
@@ -3156,6 +3157,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateSettings(
             }
             if let Some(delay) = editor.get("auto_save_delay_ms").and_then(|d| d.as_u64()) {
                 config.editor.auto_save_delay_ms = delay as u32;
+            }
+            if let Some(template) = editor.get("default_daily_template") {
+                config.editor.default_daily_template = template.as_str().map(|s| s.to_string());
             }
         }
 

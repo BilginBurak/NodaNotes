@@ -92,6 +92,45 @@ pub fn search_notes(conn: &Connection, query: &str) -> Result<Vec<SearchResult>,
         return Ok(Vec::new());
     }
 
+    if clean_query.starts_with('#') {
+        let tag_query = clean_query[1..].trim();
+        if tag_query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let escaped = escape_like(tag_query);
+        let tag_pattern = format!("%{}%", escaped);
+        let sql = r#"
+            SELECT 
+                n.id, 
+                n.title, 
+                'Tag: #' || t.name as snippet
+            FROM note_tags nt
+            JOIN tags t ON nt.tag_id = t.id
+            JOIN notes n ON nt.note_id = n.id
+            WHERE t.name LIKE ?1 ESCAPE '\'
+            LIMIT 50
+        "#;
+        let mut stmt = conn.prepare(sql)
+            .map_err(|e| NodaError::Database(format!("Prepare tag search failed: {}", e)))?;
+        let rows = stmt.query_map(params![tag_pattern], |row| {
+            let id_str: String = row.get("id")?;
+            let title: String = row.get("title")?;
+            let snippet: String = row.get("snippet")?;
+            Ok(SearchResult {
+                id: parse_ulid(&id_str)?,
+                title,
+                snippet,
+                score: -1000.0,
+            })
+        }).map_err(|e| NodaError::Database(format!("Query tag search failed: {}", e)))?;
+
+        let mut results = Vec::new();
+        for r in rows {
+            results.push(r.map_err(|e| NodaError::Database(e.to_string()))?);
+        }
+        return Ok(results);
+    }
+
     // 1. Direct search by ID (ULID) or file_path using LIKE
     let escaped = escape_like(clean_query);
     let direct_pattern = format!("%{}%", escaped);

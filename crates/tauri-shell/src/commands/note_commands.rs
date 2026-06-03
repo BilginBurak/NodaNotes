@@ -5,8 +5,9 @@ use crate::state::AppState;
 use noda_core::models::note::{Note, NoteId};
 use noda_core::database::queries;
 use noda_core::history;
+use noda_core::settings::AppConfig;
 use ulid::Ulid;
-use chrono::Utc;
+use chrono::{Utc, Local};
 
 #[tauri::command]
 pub async fn create_note(
@@ -524,4 +525,125 @@ pub async fn get_note_metadata(
         word_count,
         char_count,
     })
+}
+
+#[tauri::command]
+pub async fn list_tags_with_counts(
+    state: State<'_, AppState>,
+) -> Result<Vec<shared::dtos::TagWithCountDto>, AppError> {
+    let db = {
+        let guard = state.database.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let tags = {
+        let conn = db.conn.lock();
+        queries::list_tags_with_counts(&conn).map_err(AppError::from)?
+    };
+
+    let dtos = tags.into_iter().map(|(name, count)| shared::dtos::TagWithCountDto {
+        name,
+        count: count as u32,
+    }).collect();
+
+    Ok(dtos)
+}
+
+#[tauri::command]
+pub async fn trigger_daily_note(
+    state: State<'_, AppState>,
+) -> Result<NoteDto, AppError> {
+    let db = {
+        let guard = state.database.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let service = {
+        let guard = state.vault_service.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "VAULT_NOT_OPEN".to_string(),
+            message: "No active vault is currently open".to_string(),
+        })?
+    };
+
+    let local_now = Local::now();
+    let date_str = local_now.format("%Y-%m-%d").to_string();
+    let time_str = local_now.format("%H:%M").to_string();
+
+    let existing_note = {
+        let conn = db.conn.lock();
+        queries::find_daily_note_id(&conn, &date_str).map_err(AppError::from)?
+    };
+
+    let note_dto = if let Some(note_id) = existing_note {
+        let mut note = service.read_note(note_id).await.map_err(AppError::from)?;
+        let section = format!("\n\n## 📌 {}\n\n", time_str);
+        note.body.push_str(&section);
+        note.updated_at = Utc::now();
+        
+        service.write_note(&note).await.map_err(AppError::from)?;
+        
+        {
+            let conn = db.conn.lock();
+            queries::upsert_note(&conn, &note, &note.file_path, "dummy_hash")
+                .map_err(AppError::from)?;
+        }
+            
+        NoteDto::from(note)
+    } else {
+        let _ = service.create_folder("Daily Notes").await;
+        
+        let settings = AppConfig::load(service.base_path()).await.unwrap_or_default();
+        let mut template_body = String::new();
+        
+        if let Some(ref template_id_str) = settings.editor.default_daily_template {
+            if !template_id_str.is_empty() {
+                if let Ok(template_id) = Ulid::from_string(template_id_str) {
+                    if let Ok(template_note) = service.read_note(NoteId(template_id)).await {
+                        template_body = template_note.body;
+                    }
+                }
+            }
+        }
+        
+        let body = template_body
+            .replace("{{date}}", &date_str)
+            .replace("{{time}}", &time_str);
+            
+        let new_id = NoteId::new();
+        let relative_path = format!("Daily Notes/{}.md", new_id.0.to_string());
+        let now = Utc::now();
+        
+        let note = Note {
+            id: new_id,
+            parent_id: None,
+            title: date_str,
+            body,
+            color: None,
+            pinned: false,
+            tags: Vec::new(),
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+            file_path: relative_path.clone(),
+        };
+        
+        service.write_note(&note).await.map_err(AppError::from)?;
+        
+        {
+            let conn = db.conn.lock();
+            queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
+                .map_err(AppError::from)?;
+        }
+            
+        NoteDto::from(note)
+    };
+
+    Ok(note_dto)
 }

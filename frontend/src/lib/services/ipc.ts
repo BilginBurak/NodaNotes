@@ -13,6 +13,7 @@ import type {
   SnapshotDiffDto,
   AppConfig,
   AttachmentInfoDto,
+  TagWithCountDto,
 } from '../types';
 
 async function call<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
@@ -194,6 +195,10 @@ export const importNoteFromContent = (title: string, content: string, targetDir:
 
 export const addAttachmentBytes = (fileName: string, bytes: number[]) =>
   call<string>('add_attachment_bytes', { fileName, bytes });
+
+// ── Added Tags & Daily Notes Commands ───────────────────────
+export const listTagsWithCounts = () => call<TagWithCountDto[]>('list_tags_with_counts');
+export const triggerDailyNote   = () => call<NoteDto>('trigger_daily_note');
 
 
 

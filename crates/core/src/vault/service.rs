@@ -44,13 +44,13 @@ impl VaultService {
         for entry in walkdir::WalkDir::new(&self.base_path)
             .into_iter()
             .filter_entry(|e| {
-                // Avoid hidden files and folders, particularly ".noda"
+                // Avoid hidden files and folders, particularly ".noda", but keep ".templates"
                 if e.depth() == 0 {
                     return true;
                 }
                 e.file_name()
                     .to_str()
-                    .map(|s| !s.starts_with('.'))
+                    .map(|s| !s.starts_with('.') || s == ".templates")
                     .unwrap_or(false)
             })
         {
@@ -230,7 +230,7 @@ impl VaultService {
                 }
                 e.file_name()
                     .to_str()
-                    .map(|s| !s.starts_with('.'))
+                    .map(|s| !s.starts_with('.') || s == ".templates")
                     .unwrap_or(false)
             })
         {

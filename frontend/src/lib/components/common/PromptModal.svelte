@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { promptStore, closePrompt } from '../../stores/prompt';
 
-  const state = $derived($promptStore);
+  const promptState = $derived($promptStore);
 
   let inputEl = $state<HTMLInputElement | null>(null);
   let value = $state('');
@@ -10,8 +10,8 @@
 
   // Focus input and set value when prompt is opened
   $effect(() => {
-    if (state.show) {
-      value = state.value;
+    if (promptState.show) {
+      value = promptState.value;
       validationError = null;
       setTimeout(() => {
         if (inputEl) {
@@ -23,11 +23,11 @@
   });
 
   async function handleSave() {
-    if (!state.onSubmit) return;
+    if (!promptState.onSubmit) return;
     
     // Custom Validation
-    if (state.validation) {
-      const err = state.validation(value);
+    if (promptState.validation) {
+      const err = promptState.validation(value);
       if (err) {
         validationError = err;
         return;
@@ -40,7 +40,7 @@
     }
 
     try {
-      await state.onSubmit(value);
+      await promptState.onSubmit(value);
       closePrompt();
     } catch (e: any) {
       validationError = e.message || 'An error occurred';
@@ -58,7 +58,7 @@
   }
 </script>
 
-{#if state.show}
+{#if promptState.show}
   <div 
     class="prompt-overlay" 
     onclick={closePrompt}
@@ -72,7 +72,7 @@
       aria-modal="true"
       aria-labelledby="prompt-title"
     >
-      <h3 id="prompt-title" class="prompt-title">{state.title}</h3>
+      <h3 id="prompt-title" class="prompt-title">{promptState.title}</h3>
       
       <div class="prompt-body">
         <input
@@ -80,7 +80,7 @@
           bind:value={value}
           class="prompt-input"
           class:has-error={!!validationError}
-          placeholder={state.placeholder}
+          placeholder={promptState.placeholder}
           onkeydown={handleKeyDown}
           autocomplete="off"
           spellcheck="false"

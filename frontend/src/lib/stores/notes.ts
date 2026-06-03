@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import type { NoteListItemDto, NoteDto } from '../types';
+import type { NoteListItemDto, NoteDto, TagWithCountDto } from '../types';
 import * as ipc from '../services/ipc';
 import { loadNoteSnapshots, showSnapshots } from './editor';
 
@@ -8,11 +8,14 @@ export const activeNote     = writable<NoteDto | null>(null);
 export const loadingNote    = writable<boolean>(false);
 export const activeNoteDirty = writable<boolean>(false);
 export const selectedFolder  = writable<string | null>(null);
+export const selectedTag     = writable<string | null>(null);
+export const tagsList        = writable<TagWithCountDto[]>([]);
+export const focusEditorAtEnd = writable<boolean>(false);
 export const notesError     = writable<string | null>(null);
 /** Son başarılı kayıt zamanı — status bar için */
 export const lastSavedAt    = writable<Date | null>(null);
 /** Özel görünüm modu: normal, trash ya da conflicts */
-export const activeViewMode = writable<'normal' | 'trash' | 'conflicts' | 'attachments'>('normal');
+export const activeViewMode = writable<'normal' | 'trash' | 'conflicts' | 'attachments' | 'daily'>('normal');
 /** Silinen not olarak görüntüleniyor mu */
 export const viewingTrashNote = writable<boolean>(false);
 /** Çakışma notu olarak görüntüleniyor mu (archivedPath bilgisi ile) */
@@ -25,8 +28,39 @@ export async function loadNotes() {
     list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     notesList.set(list);
     await loadFolders();
+    await loadTags();
   } catch (e: any) {
     notesError.set(e.message || 'Failed to load notes');
+  }
+}
+
+export async function loadTags() {
+  try {
+    const list = await ipc.listTagsWithCounts();
+    tagsList.set(list);
+  } catch (e) {
+    console.error('Failed to load tags:', e);
+  }
+}
+
+export async function triggerDailyNote() {
+  notesError.set(null);
+  try {
+    const dailyNote = await ipc.triggerDailyNote();
+    await loadNotes();
+    activeNote.set(dailyNote);
+    activeNoteDirty.set(false);
+    
+    selectedFolder.set('Daily Notes');
+    selectedTag.set(null);
+    activeViewMode.set('normal');
+    
+    focusEditorAtEnd.set(true);
+    
+    return dailyNote;
+  } catch (e: any) {
+    notesError.set(e.message || 'Günlük not oluşturulamadı');
+    throw e;
   }
 }
 

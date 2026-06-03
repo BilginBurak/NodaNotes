@@ -144,6 +144,13 @@ pub mod dtos {
         pub typography: String,
         pub show_word_count: bool,
         pub auto_save_delay_ms: u32,
+        pub default_daily_template: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TagWithCountDto {
+        pub name: String,
+        pub count: u32,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

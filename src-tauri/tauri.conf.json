@@ -17,6 +17,7 @@
         "minWidth": 800,
         "minHeight": 600,
         "transparent": true,
+        "dragDropEnabled": false,
         "hiddenTitle": true
       }
     ],

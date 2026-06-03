@@ -15,7 +15,7 @@ fn parse_ulid(s: &str) -> Result<NoteId, rusqlite::Error> {
 fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
     let id_str: String = row.get("id")?;
     let parent_id_str: Option<String> = row.get("parent_id")?;
-    let tags_json: String = row.get("tags")?;
+    let tags_json: String = row.get("consolidated_tags")?;
     let created_str: String = row.get("created")?;
     let updated_str: String = row.get("updated")?;
     let file_path: String = row.get("file_path")?;
@@ -51,7 +51,7 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
 fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
     let id_str: String = row.get("id")?;
     let parent_id_str: Option<String> = row.get("parent_id")?;
-    let tags_json: String = row.get("tags")?;
+    let tags_json: String = row.get("consolidated_tags")?;
     let updated_str: String = row.get("updated")?;
     let file_path: String = row.get("file_path")?;
     
@@ -78,7 +78,27 @@ fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
 }
 
 pub fn get_note(conn: &Connection, id: NoteId) -> Result<Option<Note>, NodaError> {
-    let mut stmt = conn.prepare("SELECT id, parent_id, title, body, color, pinned, tags, status, created, updated, file_path FROM notes WHERE id = ?1")
+    let mut stmt = conn.prepare(r#"
+        SELECT 
+            id, 
+            parent_id, 
+            title, 
+            body, 
+            color, 
+            pinned, 
+            (
+                SELECT COALESCE(json_group_array(t.name), '[]')
+                FROM note_tags nt
+                JOIN tags t ON nt.tag_id = t.id
+                WHERE nt.note_id = notes.id
+            ) as consolidated_tags, 
+            status, 
+            created, 
+            updated, 
+            file_path 
+        FROM notes 
+        WHERE id = ?1
+    "#)
         .map_err(|e| NodaError::Database(format!("Prepare get_note failed: {}", e)))?;
     
     let note = stmt.query_row(params![id.0.to_string()], row_to_note)
@@ -114,6 +134,8 @@ pub fn insert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to insert note: {}", e)))?;
     
+    sync_note_tags(conn, note)?;
+    
     Ok(())
 }
 
@@ -143,6 +165,8 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
             file_hash
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to update note: {}", e)))?;
+    
+    sync_note_tags(conn, note)?;
     
     Ok(())
 }
@@ -185,12 +209,21 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to upsert note: {}", e)))?;
     
+    sync_note_tags(conn, note)?;
+    
     Ok(())
 }
 
 pub fn delete_note(conn: &Connection, id: NoteId) -> Result<(), NodaError> {
     conn.execute("DELETE FROM notes WHERE id = ?1", params![id.0.to_string()])
         .map_err(|e| NodaError::Database(format!("Failed to delete note: {}", e)))?;
+
+    // Clean up orphaned tags
+    conn.execute(
+        "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)",
+        [],
+    ).ok();
+
     Ok(())
 }
 
@@ -208,14 +241,27 @@ pub fn get_note_id_by_path(conn: &Connection, file_path: &str) -> Result<Option<
     }
 }
 
-pub fn delete_note_by_path(conn: &Connection, file_path: &str) -> Result<(), NodaError> {
-    conn.execute("DELETE FROM notes WHERE file_path = ?1", params![file_path])
-        .map_err(|e| NodaError::Database(format!("Failed to delete note by path: {}", e)))?;
-    Ok(())
-}
 
 pub fn list_notes(conn: &Connection) -> Result<Vec<NoteMeta>, NodaError> {
-    let mut stmt = conn.prepare("SELECT id, parent_id, title, color, pinned, tags, status, updated, file_path FROM notes ORDER BY pinned DESC, updated DESC")
+    let mut stmt = conn.prepare(r#"
+        SELECT 
+            id, 
+            parent_id, 
+            title, 
+            color, 
+            pinned, 
+            (
+                SELECT COALESCE(json_group_array(t.name), '[]')
+                FROM note_tags nt
+                JOIN tags t ON nt.tag_id = t.id
+                WHERE nt.note_id = notes.id
+            ) as consolidated_tags, 
+            status, 
+            updated, 
+            file_path 
+        FROM notes 
+        ORDER BY pinned DESC, updated DESC
+    "#)
         .map_err(|e| NodaError::Database(format!("Prepare list_notes failed: {}", e)))?;
         
     let rows = stmt.query_map([], row_to_note_meta)
@@ -232,6 +278,19 @@ pub fn list_notes(conn: &Connection) -> Result<Vec<NoteMeta>, NodaError> {
     Ok(notes)
 }
 
+pub fn delete_note_by_path(conn: &Connection, file_path: &str) -> Result<(), NodaError> {
+    conn.execute("DELETE FROM notes WHERE file_path = ?1", params![file_path])
+        .map_err(|e| NodaError::Database(format!("Failed to delete note by path: {}", e)))?;
+
+    // Clean up orphaned tags
+    conn.execute(
+        "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)",
+        [],
+    ).ok();
+
+    Ok(())
+}
+
 pub fn update_note_file_path(conn: &Connection, id: NoteId, file_path: &str) -> Result<(), NodaError> {
     conn.execute(
         "UPDATE notes SET file_path = ?2 WHERE id = ?1",
@@ -239,6 +298,135 @@ pub fn update_note_file_path(conn: &Connection, id: NoteId, file_path: &str) -> 
     ).map_err(|e| NodaError::Database(format!("Failed to update note file_path: {}", e)))?;
     Ok(())
 }
+
+pub fn sync_note_tags(conn: &Connection, note: &Note) -> Result<(), NodaError> {
+    let note_id = note.id.0.to_string();
+    
+    // 1. Delete existing relationships for this note
+    conn.execute("DELETE FROM note_tags WHERE note_id = ?1", params![note_id])
+        .map_err(|e| NodaError::Database(format!("Failed to clear note tags: {}", e)))?;
+        
+    // 2. Parse inline tags
+    let mut inline_tags = Vec::new();
+    static TAG_REGEX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = TAG_REGEX.get_or_init(|| regex::Regex::new(r"(?:^|\s)#([\p{L}\p{N}_-]+)").unwrap());
+    for cap in re.captures_iter(&note.body) {
+        if let Some(m) = cap.get(1) {
+            let tag = m.as_str().trim().to_string();
+            if !tag.is_empty() && tag.chars().any(|c| c.is_alphabetic()) {
+                inline_tags.push(tag);
+            }
+        }
+    }
+    
+    // 3. Clean YAML tags
+    let mut yaml_tags = Vec::new();
+    for t in &note.tags {
+        let cleaned = t.trim().trim_start_matches('#').to_string();
+        if !cleaned.is_empty() {
+            yaml_tags.push(cleaned);
+        }
+    }
+    
+    // 4. Insert tags into `tags` table and link in `note_tags`
+    for tag_name in &yaml_tags {
+        // Insert into tags if not exists
+        conn.execute(
+            "INSERT INTO tags (name) VALUES (?1) ON CONFLICT(name) DO NOTHING",
+            params![tag_name],
+        ).map_err(|e| NodaError::Database(format!("Failed to insert tag: {}", e)))?;
+        
+        // Get tag id
+        let tag_id: i64 = conn.query_row(
+            "SELECT id FROM tags WHERE name = ?1",
+            params![tag_name],
+            |row| row.get(0),
+        ).map_err(|e| NodaError::Database(format!("Failed to get tag id: {}", e)))?;
+        
+        // Insert link
+        conn.execute(
+            "INSERT OR REPLACE INTO note_tags (note_id, tag_id, source) VALUES (?1, ?2, ?3)",
+            params![note_id, tag_id, "yaml"],
+        ).map_err(|e| NodaError::Database(format!("Failed to link note tag (yaml): {}", e)))?;
+    }
+    
+    for tag_name in &inline_tags {
+        // Skip if already inserted as yaml to respect source prioritization
+        if yaml_tags.contains(tag_name) {
+            continue;
+        }
+        
+        // Insert into tags if not exists
+        conn.execute(
+            "INSERT INTO tags (name) VALUES (?1) ON CONFLICT(name) DO NOTHING",
+            params![tag_name],
+        ).map_err(|e| NodaError::Database(format!("Failed to insert tag: {}", e)))?;
+        
+        // Get tag id
+        let tag_id: i64 = conn.query_row(
+            "SELECT id FROM tags WHERE name = ?1",
+            params![tag_name],
+            |row| row.get(0),
+        ).map_err(|e| NodaError::Database(format!("Failed to get tag id: {}", e)))?;
+        
+        // Insert link
+        conn.execute(
+            "INSERT OR REPLACE INTO note_tags (note_id, tag_id, source) VALUES (?1, ?2, ?3)",
+            params![note_id, tag_id, "inline"],
+        ).map_err(|e| NodaError::Database(format!("Failed to link note tag (inline): {}", e)))?;
+    }
+    
+    // 5. Clean up any tags that have 0 notes associated with them
+    conn.execute(
+        "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)",
+        [],
+    ).map_err(|e| NodaError::Database(format!("Failed to clean orphaned tags: {}", e)))?;
+    
+    Ok(())
+}
+
+pub fn list_tags_with_counts(conn: &Connection) -> Result<Vec<(String, i32)>, NodaError> {
+    let mut stmt = conn.prepare(
+        "SELECT tags.name, COUNT(note_tags.note_id) as note_count
+         FROM tags
+         JOIN note_tags ON tags.id = note_tags.tag_id
+         GROUP BY tags.id
+         ORDER BY tags.name ASC"
+    ).map_err(|e| NodaError::Database(format!("Prepare list_tags_with_counts failed: {}", e)))?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?))
+    }).map_err(|e| NodaError::Database(format!("Query map list_tags_with_counts failed: {}", e)))?;
+
+    let mut tags = Vec::new();
+    for row in rows {
+        match row {
+            Ok(t) => tags.push(t),
+            Err(e) => return Err(NodaError::Database(format!("Row parsing failed: {}", e))),
+        }
+    }
+    Ok(tags)
+}
+
+pub fn find_daily_note_id(conn: &Connection, date_str: &str) -> Result<Option<NoteId>, NodaError> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM notes WHERE title = ?1 AND file_path LIKE 'Daily Notes/%' LIMIT 1"
+    ).map_err(|e| NodaError::Database(format!("Prepare find_daily_note_id failed: {}", e)))?;
+    
+    let mut rows = stmt.query_map(params![date_str], |row| {
+        let id_str: String = row.get(0)?;
+        let note_id = parse_ulid(&id_str).map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))?;
+        Ok(note_id)
+    }).map_err(|e| NodaError::Database(format!("Query map find_daily_note_id failed: {}", e)))?;
+
+    if let Some(row) = rows.next() {
+        let id = row.map_err(|e| NodaError::Database(format!("Row parsing failed in find_daily_note_id: {}", e)))?;
+        Ok(Some(id))
+    } else {
+        Ok(None)
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

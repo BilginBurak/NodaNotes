@@ -34,6 +34,8 @@ fn main() {
             commands::note_commands::list_notes,
             commands::note_commands::import_note,
             commands::note_commands::import_note_from_content,
+            commands::note_commands::list_tags_with_counts,
+            commands::note_commands::trigger_daily_note,
             commands::search_commands::search_notes,
             commands::sync_commands::start_sync,
             commands::sync_commands::stop_sync,

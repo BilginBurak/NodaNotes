@@ -93,7 +93,7 @@
   class:active
   draggable="true"
   ondragstart={handleDragStart}
-  ondragend={() => draggedItem.set(null)}
+  ondragend={() => setTimeout(() => draggedItem.set(null), 150)}
   onclick={handleSelect}
   oncontextmenu={(e) => openContextMenu(e, 'note', item.file_path, item.id, item.title)}
   role="button"

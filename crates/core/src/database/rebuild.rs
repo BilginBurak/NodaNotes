@@ -22,6 +22,8 @@ pub fn rebuild_database_sync(
     // The SQLite triggers defined in schema.rs will automatically clean up `notes_fts`
     tx.execute("DELETE FROM notes", [])
         .map_err(|e| NodaError::Database(format!("Failed to clear notes table: {}", e)))?;
+    tx.execute("DELETE FROM tags", [])
+        .map_err(|e| NodaError::Database(format!("Failed to clear tags table: {}", e)))?;
 
     // Step 4: Batch insert all scanned notes
     for note in notes {
