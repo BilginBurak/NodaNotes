@@ -480,13 +480,38 @@ Status line on left edge of result box:
 
 ---
 
-## 21. Android Layout Mismatches & Scroll State Binding (June 2026)
+## 21. NodaAppShell Scope & Nesting Resolution (June 2026)
 
-### 21.1 NodaAppShell Scope & Nesting Mismatch
+- **Problem:** A missing closing brace `}` at the end of the `drawerContent` lambda block caused the Kotlin compiler to treat all subsequent dialog structures and the `ModalNavigationDrawer` block as nested components inside `drawerContent`. This resulted in `FolderTreeItem` and other helper Composables failing to compile with unresolved references due to incorrect lexical scopes. Additionally, the `selectedTag` and `currentFolder` state Flow collectors were defined inside the WORKSPACE accordion column block, making them inaccessible to the tags list block further down the drawer.
+- **Solution:** 
+  1. Hoisted the StateFlow collection variables (`selectedTag`, `currentFolder`) to the root scope of the `drawerContent` lambda so they are available globally inside the drawer layout.
+  2. Inserted the missing closing brace `}` right after `ModalDrawerSheet` ends (around line 687), successfully decoupling the drawer body structure from the app shell layout container and resolving all compiler scope errors.
+
+## 22. Note List Scroll Binding and FAB Auto-Hide (June 2026)
+
+- **Problem:** The floating action button (FAB) in `NoteListScreen.kt` was designed to auto-hide when scrolling down and reappear when scrolling up. Although `lazyListState` was declared and its offset changes were tracked in a `LaunchedEffect` block, the `lazyListState` was never bound to the `LazyColumn` container. As a result, scroll movements did not trigger updates in the scroll state, leaving the FAB permanently visible.
+- **Solution:** Bound the layout by passing `state = lazyListState` to the `LazyColumn` composable. Scroll offsets are now dynamically tracked, toggling the visibility status of the FAB in real-time.
+
+## 23. Settings Configuration Backwards Compatibility (June 2026)
+
+- **Problem:** When opening settings on existing vault paths, the app crashed or displayed the loading error: `"failed to load settings: sync error: failed to load parse settings: missing field 'snapshot_interval_mins'"`. This occurred because the settings deserialization code in Rust (`crates/core/src/settings/mod.rs`) did not define default values for newly added fields (like `snapshot_interval_mins`), causing `serde_json` to throw an error when parsing legacy configurations on disk.
+- **Solution:** 
+  1. Defined robust default helper functions in `crates/core/src/settings/mod.rs` (e.g., `default_theme`, `default_accent_color`, `default_font_size`, `default_snapshot_interval_mins`, etc.).
+  2. Applied `#[serde(default = "default_fn")]` and `#[serde(default)]` annotations to all fields in the `AppearanceSettings`, `EditorSettings`, and `HistorySettings` structs.
+  3. Legacy `settings.json` files that lack these fields now parse successfully by falling back to correct defaults, preventing startup and settings page failures.
+
+## 24. Dark Mode Editor Cursor Contrast Optimization (June 2026)
+
+- **Problem:** In dark mode layouts, the text cursor in the main markdown editor body and the tag input fields was invisible or extremely hard to see because it defaulted to a dark/black cursor.
+- **Solution:** Added custom `cursorBrush` bindings to the Compose `BasicTextField` instances in `NoteEditorScreen.kt` and `TagInputBar.kt`:
+  ```kotlin
+  cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+  ```
+  This forces the text cursor to draw using the theme's dynamic primary accent color, ensuring strong contrast in both light and dark visual modes.
+
+
+
+## 25. NodaAppShell Scope & Nesting Resolution (June 2026)
+### 25.1 NodaAppShell Scope & Nesting Mismatch
 - **Problem:** Missing closing brace `}` at the end of the `drawerContent` lambda block caused all subsequent dialogs and `ModalNavigationDrawer` to be parsed inside `drawerContent`. This caused `FolderTreeItem` to fail compilation with unresolved references. In addition, `selectedTag` and `currentFolder` state variables were declared inside the nested WORKSPACE column instead of at the root level of `drawerContent`, making them inaccessible (out-of-scope) in the tags lists.
 - **Solution:** Hoisted the state declarations to the root level of `drawerContent` and added the missing closing brace `}` after `ModalDrawerSheet` ends (around line 687). This resolved all scope and nesting compiler issues cleanly.
-
-### 21.2 Note List Scroll Binding
-- **Problem:** `lazyListState` was defined and observed in `NoteListScreen.kt` but was not passed to the layout's `LazyColumn`. This prevented scroll events from updating `previousIndex` and `previousScrollOffset`, rendering the auto-hiding floating action button (FAB) static.
-- **Solution:** Added `state = lazyListState` to `LazyColumn` inside `NoteListScreen.kt`. Scroll movements now toggle the FAB's visibility correctly (hides when scrolling down, shows when scrolling up).
-

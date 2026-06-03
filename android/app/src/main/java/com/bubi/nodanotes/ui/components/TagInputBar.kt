@@ -193,6 +193,7 @@ private fun BasicTextFieldWithPlaceholder(
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp
             ),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
             modifier = Modifier.fillMaxWidth()

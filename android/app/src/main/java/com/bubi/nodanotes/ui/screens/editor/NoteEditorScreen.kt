@@ -431,6 +431,7 @@ fun NoteEditorScreen(
                                         lineHeight = 24.sp,
                                         color = MaterialTheme.colorScheme.onSurface
                                     ),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .verticalScroll(rememberScrollState())
