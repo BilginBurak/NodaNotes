@@ -27,6 +27,7 @@
   let lastNoteId: string | null = null;
   let wordCount = 0;
   let charCount = 0;
+  let lastSnapshotTime = Date.now();
 
   let currentDiff: import('../../types').SnapshotDiffDto | null = null;
   let isDiffOpen = false;
@@ -122,11 +123,12 @@
   let suggestionEl: HTMLDivElement;
 
   $: currentNoteTags = currentNote?.tags || [];
+  $: currentNoteInlineTags = currentNote?.inline_tags || [];
 
   // Extract all unique tags in other notes
   $: allExistingTags = Array.from(
     new Set(
-      ($notesList || []).flatMap(note => note.tags || [])
+      ($notesList || []).flatMap(note => [...(note.tags || []), ...(note.inline_tags || [])])
     )
   ).sort();
 
@@ -150,6 +152,20 @@
   function removeTag(tagToRemove: string) {
     const newTags = currentNoteTags.filter(t => t !== tagToRemove);
     updateActiveNoteTags(newTags);
+  }
+
+  function focusInlineTag(tag: string) {
+    if (!editorView) return;
+    const docText = editorView.state.doc.toString();
+    const searchStr = `#${tag}`;
+    const index = docText.indexOf(searchStr);
+    if (index !== -1) {
+      editorView.focus();
+      editorView.dispatch({
+        selection: { anchor: index, head: index + searchStr.length },
+        scrollIntoView: true
+      });
+    }
   }
 
   function handleTagInputKeyDown(e: KeyboardEvent) {
@@ -252,7 +268,16 @@
     const delay = $appConfig?.editor?.auto_save_delay_ms ?? 1500;
     saveTimeout = setTimeout(async () => {
       try {
-        await saveActiveNote();
+        const intervalMins = $appConfig?.history?.snapshot_interval_mins ?? 5;
+        const now = Date.now();
+        const timeDiffMins = (now - lastSnapshotTime) / 60000;
+        
+        if (timeDiffMins >= intervalMins) {
+          await saveActiveNote(true);
+          lastSnapshotTime = now;
+        } else {
+          await saveActiveNote(false);
+        }
       } catch (err) {
         console.error('Auto-save failed:', err);
       }
@@ -262,7 +287,8 @@
   async function handleManualSave() {
     if (saveTimeout) clearTimeout(saveTimeout);
     try {
-      await saveActiveNote();
+      await saveActiveNote(true);
+      lastSnapshotTime = Date.now();
     } catch (err) {
       console.error('Manual save failed:', err);
     }
@@ -1146,7 +1172,7 @@
 
             <div class="tags-container">
               {#each currentNoteTags as tag}
-                <span class="tag-pill">
+                <span class="tag-pill" title="YAML Frontmatter Tag">
                   #{tag}
                   <button class="remove-tag-btn" onclick={() => removeTag(tag)} aria-label="Remove {tag}">
                     <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -1154,6 +1180,13 @@
                       <line x1="10" y1="4" x2="4" y2="10"/>
                     </svg>
                   </button>
+                </span>
+              {/each}
+
+              {#each currentNoteInlineTags as tag}
+                <span class="tag-pill tag-pill-inline" title="Inline Tag (Click to focus)" onclick={() => focusInlineTag(tag)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && focusInlineTag(tag)}>
+                  #{tag}
+                  <span class="tag-source-label">inline</span>
                 </span>
               {/each}
 
@@ -1809,6 +1842,31 @@
   .tag-pill:hover {
     border-color: var(--accent);
     transform: translateY(-0.5px);
+  }
+
+  .tag-pill-inline {
+    background-color: rgba(142, 142, 147, 0.12);
+    border: 1px solid var(--border-normal);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .tag-pill-inline:hover {
+    border-color: var(--accent);
+    background-color: var(--accent-muted);
+    color: var(--accent);
+    transform: translateY(-0.5px);
+  }
+
+  .tag-source-label {
+    font-size: 8px;
+    text-transform: uppercase;
+    opacity: 0.5;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 0.5px 3px;
+    border-radius: 2px;
+    margin-left: 2px;
+    letter-spacing: 0.3px;
   }
 
   .remove-tag-btn {

@@ -15,7 +15,8 @@ fn parse_ulid(s: &str) -> Result<NoteId, rusqlite::Error> {
 fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
     let id_str: String = row.get("id")?;
     let parent_id_str: Option<String> = row.get("parent_id")?;
-    let tags_json: String = row.get("consolidated_tags")?;
+    let yaml_tags_json: String = row.get("yaml_tags")?;
+    let inline_tags_json: String = row.get("inline_tags")?;
     let created_str: String = row.get("created")?;
     let updated_str: String = row.get("updated")?;
     let file_path: String = row.get("file_path")?;
@@ -28,7 +29,8 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
         .map(|d| d.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now());
         
-    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+    let tags: Vec<String> = serde_json::from_str(&yaml_tags_json).unwrap_or_default();
+    let inline_tags: Vec<String> = serde_json::from_str(&inline_tags_json).unwrap_or_default();
 
     Ok(Note {
         id: parse_ulid(&id_str)?,
@@ -41,6 +43,7 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
         color: row.get("color")?,
         pinned: row.get("pinned")?,
         tags,
+        inline_tags,
         status: row.get("status")?,
         created_at,
         updated_at,
@@ -51,7 +54,8 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
 fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
     let id_str: String = row.get("id")?;
     let parent_id_str: Option<String> = row.get("parent_id")?;
-    let tags_json: String = row.get("consolidated_tags")?;
+    let yaml_tags_json: String = row.get("yaml_tags")?;
+    let inline_tags_json: String = row.get("inline_tags")?;
     let updated_str: String = row.get("updated")?;
     let file_path: String = row.get("file_path")?;
     
@@ -59,7 +63,8 @@ fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
         .map(|d| d.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now());
         
-    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+    let tags: Vec<String> = serde_json::from_str(&yaml_tags_json).unwrap_or_default();
+    let inline_tags: Vec<String> = serde_json::from_str(&inline_tags_json).unwrap_or_default();
 
     Ok(NoteMeta {
         id: parse_ulid(&id_str)?,
@@ -71,6 +76,7 @@ fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
         color: row.get("color")?,
         pinned: row.get("pinned")?,
         tags,
+        inline_tags,
         status: row.get("status")?,
         updated_at,
         file_path,
@@ -90,8 +96,14 @@ pub fn get_note(conn: &Connection, id: NoteId) -> Result<Option<Note>, NodaError
                 SELECT COALESCE(json_group_array(t.name), '[]')
                 FROM note_tags nt
                 JOIN tags t ON nt.tag_id = t.id
-                WHERE nt.note_id = notes.id
-            ) as consolidated_tags, 
+                WHERE nt.note_id = notes.id AND nt.source = 'yaml'
+            ) as yaml_tags, 
+            (
+                SELECT COALESCE(json_group_array(t.name), '[]')
+                FROM note_tags nt
+                JOIN tags t ON nt.tag_id = t.id
+                WHERE nt.note_id = notes.id AND nt.source = 'inline'
+            ) as inline_tags, 
             status, 
             created, 
             updated, 
@@ -254,8 +266,14 @@ pub fn list_notes(conn: &Connection) -> Result<Vec<NoteMeta>, NodaError> {
                 SELECT COALESCE(json_group_array(t.name), '[]')
                 FROM note_tags nt
                 JOIN tags t ON nt.tag_id = t.id
-                WHERE nt.note_id = notes.id
-            ) as consolidated_tags, 
+                WHERE nt.note_id = notes.id AND nt.source = 'yaml'
+            ) as yaml_tags, 
+            (
+                SELECT COALESCE(json_group_array(t.name), '[]')
+                FROM note_tags nt
+                JOIN tags t ON nt.tag_id = t.id
+                WHERE nt.note_id = notes.id AND nt.source = 'inline'
+            ) as inline_tags, 
             status, 
             updated, 
             file_path 
@@ -306,18 +324,8 @@ pub fn sync_note_tags(conn: &Connection, note: &Note) -> Result<(), NodaError> {
     conn.execute("DELETE FROM note_tags WHERE note_id = ?1", params![note_id])
         .map_err(|e| NodaError::Database(format!("Failed to clear note tags: {}", e)))?;
         
-    // 2. Parse inline tags
-    let mut inline_tags = Vec::new();
-    static TAG_REGEX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let re = TAG_REGEX.get_or_init(|| regex::Regex::new(r"(?:^|\s)#([\p{L}\p{N}_-]+)").unwrap());
-    for cap in re.captures_iter(&note.body) {
-        if let Some(m) = cap.get(1) {
-            let tag = m.as_str().trim().to_string();
-            if !tag.is_empty() && tag.chars().any(|c| c.is_alphabetic()) {
-                inline_tags.push(tag);
-            }
-        }
-    }
+    // 2. Parse inline tags using unified robust logic
+    let inline_tags = Note::parse_inline_tags(&note.body);
     
     // 3. Clean YAML tags
     let mut yaml_tags = Vec::new();

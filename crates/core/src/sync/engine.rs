@@ -460,6 +460,7 @@ impl SyncEngine {
                                             id: frontmatter.id,
                                             parent_id: frontmatter.parent_id,
                                             title: frontmatter.title,
+                                            inline_tags: Note::parse_inline_tags(&parsed.content),
                                             body: parsed.content,
                                             color: frontmatter.color,
                                             pinned: frontmatter.pinned,

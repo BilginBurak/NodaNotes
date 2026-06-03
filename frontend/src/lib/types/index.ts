@@ -16,6 +16,7 @@ export interface NoteDto {
   color?: string | null;
   pinned: boolean;
   tags: string[];
+  inline_tags: string[];
   created_at: string;
   updated_at: string;
   file_path: string;
@@ -45,6 +46,7 @@ export interface NoteListItemDto {
   color?: string | null;
   pinned: boolean;
   tags: string[];
+  inline_tags: string[];
   updated_at: string;
   file_path: string;
 }
@@ -152,6 +154,7 @@ export interface HistorySettings {
   retention_days: number;
   max_snapshots_per_note: number;
   empty_trash_after_days: number;
+  snapshot_interval_mins: number;
 }
 
 export interface AppConfig {

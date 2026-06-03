@@ -1,12 +1,52 @@
 <script lang="ts">
   import { marked } from 'marked';
+  import { updateActiveNoteBody, saveActiveNote } from '../../stores/notes';
 
   export let content: string = '';
 
   $: html = marked.parse(content) as string;
+
+  function handlePreviewClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox') {
+      // Previews are disabled by default, we intercept click
+      e.preventDefault();
+      
+      const checkboxes = Array.from((e.currentTarget as HTMLElement).querySelectorAll('input[type="checkbox"]'));
+      const index = checkboxes.indexOf(target as HTMLInputElement);
+      if (index !== -1) {
+        toggleMarkdownTask(index);
+      }
+    }
+  }
+
+  function toggleMarkdownTask(index: number) {
+    const taskRegex = /^(\s*[-*+]\s+\[([ xX])\])/;
+    let lines = content.split('\n');
+    let taskCount = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const match = lines[i].match(taskRegex);
+      if (match) {
+        if (taskCount === index) {
+          const currentMarker = match[1];
+          const currentStatus = match[2];
+          const nextStatus = currentStatus === ' ' ? 'x' : ' ';
+          const newMarker = currentMarker.replace(`[${currentStatus}]`, `[${nextStatus}]`);
+          lines[i] = lines[i].replace(currentMarker, newMarker);
+          
+          const newBody = lines.join('\n');
+          updateActiveNoteBody(newBody);
+          saveActiveNote(false);
+          break;
+        }
+        taskCount++;
+      }
+    }
+  }
 </script>
 
-<div class="markdown-preview scrollbar-thin">
+<div class="markdown-preview scrollbar-thin" onclick={handlePreviewClick} role="presentation">
   <!-- eslint-disable-next-line svelte/no-at-html-tags -->
   {@html html}
 </div>
@@ -24,6 +64,11 @@
     max-width: 800px;
     margin: 0 auto;
     box-sizing: border-box;
+  }
+
+  :global(.markdown-preview input[type="checkbox"]) {
+    pointer-events: auto !important;
+    cursor: pointer;
   }
 
   :global(.markdown-preview h1) {

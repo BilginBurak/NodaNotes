@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import type { SyncStatus, SyncReport, ConflictEntry, SyncConfig } from '../types';
 import * as ipc from '../services/ipc';
+import { saveActiveNote } from './notes';
 
 export const syncStatus    = writable<SyncStatus>({ status: 'Idle' });
 export const syncConfig    = writable<SyncConfig>({
@@ -62,6 +63,11 @@ export async function loadSyncStatus() {
  * Tamamlanınca SyncReport'u store'a yazar ve bildirimi gösterir.
  */
 export async function triggerSyncNow(): Promise<SyncReport | null> {
+  try {
+    await saveActiveNote(true);
+  } catch (e) {
+    console.error('Failed to save active note before sync:', e);
+  }
   syncError.set(null);
   syncStatus.set({ status: 'Syncing' });
   try {

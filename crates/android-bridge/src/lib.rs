@@ -856,6 +856,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_createNote(
             color: None,
             pinned: false,
             tags: params.tags,
+            inline_tags: Vec::new(),
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
@@ -938,6 +939,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
             id: note_id,
             parent_id: existing_note.parent_id,
             title: params.title,
+            inline_tags: Note::parse_inline_tags(&params.body),
             body: params.body,
             color: params.color,
             pinned: params.pinned,
@@ -1627,6 +1629,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreSnapshot(
                 id: current.id,
                 parent_id: current.parent_id.clone(),
                 title: restored_note_from_snap.title,
+                inline_tags: restored_note_from_snap.inline_tags.clone(),
                 body: restored_note_from_snap.body,
                 color: current.color.clone(),
                 pinned: current.pinned,
@@ -3090,6 +3093,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getSettings(
                         retention_days: config.history.retention_days,
                         max_snapshots_per_note: config.history.max_snapshots_per_note,
                         empty_trash_after_days: config.history.empty_trash_after_days,
+                        snapshot_interval_mins: config.history.snapshot_interval_mins,
                     },
                 };
                 serde_json::to_string(&dto).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))

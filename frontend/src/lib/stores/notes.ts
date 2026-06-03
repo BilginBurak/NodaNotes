@@ -68,7 +68,7 @@ export async function selectNote(id: string) {
   const currentActive = get(activeNote);
   const isDirty = get(activeNoteDirty);
   if (currentActive && isDirty) {
-    await saveActiveNote();
+    await saveActiveNote(true);
   }
 
   loadingNote.set(true);
@@ -126,7 +126,7 @@ export async function selectConflictNote(noteId: string, archivedPath: string) {
   }
 }
 
-export async function saveActiveNote() {
+export async function saveActiveNote(triggerSnapshot: boolean = false) {
   const currentActive = get(activeNote);
   const isDirty = get(activeNoteDirty);
   if (!currentActive || !isDirty) return;
@@ -140,6 +140,7 @@ export async function saveActiveNote() {
       currentActive.color ?? null,
       currentActive.pinned ?? false,
       currentActive.tags ?? [],
+      triggerSnapshot
     );
     activeNote.set(updated);
     activeNoteDirty.set(false);

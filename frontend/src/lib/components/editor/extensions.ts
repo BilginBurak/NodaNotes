@@ -1,10 +1,52 @@
-import { EditorView, keymap, highlightActiveLine, drawSelection, dropCursor, Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+import { EditorView, keymap, highlightActiveLine, drawSelection, dropCursor, Decoration, ViewPlugin, type DecorationSet, type ViewUpdate, WidgetType } from '@codemirror/view';
 import { EditorState, RangeSetBuilder, Compartment } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { history, defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { bracketMatching, indentOnInput, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { search, searchKeymap } from '@codemirror/search';
 import { syntaxTree } from '@codemirror/language';
+
+class CheckboxWidget extends WidgetType {
+  constructor(readonly checked: boolean, readonly pos: number) {
+    super();
+  }
+
+  eq(other: CheckboxWidget) {
+    return this.checked === other.checked && this.pos === other.pos;
+  }
+
+  toDOM(view: EditorView) {
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = this.checked;
+    input.className = 'cm-task-checkbox';
+    
+    input.addEventListener('click', (e) => {
+      e.preventDefault();
+      const from = this.pos;
+      const to = this.pos + 3; // "[ ]" or "[x]" length is 3
+      const current = view.state.sliceDoc(from, to);
+      let replacement = '';
+      if (current === '[ ]') {
+        replacement = '[x]';
+      } else if (current === '[x]' || current === '[X]') {
+        replacement = '[ ]';
+      } else {
+        return;
+      }
+      
+      view.dispatch({
+        changes: { from, to, insert: replacement }
+      });
+    });
+
+    return input;
+  }
+
+  ignoreEvent() {
+    return false;
+  }
+}
 
 export const livePreviewCompartment = new Compartment();
 export const editorModeCompartment = new Compartment();
@@ -36,7 +78,40 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
     const decos: { from: number; to: number; deco: Decoration; isLine?: boolean }[] = [];
 
-    // Cursor'ın bu düğümün kapsadığı herhangi bir satırda olup olmadığını kontrol et
+    // Viewport satırlarında task checkbox'ları ara
+    for (const { from, to } of view.visibleRanges) {
+      let pos = from;
+      while (pos < to) {
+        const line = state.doc.lineAt(pos);
+        const text = line.text;
+        const match = text.match(/^(\s*[-*+]\s+)(\[([ xX])\])/);
+        if (match) {
+          const lineNum = line.number;
+          if (!cursorLines.has(lineNum)) {
+            const startMarkOffset = match[1].length;
+            const bracketStart = line.from + startMarkOffset;
+            const bracketEnd = bracketStart + match[2].length;
+            const isChecked = match[3].toLowerCase() === 'x';
+            
+            decos.push({
+              from: bracketStart,
+              to: bracketEnd,
+              deco: Decoration.replace({
+                widget: new CheckboxWidget(isChecked, bracketStart)
+              })
+            });
+            
+            decos.push({
+              from: line.from,
+              to: bracketStart,
+              deco: Decoration.mark({ class: 'cm-hidden-syntax' })
+            });
+          }
+        }
+        pos = line.to + 1;
+      }
+    }
+
     const isCursorInNode = (from: number, to: number) => {
       const startLine = state.doc.lineAt(from).number;
       const endLine = state.doc.lineAt(to).number;
@@ -380,6 +455,39 @@ const macOSDarkTheme = EditorView.theme({
     color: 'var(--accent) !important',
     fontWeight: '600',
     marginRight: '4px',
+  },
+  '.cm-task-checkbox': {
+    appearance: 'none',
+    width: '14px',
+    height: '14px',
+    border: '1px solid var(--border-strong)',
+    borderRadius: '3px',
+    backgroundColor: 'var(--bg-control)',
+    display: 'inline-block',
+    verticalAlign: 'middle',
+    position: 'relative',
+    cursor: 'pointer',
+    marginRight: '6px',
+    marginTop: '-2px',
+    transition: 'all 0.1s ease',
+  },
+  '.cm-task-checkbox:checked': {
+    backgroundColor: 'var(--accent)',
+    borderColor: 'var(--accent)',
+  },
+  '.cm-task-checkbox:checked::after': {
+    content: '"✓"',
+    position: 'absolute',
+    color: 'white',
+    fontSize: '10px',
+    fontWeight: 'bold',
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+  },
+  '.cm-task-checkbox:hover': {
+    borderColor: 'var(--accent)',
+    boxShadow: '0 0 0 2px var(--accent-muted)',
   }
 }, { dark: true });
 

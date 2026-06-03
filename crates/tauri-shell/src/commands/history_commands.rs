@@ -105,6 +105,7 @@ pub async fn restore_snapshot(
             id: current.id,
             parent_id: current.parent_id.clone(),
             title: restored_note_from_snap.title,
+            inline_tags: restored_note_from_snap.inline_tags.clone(),
             body: restored_note_from_snap.body,
             color: current.color.clone(),
             pinned: current.pinned,

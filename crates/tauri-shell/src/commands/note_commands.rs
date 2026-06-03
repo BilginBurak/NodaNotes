@@ -49,10 +49,11 @@ pub async fn create_note(
         id,
         parent_id: parsed_parent,
         title,
-        body,
+        body: body.clone(),
         color,
         pinned,
         tags,
+        inline_tags: Note::parse_inline_tags(&body),
         status: "active".to_string(),
         created_at: now,
         updated_at: now,
@@ -114,6 +115,7 @@ pub async fn update_note(
     color: Option<String>,
     pinned: bool,
     tags: Vec<String>,
+    trigger_snapshot: bool,
 ) -> Result<NoteDto, AppError> {
     let service = {
         let guard = state.vault_service.read();
@@ -164,10 +166,11 @@ pub async fn update_note(
         id: note_id,
         parent_id: parsed_parent,
         title,
-        body,
+        body: body.clone(),
         color,
         pinned,
         tags,
+        inline_tags: Note::parse_inline_tags(&body),
         status: existing_note_full.status.clone(),
         created_at: existing_note_full.created_at,
         updated_at: now,
@@ -177,7 +180,7 @@ pub async fn update_note(
     // Check if content actually changed
     let content_changed = existing_note_full.title != note.title || existing_note_full.body != note.body || existing_note_full.color != note.color || existing_note_full.pinned != note.pinned || existing_note_full.tags != note.tags;
 
-    if content_changed {
+    if content_changed && trigger_snapshot {
         // Take a snapshot of the PREVIOUS state before we overwrite it
         let _ = history::snapshot(&vault_path, &existing_note_full).await;
     }
@@ -585,6 +588,7 @@ pub async fn trigger_daily_note(
         let mut note = service.read_note(note_id).await.map_err(AppError::from)?;
         let section = format!("\n\n## 📌 {}\n\n", time_str);
         note.body.push_str(&section);
+        note.inline_tags = Note::parse_inline_tags(&note.body);
         note.updated_at = Utc::now();
         
         service.write_note(&note).await.map_err(AppError::from)?;
@@ -624,10 +628,11 @@ pub async fn trigger_daily_note(
             id: new_id,
             parent_id: None,
             title: date_str,
-            body,
+            body: body.clone(),
             color: None,
             pinned: false,
             tags: Vec::new(),
+            inline_tags: Note::parse_inline_tags(&body),
             status: "active".to_string(),
             created_at: now,
             updated_at: now,

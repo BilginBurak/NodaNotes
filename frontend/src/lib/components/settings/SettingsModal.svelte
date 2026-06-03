@@ -31,40 +31,48 @@
     onclose?: () => void;
   }>();
 
-  // Config copy for editing
-  let localConfig: AppConfig = {
-    appearance: { theme: 'dark', accent_color: 'blue' },
-    editor: { font_size: 14, typography: 'sans', show_word_count: true, auto_save_delay_ms: 1500 },
-    sync: { webdav_url: '', webdav_username: '', webdav_password: '', interval_secs: 300 },
-    history: { retention_days: 30, max_snapshots_per_note: 50, empty_trash_after_days: 30 }
-  };
+  // Reactive state fields for config
+  let appearanceTheme = $state('dark');
+  let appearanceAccentColor = $state('blue');
+  let editorFontSize = $state(14);
+  let editorTypography = $state('sans');
+  let editorShowWordCount = $state(true);
+  let editorAutoSaveDelayMs = $state(1500);
+  let editorDefaultDailyTemplate = $state<string>('');
+  let syncWebdavUrl = $state('');
+  let syncWebdavUsername = $state('');
+  let syncIntervalSecs = $state(300);
+  let historyRetentionDays = $state(30);
+  let historyMaxSnapshots = $state(50);
+  let historyEmptyTrashDays = $state(30);
+  let historySnapshotIntervalMins = $state(5);
 
   const templateNotes = $derived(
     $notesList.filter(n => n.file_path.startsWith('.templates/'))
   );
 
   // Sync state
-  let webdavPassword = '';
-  let validationStatus: 'idle' | 'testing' | 'success' | 'error' = 'idle';
-  let validationErrorMessage = '';
+  let webdavPassword = $state('');
+  let validationStatus = $state<'idle' | 'testing' | 'success' | 'error'>('idle');
+  let validationErrorMessage = $state('');
 
   // Maintenance state
-  let loadingAction: 'none' | 'rebuild_db' | 'vacuum_db' | 'scan_attachments' | 'delete_attachments' | 'reset_queue' | 'clear_cache' | 'scan_duplicates' | 'delete_duplicate' | 'scan_remnants' | 'delete_remnants' = 'none';
-  let orphanedAttachments: OrphanedAttachment[] = [];
-  let selectedAttachments: string[] = [];
-  let scannedAttachments = false;
-  let scannedRemnants = false;
-  let orphanedRemnants: OrphanedRemnants | null = null;
+  let loadingAction = $state<'none' | 'rebuild_db' | 'vacuum_db' | 'scan_attachments' | 'delete_attachments' | 'reset_queue' | 'clear_cache' | 'scan_duplicates' | 'delete_duplicate' | 'scan_remnants' | 'delete_remnants'>('none');
+  let orphanedAttachments = $state<OrphanedAttachment[]>([]);
+  let selectedAttachments = $state<string[]>([]);
+  let scannedAttachments = $state(false);
+  let scannedRemnants = $state(false);
+  let orphanedRemnants = $state<OrphanedRemnants | null>(null);
 
-  let duplicateNotes: DuplicateNoteGroup[] = [];
-  let scannedDuplicates = false;
-  let previewNoteContent: string | null = null;
-  let previewingFile: string | null = null;
-  let previewingTitle: string | null = null;
-  let loadingPreview = false;
+  let duplicateNotes = $state<DuplicateNoteGroup[]>([]);
+  let scannedDuplicates = $state(false);
+  let previewNoteContent = $state<string | null>(null);
+  let previewingFile = $state<string | null>(null);
+  let previewingTitle = $state<string | null>(null);
+  let loadingPreview = $state(false);
 
-  let maintenanceSuccessMsg = '';
-  let maintenanceErrorMsg = '';
+  let maintenanceSuccessMsg = $state('');
+  let maintenanceErrorMsg = $state('');
 
   function clearMaintenanceMessages() {
     maintenanceSuccessMsg = '';
@@ -316,9 +324,21 @@
   async function fetchSettings() {
     const config = await loadSettings();
     if (config) {
-      // Create a deep copy
-      localConfig = JSON.parse(JSON.stringify(config));
-      webdavPassword = localConfig.sync.webdav_password || '';
+      appearanceTheme = config.appearance.theme;
+      appearanceAccentColor = config.appearance.accent_color;
+      editorFontSize = config.editor.font_size;
+      editorTypography = config.editor.typography;
+      editorShowWordCount = config.editor.show_word_count;
+      editorAutoSaveDelayMs = config.editor.auto_save_delay_ms;
+      editorDefaultDailyTemplate = config.editor.default_daily_template || '';
+      syncWebdavUrl = config.sync.webdav_url;
+      syncWebdavUsername = config.sync.webdav_username;
+      webdavPassword = config.sync.webdav_password || '';
+      syncIntervalSecs = config.sync.interval_secs;
+      historyRetentionDays = config.history.retention_days;
+      historyMaxSnapshots = config.history.max_snapshots_per_note;
+      historyEmptyTrashDays = config.history.empty_trash_after_days;
+      historySnapshotIntervalMins = config.history.snapshot_interval_mins ?? 5;
     }
   }
 
@@ -327,8 +347,10 @@
     validationErrorMessage = '';
     try {
       await validateSyncConfig({
-        ...localConfig.sync,
-        webdav_password: webdavPassword || undefined
+        webdav_url: syncWebdavUrl,
+        webdav_username: syncWebdavUsername,
+        webdav_password: webdavPassword || undefined,
+        interval_secs: syncIntervalSecs
       });
       validationStatus = 'success';
       setTimeout(() => { validationStatus = 'idle'; }, 3000);
@@ -340,11 +362,32 @@
 
   async function handleSave() {
     try {
-      localConfig.sync.webdav_password = webdavPassword || undefined;
-      await saveSettings(localConfig);
+      const config: AppConfig = {
+        appearance: { theme: appearanceTheme, accent_color: appearanceAccentColor },
+        editor: {
+          font_size: editorFontSize,
+          typography: editorTypography,
+          show_word_count: editorShowWordCount,
+          auto_save_delay_ms: editorAutoSaveDelayMs,
+          default_daily_template: editorDefaultDailyTemplate || null
+        },
+        sync: {
+          webdav_url: syncWebdavUrl,
+          webdav_username: syncWebdavUsername,
+          webdav_password: webdavPassword || undefined,
+          interval_secs: syncIntervalSecs
+        },
+        history: {
+          retention_days: historyRetentionDays,
+          max_snapshots_per_note: historyMaxSnapshots,
+          empty_trash_after_days: historyEmptyTrashDays,
+          snapshot_interval_mins: historySnapshotIntervalMins
+        }
+      };
+      await saveSettings(config);
       
       // Apply theme changes to document attribute if needed
-      document.documentElement.setAttribute('data-theme', localConfig.appearance.theme);
+      document.documentElement.setAttribute('data-theme', appearanceTheme);
       
       // Close callback
       onclose?.();
@@ -359,7 +402,7 @@
 </script>
 
 {#if isOpen}
-  <div class="settings-backdrop" transition:fade={{ duration: 150 }} on:click={handleClose} role="presentation"></div>
+  <div class="settings-backdrop" transition:fade={{ duration: 150 }} onclick={handleClose} role="presentation"></div>
   
   <div class="settings-modal" transition:scale={{ duration: 180, start: 0.96 }} role="dialog" aria-modal="true" aria-label="Settings">
     <!-- Left Navigation Sidebar -->
@@ -373,7 +416,7 @@
       </div>
 
       <nav class="sidebar-nav">
-        <button class="nav-tab" class:active={activeTab === 'appearance'} on:click={() => activeTab = 'appearance'}>
+        <button class="nav-tab" class:active={activeTab === 'appearance'} onclick={() => activeTab = 'appearance'}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/>
             <circle cx="6" cy="6" r="1.5"/>
@@ -382,7 +425,7 @@
           Appearance
         </button>
 
-        <button class="nav-tab" class:active={activeTab === 'editor'} on:click={() => activeTab = 'editor'}>
+        <button class="nav-tab" class:active={activeTab === 'editor'} onclick={() => activeTab = 'editor'}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <path d="M11.5 2.5 13.5 4.5 5 13H3v-2L11.5 2.5z"/>
             <line x1="8" y1="12" x2="13" y2="12"/>
@@ -390,7 +433,7 @@
           Editor
         </button>
 
-        <button class="nav-tab" class:active={activeTab === 'sync'} on:click={() => activeTab = 'sync'}>
+        <button class="nav-tab" class:active={activeTab === 'sync'} onclick={() => activeTab = 'sync'}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <path d="M13 10a4 4 0 0 0-4-4H6a4 4 0 0 0 0 8h3"/>
             <polyline points="10,7 13,10 10,13"/>
@@ -398,7 +441,7 @@
           Sync & Cloud
         </button>
 
-        <button class="nav-tab" class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>
+        <button class="nav-tab" class:active={activeTab === 'history'} onclick={() => activeTab = 'history'}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="8" cy="8" r="6.5"/>
             <polyline points="8,4.5 8,8 10.5,10"/>
@@ -406,7 +449,7 @@
           History & Backup
         </button>
 
-        <button class="nav-tab" class:active={activeTab === 'vault'} on:click={() => activeTab = 'vault'}>
+        <button class="nav-tab" class:active={activeTab === 'vault'} onclick={() => activeTab = 'vault'}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2z"/>
             <line x1="5" y1="4" x2="11" y2="4"/>
@@ -414,7 +457,7 @@
           Vaults
         </button>
 
-        <button class="nav-tab" class:active={activeTab === 'templates'} on:click={() => activeTab = 'templates'}>
+        <button class="nav-tab" class:active={activeTab === 'templates'} onclick={() => activeTab = 'templates'}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="2" width="12" height="12" rx="2"/>
             <line x1="6" y1="6" x2="10" y2="6"/>
@@ -423,7 +466,7 @@
           Templates
         </button>
 
-        <button class="nav-tab nav-tab-maintenance" class:active={activeTab === 'maintenance'} on:click={() => { activeTab = 'maintenance'; clearMaintenanceMessages(); }}>
+        <button class="nav-tab nav-tab-maintenance" class:active={activeTab === 'maintenance'} onclick={() => { activeTab = 'maintenance'; clearMaintenanceMessages(); }}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14.7 6.3a1 1 0 0 0 0-1.4l-1.4-1.4a1 1 0 0 0-1.4 0L3.7 10.7a1 1 0 0 0 0 1.4l1.4 1.4a1 1 0 0 0 1.4 0l7.2-7.2z"/>
             <path d="M14.7 6.3 10.2 10.8m0 0a2 2 0 1 0 2.8 2.8m-2.8-2.8a2 2 0 1 1 2.8 2.8"/>
@@ -449,8 +492,8 @@
           <div class="form-group">
             <span class="group-label">Theme</span>
             <div class="theme-options">
-              <label class="theme-card" class:selected={localConfig.appearance.theme === 'dark'}>
-                <input type="radio" bind:group={localConfig.appearance.theme} value="dark" />
+              <label class="theme-card" class:selected={appearanceTheme === 'dark'}>
+                <input type="radio" bind:group={appearanceTheme} value="dark" />
                 <div class="theme-preview dark-preview">
                   <div class="preview-sidebar"></div>
                   <div class="preview-body"></div>
@@ -458,8 +501,8 @@
                 <span>Dark</span>
               </label>
 
-              <label class="theme-card" class:selected={localConfig.appearance.theme === 'light'}>
-                <input type="radio" bind:group={localConfig.appearance.theme} value="light" />
+              <label class="theme-card" class:selected={appearanceTheme === 'light'}>
+                <input type="radio" bind:group={appearanceTheme} value="light" />
                 <div class="theme-preview light-preview">
                   <div class="preview-sidebar"></div>
                   <div class="preview-body"></div>
@@ -467,8 +510,8 @@
                 <span>Light (Dummy)</span>
               </label>
 
-              <label class="theme-card" class:selected={localConfig.appearance.theme === 'auto'}>
-                <input type="radio" bind:group={localConfig.appearance.theme} value="auto" />
+              <label class="theme-card" class:selected={appearanceTheme === 'auto'}>
+                <input type="radio" bind:group={appearanceTheme} value="auto" />
                 <div class="theme-preview auto-preview">
                   <div class="preview-sidebar"></div>
                   <div class="preview-body"></div>
@@ -482,8 +525,8 @@
             <label for="accent-color">Accent Color</label>
             <div class="accent-options">
               {#each ['blue', 'purple', 'green', 'orange', 'red'] as color}
-                <label class="accent-dot-wrapper" class:selected={localConfig.appearance.accent_color === color}>
-                  <input type="radio" bind:group={localConfig.appearance.accent_color} value={color} />
+                <label class="accent-dot-wrapper" class:selected={appearanceAccentColor === color}>
+                  <input type="radio" bind:group={appearanceAccentColor} value={color} />
                   <span class="accent-dot accent-{color}" style="background-color: var(--color-{color === 'blue' ? 'blue' : color});"></span>
                 </label>
               {/each}
@@ -507,7 +550,7 @@
                 <span class="input-desc">Interval of inactivity after typing before saving note to disk.</span>
               </div>
               <div class="field-control">
-                <select id="auto-save-delay" bind:value={localConfig.editor.auto_save_delay_ms}>
+                <select id="auto-save-delay" bind:value={editorAutoSaveDelayMs}>
                   <option value={500}>500 ms (Fast)</option>
                   <option value={1000}>1 second</option>
                   <option value={1500}>1.5 seconds (Default)</option>
@@ -530,7 +573,7 @@
                 <span class="input-desc">Set the font size for the Markdown text editor (Dummy).</span>
               </div>
               <div class="field-control">
-                <input id="editor-font-size" type="number" min="10" max="24" bind:value={localConfig.editor.font_size} />
+                <input id="editor-font-size" type="number" min="10" max="24" bind:value={editorFontSize} />
               </div>
             </div>
           </div>
@@ -542,7 +585,7 @@
                 <span class="input-desc">Select font family used in editor workspace (Dummy).</span>
               </div>
               <div class="field-control">
-                <select id="editor-typography" bind:value={localConfig.editor.typography}>
+                <select id="editor-typography" bind:value={editorTypography}>
                   <option value="sans">System Sans-Serif</option>
                   <option value="serif">New York Serif</option>
                   <option value="mono">SF Mono Code</option>
@@ -558,7 +601,7 @@
                 <span class="input-desc">Display active note character and word statistics in footer (Dummy).</span>
               </div>
               <label class="switch-control">
-                <input type="checkbox" bind:checked={localConfig.editor.show_word_count} />
+                <input type="checkbox" bind:checked={editorShowWordCount} />
                 <span class="switch-slider"></span>
               </label>
             </div>
@@ -574,14 +617,14 @@
         <div class="settings-section">
           <div class="form-group">
             <label for="webdav-url">WebDAV Server URL</label>
-            <input id="webdav-url" type="url" placeholder="https://example.com/dav/" bind:value={localConfig.sync.webdav_url} />
+            <input id="webdav-url" type="url" placeholder="https://example.com/dav/" bind:value={syncWebdavUrl} />
             <span class="input-desc">Root folder WebDAV link from cloud provider (e.g. InfiniCLOUD, Nextcloud).</span>
           </div>
 
           <div class="form-row">
             <div class="form-group">
               <label for="webdav-user">Username</label>
-              <input id="webdav-user" type="text" placeholder="username" bind:value={localConfig.sync.webdav_username} />
+              <input id="webdav-user" type="text" placeholder="username" bind:value={syncWebdavUsername} />
             </div>
             <div class="form-group">
               <label for="webdav-pass">App Password</label>
@@ -591,7 +634,7 @@
 
           <div class="form-group">
             <label for="sync-interval">Sync Frequency</label>
-            <select id="sync-interval" bind:value={localConfig.sync.interval_secs}>
+            <select id="sync-interval" bind:value={syncIntervalSecs}>
               <option value={60}>Every 1 minute</option>
               <option value={300}>Every 5 minutes</option>
               <option value={900}>Every 15 minutes</option>
@@ -603,7 +646,7 @@
           <div class="verify-wrapper">
             <button
               class="btn btn-ghost verify-btn"
-              on:click={handleVerifySync}
+              onclick={handleVerifySync}
               disabled={validationStatus === 'testing'}
             >
               {#if validationStatus === 'testing'}
@@ -647,7 +690,7 @@
                 <span class="input-desc">Maximum snapshots saved per note. Excess old versions are pruned automatically.</span>
               </div>
               <div class="field-control">
-                <input id="max-snapshots" type="number" min="5" max="500" bind:value={localConfig.history.max_snapshots_per_note} />
+                <input id="max-snapshots" type="number" min="5" max="500" bind:value={historyMaxSnapshots} />
               </div>
             </div>
           </div>
@@ -659,7 +702,19 @@
                 <span class="input-desc">Keep snapshots on disk for this number of days before automatic cleanup.</span>
               </div>
               <div class="field-control">
-                <input id="retention-days" type="number" min="1" max="365" bind:value={localConfig.history.retention_days} />
+                <input id="retention-days" type="number" min="1" max="365" bind:value={historyRetentionDays} />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="field-row">
+              <div class="field-label-desc">
+                <label for="snapshot-interval">Snapshot Interval (Minutes)</label>
+                <span class="input-desc">Minutes of typing before generating a new history snapshot version.</span>
+              </div>
+              <div class="field-control">
+                <input id="snapshot-interval" type="number" min="1" max="60" bind:value={historySnapshotIntervalMins} />
               </div>
             </div>
           </div>
@@ -671,7 +726,7 @@
                 <span class="input-desc">Days a deleted note is kept in Trash before permanent physical deletion.</span>
               </div>
               <div class="field-control">
-                <input id="empty-trash-days" type="number" min="1" max="180" bind:value={localConfig.history.empty_trash_after_days} />
+                <input id="empty-trash-days" type="number" min="1" max="180" bind:value={historyEmptyTrashDays} />
               </div>
             </div>
           </div>
@@ -728,7 +783,7 @@
               <polyline points="2,8 6,12 14,4"/>
             </svg>
             <span>{maintenanceSuccessMsg}</span>
-            <button class="close-alert" on:click={() => maintenanceSuccessMsg = ''}>&times;</button>
+            <button class="close-alert" onclick={() => maintenanceSuccessMsg = ''}>&times;</button>
           </div>
         {/if}
 
@@ -740,7 +795,7 @@
               <line x1="8" y1="11" x2="8" y2="11"/>
             </svg>
             <span>{maintenanceErrorMsg}</span>
-            <button class="close-alert" on:click={() => maintenanceErrorMsg = ''}>&times;</button>
+            <button class="close-alert" onclick={() => maintenanceErrorMsg = ''}>&times;</button>
           </div>
         {/if}
 
@@ -764,7 +819,7 @@
                 <span class="action-title">Rebuild Database Cache</span>
                 <span class="action-desc">Fully re-scans vault note files and rebuilds the SQLite search and tag index from scratch. Useful if some notes are missing from list or search.</span>
               </div>
-              <button class="btn btn-warning" on:click={handleRebuildDatabase} disabled={loadingAction !== 'none'}>
+              <button class="btn btn-warning" onclick={handleRebuildDatabase} disabled={loadingAction !== 'none'}>
                 {#if loadingAction === 'rebuild_db'}
                   <div class="spinner-sm"></div>Processing...
                 {:else}
@@ -786,7 +841,7 @@
                 <span class="action-title">Vacuum Database</span>
                 <span class="action-desc">Defragments the database file, cleans unused cache spaces, and optimizes internal query performance. Safe to run anytime.</span>
               </div>
-              <button class="btn btn-secondary" on:click={handleVacuumDatabase} disabled={loadingAction !== 'none'}>
+              <button class="btn btn-secondary" onclick={handleVacuumDatabase} disabled={loadingAction !== 'none'}>
                 {#if loadingAction === 'vacuum_db'}
                   <div class="spinner-sm"></div>Processing...
                 {:else}
@@ -815,7 +870,7 @@
                   <span class="action-title">Scan Orphaned Attachments</span>
                   <span class="action-desc">Scans `.noda/attachments/` to identify images and files that are no longer linked or used inside any active note.</span>
                 </div>
-                <button class="btn btn-primary" on:click={handleScanAttachments} disabled={loadingAction !== 'none'}>
+                <button class="btn btn-primary" onclick={handleScanAttachments} disabled={loadingAction !== 'none'}>
                   {#if loadingAction === 'scan_attachments'}
                     <div class="spinner-sm"></div>Scanning...
                   {:else}
@@ -853,7 +908,7 @@
                     
                     <div class="orphaned-actions">
                       <span class="selected-count">{selectedAttachments.length} files selected</span>
-                      <button class="btn btn-danger btn-sm" on:click={handleDeleteSelectedAttachments} disabled={selectedAttachments.length === 0 || loadingAction !== 'none'}>
+                      <button class="btn btn-danger btn-sm" onclick={handleDeleteSelectedAttachments} disabled={selectedAttachments.length === 0 || loadingAction !== 'none'}>
                         {#if loadingAction === 'delete_attachments'}
                           <div class="spinner-sm"></div>Deleting...
                         {:else}
@@ -879,7 +934,7 @@
                   <span class="action-title">Scan Duplicate Notes</span>
                   <span class="action-desc">Scans the entire vault recursively to locate any files sharing identical internal note IDs.</span>
                 </div>
-                <button class="btn btn-primary" on:click={handleScanDuplicates} disabled={loadingAction !== 'none'}>
+                <button class="btn btn-primary" onclick={handleScanDuplicates} disabled={loadingAction !== 'none'}>
                   {#if loadingAction === 'scan_duplicates'}
                     <div class="spinner-sm"></div>Scanning...
                   {:else}
@@ -910,13 +965,13 @@
                           <div class="group-files-list">
                             {#each group.files as file}
                               <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
-                                <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, group.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, group.title)}>
+                                <div class="file-info-col" onclick={() => handlePreviewNote(file.relative_path, group.title)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, group.title)}>
                                   <span class="file-path">{file.relative_path}</span>
                                   <span class="file-meta">
                                     Size: {formatBytes(file.size_bytes)} • Modified: {new Date(file.last_modified).toLocaleString()}
                                   </span>
                                 </div>
-                                <button class="btn btn-danger btn-xs" on:click={() => handleDeleteDuplicate(file.relative_path)} disabled={loadingAction !== 'none'}>
+                                <button class="btn btn-danger btn-xs" onclick={() => handleDeleteDuplicate(file.relative_path)} disabled={loadingAction !== 'none'}>
                                   Delete
                                 </button>
                               </div>
@@ -944,7 +999,7 @@
                   <span class="action-title">Scan Orphaned Remnants</span>
                   <span class="action-desc">Scans `.noda/history/` and `.noda/conflicts/` directories to identify metadata that no longer belongs to any active or trashed note.</span>
                 </div>
-                <button class="btn btn-primary" on:click={handleScanRemnants} disabled={loadingAction !== 'none'}>
+                <button class="btn btn-primary" onclick={handleScanRemnants} disabled={loadingAction !== 'none'}>
                   {#if loadingAction === 'scan_remnants'}
                     <div class="spinner-sm"></div>Scanning...
                   {:else}
@@ -971,7 +1026,7 @@
                         <div class="group-files-list">
                           {#each orphanedRemnants.files as file}
                             <div class="duplicate-file-item" class:previewing={previewingFile === file.relative_path}>
-                              <div class="file-info-col" on:click={() => handlePreviewNote(file.relative_path, file.title)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, file.title)}>
+                              <div class="file-info-col" onclick={() => handlePreviewNote(file.relative_path, file.title)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && handlePreviewNote(file.relative_path, file.title)}>
                                 <span class="file-path" style="display: flex; align-items: center; gap: 6px;">
                                   <span>{file.file_type === 'history' ? '📁' : '📄'}</span>
                                   <span style="font-weight: 500;">{file.title}</span>
@@ -980,7 +1035,7 @@
                                   Yol: {file.relative_path} • Boyut: {formatBytes(file.size_bytes)} • Değiştirilme: {new Date(file.last_modified).toLocaleString()}
                                 </span>
                               </div>
-                              <button class="btn btn-danger btn-xs" on:click={() => handleDeleteOrphanedFile(file.relative_path)} disabled={loadingAction !== 'none'}>
+                              <button class="btn btn-danger btn-xs" onclick={() => handleDeleteOrphanedFile(file.relative_path)} disabled={loadingAction !== 'none'}>
                                 Sil
                               </button>
                             </div>
@@ -991,7 +1046,7 @@
                     
                     <div class="orphaned-actions" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-subtle);">
                       <span class="selected-count">{orphanedRemnants.files.length} dosya kalıcı olarak silinecek</span>
-                      <button class="btn btn-danger btn-sm" on:click={handleDeleteSelectedRemnants} disabled={loadingAction !== 'none'}>
+                      <button class="btn btn-danger btn-sm" onclick={handleDeleteSelectedRemnants} disabled={loadingAction !== 'none'}>
                         {#if loadingAction === 'delete_remnants'}
                           <div class="spinner-sm"></div>Temizleniyor...
                         {:else}
@@ -1012,7 +1067,7 @@
                     <span class="drawer-icon">📝</span>
                     <h4>Preview: {previewingTitle || 'Untitled'}</h4>
                   </div>
-                  <button class="close-btn" on:click={closePreview}>&times;</button>
+                  <button class="close-btn" onclick={closePreview}>&times;</button>
                 </div>
                 <div class="drawer-body scrollbar-thin">
                   <span class="drawer-path-sub">{previewingFile}</span>
@@ -1047,7 +1102,7 @@
                 <span class="action-title">Reset Sync Queue</span>
                 <span class="action-desc">Purges the persistent transaction sync queue. Safe fallback if you have a failing "poison-pill" action blocking synchronization loops.</span>
               </div>
-              <button class="btn btn-danger" on:click={handleResetSyncQueue} disabled={loadingAction !== 'none'}>
+              <button class="btn btn-danger" onclick={handleResetSyncQueue} disabled={loadingAction !== 'none'}>
                 {#if loadingAction === 'reset_queue'}
                   <div class="spinner-sm"></div>Resetting...
                 {:else}
@@ -1067,7 +1122,7 @@
                 <span class="action-title">Clear Remote Tracking Cache</span>
                 <span class="action-desc">Purges `remote_state.json`. Clears out-of-sync local metadata state caches. On the next sync cycle, a complete comparative comparison with WebDAV is run.</span>
               </div>
-              <button class="btn btn-warning" on:click={handleClearSyncCache} disabled={loadingAction !== 'none'}>
+              <button class="btn btn-warning" onclick={handleClearSyncCache} disabled={loadingAction !== 'none'}>
                 {#if loadingAction === 'clear_cache'}
                   <div class="spinner-sm"></div>Clearing...
                 {:else}
@@ -1086,7 +1141,7 @@
         <div class="settings-section">
           <div class="form-group">
             <label for="default-daily-template">Default Daily Note Template</label>
-            <select id="default-daily-template" bind:value={localConfig.editor.default_daily_template} class="select-control">
+            <select id="default-daily-template" bind:value={editorDefaultDailyTemplate} class="select-control">
               <option value="">None (Empty Note)</option>
               {#each templateNotes as template}
                 <option value={template.id}>{template.title} ({template.file_path})</option>
@@ -1116,8 +1171,8 @@
       {#if $settingsError}
         <span class="footer-error">{$settingsError}</span>
       {/if}
-      <button class="btn btn-secondary" on:click={handleClose} disabled={$loadingSettings}>Cancel</button>
-      <button class="btn btn-primary" on:click={handleSave} disabled={$loadingSettings}>
+      <button class="btn btn-secondary" onclick={handleClose} disabled={$loadingSettings}>Cancel</button>
+      <button class="btn btn-primary" onclick={handleSave} disabled={$loadingSettings}>
         {#if $loadingSettings}
           <div class="spinner-sm"></div>Saving...
         {:else}

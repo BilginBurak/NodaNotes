@@ -14,6 +14,7 @@ impl From<Note> for NoteDto {
             color: note.color,
             pinned: note.pinned,
             tags: note.tags,
+            inline_tags: note.inline_tags,
             created_at: note.created_at.to_rfc3339(),
             updated_at: note.updated_at.to_rfc3339(),
             file_path: note.file_path,
@@ -30,6 +31,7 @@ impl From<NoteMeta> for NoteListItemDto {
             color: meta.color,
             pinned: meta.pinned,
             tags: meta.tags,
+            inline_tags: meta.inline_tags,
             updated_at: meta.updated_at.to_rfc3339(),
             file_path: meta.file_path,
         }

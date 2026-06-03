@@ -31,6 +31,8 @@ pub struct Note {
     pub color: Option<String>,
     pub pinned: bool,
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub inline_tags: Vec<String>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -56,11 +58,59 @@ impl Note {
             color: None,
             pinned: false,
             tags: Vec::new(),
+            inline_tags: Vec::new(),
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
             file_path: format!("{}.md", id.0.to_string()),
         }
+    }
+
+    pub fn parse_inline_tags(body: &str) -> Vec<String> {
+        static TAG_REGEX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = TAG_REGEX.get_or_init(|| regex::Regex::new(r"(?:^|\s)#([\p{L}\p{N}_-]+)").unwrap());
+        
+        let cleaned_body = Self::clean_body_for_tags(body);
+        let mut tags = Vec::new();
+        for cap in re.captures_iter(&cleaned_body) {
+            if let Some(m) = cap.get(1) {
+                let tag = m.as_str().trim().to_string();
+                if !tag.is_empty() && tag.chars().any(|c| c.is_alphabetic()) && !tags.contains(&tag) {
+                    tags.push(tag);
+                }
+            }
+        }
+        tags
+    }
+
+    fn clean_body_for_tags(body: &str) -> String {
+        let mut clean = String::new();
+        let mut in_code_block = false;
+        let mut in_inline_code = false;
+        
+        for line in body.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("```") {
+                in_code_block = !in_code_block;
+                continue;
+            }
+            if !in_code_block {
+                let mut line_clean = String::new();
+                let mut chars = line.chars().peekable();
+                while let Some(c) = chars.next() {
+                    if c == '`' {
+                        in_inline_code = !in_inline_code;
+                        continue;
+                    }
+                    if !in_inline_code {
+                        line_clean.push(c);
+                    }
+                }
+                clean.push_str(&line_clean);
+                clean.push('\n');
+            }
+        }
+        clean
     }
 
     /// Serializes the note to a complete Markdown string with YAML frontmatter
@@ -112,6 +162,7 @@ pub struct NoteMeta {
     pub color: Option<String>,
     pub pinned: bool,
     pub tags: Vec<String>,
+    pub inline_tags: Vec<String>,
     pub status: String,
     pub updated_at: DateTime<Utc>,
     pub file_path: String,
@@ -126,6 +177,7 @@ impl From<&Note> for NoteMeta {
             color: note.color.clone(),
             pinned: note.pinned,
             tags: note.tags.clone(),
+            inline_tags: note.inline_tags.clone(),
             status: note.status.clone(),
             updated_at: note.updated_at,
             file_path: note.file_path.clone(),

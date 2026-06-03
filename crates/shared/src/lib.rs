@@ -22,6 +22,7 @@ pub mod dtos {
         pub color: Option<String>,
         pub pinned: bool,
         pub tags: Vec<String>,
+        pub inline_tags: Vec<String>,
         pub created_at: String,
         pub updated_at: String,
         pub file_path: String,
@@ -52,6 +53,7 @@ pub mod dtos {
         pub color: Option<String>,
         pub pinned: bool,
         pub tags: Vec<String>,
+        pub inline_tags: Vec<String>,
         pub updated_at: String,
         pub file_path: String,
     }
@@ -158,6 +160,7 @@ pub mod dtos {
         pub retention_days: u32,
         pub max_snapshots_per_note: u32,
         pub empty_trash_after_days: u32,
+        pub snapshot_interval_mins: u32,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

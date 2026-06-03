@@ -44,6 +44,7 @@ pub struct HistorySettings {
     pub retention_days: u32,
     pub max_snapshots_per_note: u32,
     pub empty_trash_after_days: u32,
+    pub snapshot_interval_mins: u32,
 }
 
 impl Default for HistorySettings {
@@ -52,6 +53,7 @@ impl Default for HistorySettings {
             retention_days: 30,
             max_snapshots_per_note: 50,
             empty_trash_after_days: 30,
+            snapshot_interval_mins: 5,
         }
     }
 }

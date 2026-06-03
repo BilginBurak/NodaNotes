@@ -73,7 +73,8 @@ export const updateNote = (
   parentId: string | null = null,
   color: string | null = null,
   pinned = false,
-  tags: string[] = []
+  tags: string[] = [],
+  triggerSnapshot = false
 ) => call<NoteDto>('update_note', {
   id,
   title,
@@ -82,6 +83,7 @@ export const updateNote = (
   color,
   pinned,
   tags,
+  triggerSnapshot,
 });
 
 export const renameNote  = (id: string, newTitle: string) => call<NoteDto>('rename_note',  { id, newTitle });
