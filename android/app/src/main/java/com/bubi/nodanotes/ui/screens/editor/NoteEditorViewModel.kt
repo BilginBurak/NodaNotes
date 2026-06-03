@@ -47,9 +47,22 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
     private var activeNoteId: String = ""
     private var currentNoteDto: NoteDto? = null
     private var autoSaveJob: Job? = null
+    private var sessionModified = false
+    private var lastSnapshotTime = System.currentTimeMillis()
+
+    init {
+        com.bubi.nodanotes.data.repository.ActiveNoteTracker.activeSaveAction = { reason ->
+            val successState = _uiState.value as? NoteEditorUiState.Success
+            if (successState != null && sessionModified) {
+                saveWithReason(successState.note, reason)
+            }
+        }
+    }
 
     fun loadNote(noteId: String) {
         activeNoteId = noteId
+        sessionModified = false
+        lastSnapshotTime = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = NoteEditorUiState.Loading
             noteRepository.getNote(noteId).fold(
@@ -67,6 +80,8 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onTitleChanged(newTitle: String) {
         val successState = _uiState.value as? NoteEditorUiState.Success ?: return
+        if (successState.note.title == newTitle) return
+        sessionModified = true
         val updatedNote = successState.note.copy(title = newTitle)
         _uiState.value = NoteEditorUiState.Success(updatedNote)
         triggerAutoSave(updatedNote)
@@ -74,6 +89,8 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onContentChanged(newContent: String) {
         val successState = _uiState.value as? NoteEditorUiState.Success ?: return
+        if (successState.note.body == newContent) return
+        sessionModified = true
         val updatedNote = successState.note.copy(body = newContent)
         _uiState.value = NoteEditorUiState.Success(updatedNote)
         triggerAutoSave(updatedNote)
@@ -81,6 +98,8 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onTagsChanged(newTags: List<String>) {
         val successState = _uiState.value as? NoteEditorUiState.Success ?: return
+        if (successState.note.tags == newTags) return
+        sessionModified = true
         val updatedNote = successState.note.copy(tags = newTags)
         _uiState.value = NoteEditorUiState.Success(updatedNote)
         triggerAutoSave(updatedNote)
@@ -108,15 +127,26 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     private suspend fun saveNoteImmediately(note: NoteDto) {
         _saveState.value = SaveState.Saving
+        val settings = com.bubi.nodanotes.data.repository.SettingsRepository().getSettings().getOrNull()
+        val intervalMins = settings?.history?.snapshot_interval_mins ?: 5
+        val now = System.currentTimeMillis()
+        val shouldSnapshot = sessionModified && (now - lastSnapshotTime >= intervalMins * 60 * 1000)
+
         noteRepository.updateNote(
             noteId = note.id,
             title = note.title,
             body = note.body,
             tags = note.tags,
             color = note.color,
-            pinned = note.pinned
+            pinned = note.pinned,
+            triggerSnapshot = shouldSnapshot,
+            snapshotReason = if (shouldSnapshot) "AutoSave" else null
         ).fold(
             onSuccess = {
+                if (shouldSnapshot) {
+                    lastSnapshotTime = now
+                    sessionModified = false
+                }
                 _saveState.value = SaveState.Saved
                 loadMetadata(note.id)
             },
@@ -227,15 +257,94 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun toggleTaskStatus(noteId: String, lineContent: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            noteRepository.toggleTaskStatus(noteId, lineContent).fold(
+                onSuccess = { updatedNote ->
+                    currentNoteDto = updatedNote
+                    _uiState.value = NoteEditorUiState.Success(updatedNote)
+                    loadMetadata(noteId)
+                },
+                onFailure = {
+                    // Ignore or log error
+                }
+            )
+        }
+    }
+
+    private suspend fun saveWithReason(note: NoteDto, reason: String) {
+        _saveState.value = SaveState.Saving
+        noteRepository.updateNote(
+            noteId = note.id,
+            title = note.title,
+            body = note.body,
+            tags = note.tags,
+            color = note.color,
+            pinned = note.pinned,
+            triggerSnapshot = true,
+            snapshotReason = reason
+        ).fold(
+            onSuccess = {
+                lastSnapshotTime = System.currentTimeMillis()
+                sessionModified = false
+                _saveState.value = SaveState.Saved
+                loadMetadata(note.id)
+            },
+            onFailure = { error ->
+                _saveState.value = SaveState.Error(error.message ?: "Save failed")
+            }
+        )
+    }
+
     override fun onCleared() {
-        // Force save remaining changes when leaving
-        val successState = _uiState.value as? NoteEditorUiState.Success
-        if (successState != null && _saveState.value == SaveState.Unsaved) {
-            viewModelScope.launch(Dispatchers.IO) {
-                saveNoteImmediately(successState.note)
+        com.bubi.nodanotes.data.repository.ActiveNoteTracker.activeSaveAction = null
+        saveNoteOnExitSync("Blur")
+        super.onCleared()
+    }
+
+    fun saveNoteOnAppExit() {
+        val successState = _uiState.value as? NoteEditorUiState.Success ?: return
+        if (!sessionModified) return
+        viewModelScope.launch(Dispatchers.IO) {
+            noteRepository.updateNote(
+                noteId = successState.note.id,
+                title = successState.note.title,
+                body = successState.note.body,
+                tags = successState.note.tags,
+                color = successState.note.color,
+                pinned = successState.note.pinned,
+                triggerSnapshot = true,
+                snapshotReason = "App-Exit"
+            ).onSuccess {
+                sessionModified = false
+                lastSnapshotTime = System.currentTimeMillis()
+                _saveState.value = SaveState.Saved
             }
         }
-        super.onCleared()
+    }
+
+    private fun saveNoteOnExitSync(reason: String) {
+        val successState = _uiState.value as? NoteEditorUiState.Success ?: return
+        if (!sessionModified) return
+        autoSaveJob?.cancel()
+        try {
+            kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                noteRepository.updateNote(
+                    noteId = successState.note.id,
+                    title = successState.note.title,
+                    body = successState.note.body,
+                    tags = successState.note.tags,
+                    color = successState.note.color,
+                    pinned = successState.note.pinned,
+                    triggerSnapshot = true,
+                    snapshotReason = reason
+                )
+            }
+            sessionModified = false
+            lastSnapshotTime = System.currentTimeMillis()
+        } catch (e: Exception) {
+            // Log or ignore during destruction
+        }
     }
 }
 

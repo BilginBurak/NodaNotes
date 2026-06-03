@@ -70,7 +70,7 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
                         folderFiltered
                     } else {
                         folderFiltered.filter { note ->
-                            note.tags.contains(tagFilter)
+                            note.tags.contains(tagFilter) || note.inline_tags.contains(tagFilter)
                         }
                     }
                     val newState = NoteListUiState.Success(finalFiltered)

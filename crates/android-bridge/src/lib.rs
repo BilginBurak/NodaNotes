@@ -195,7 +195,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_refreshVault(
                     let entry_path = entry.path();
                     let name = entry.file_name();
                     let name_str = name.to_string_lossy();
-                    if name_str.starts_with('.') {
+                    if name_str.starts_with('.') && name_str != ".templates" {
                         continue;
                     }
                     if file_type.is_dir() {
@@ -892,6 +892,8 @@ struct UpdateNoteParams {
     tags: Vec<String>,
     color: Option<String>,
     pinned: bool,
+    trigger_snapshot: Option<bool>,
+    snapshot_reason: Option<String>,
 }
 
 #[no_mangle]
@@ -950,15 +952,25 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
             file_path: existing_note.file_path.clone(),
         };
 
-        let content_changed = existing_note.title != note.title
-            || existing_note.body != note.body
-            || existing_note.color != note.color
-            || existing_note.pinned != note.pinned
-            || existing_note.tags != note.tags;
-
-        if content_changed {
+        let trigger_snap = params.trigger_snapshot.unwrap_or(false);
+        if trigger_snap {
             let vault_path = service.base_path();
-            let _ = noda_core::history::snapshot(vault_path, &existing_note, "Android").await;
+            let reason = params.snapshot_reason.as_deref().unwrap_or("Android");
+            // Snapshot the PREVIOUS state before we overwrite it
+            if let Ok(snap) = noda_core::history::snapshot(vault_path, &existing_note, reason).await {
+                let conn = db.conn.lock();
+                let timestamp_str = snap.timestamp.to_rfc3339();
+                let rel_path = snap.absolute_path.strip_prefix(vault_path)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| snap.absolute_path.to_string_lossy().to_string());
+                let _ = noda_core::database::queries::insert_history_snapshot(
+                    &conn,
+                    &existing_note.id.0.to_string(),
+                    &timestamp_str,
+                    reason,
+                    &rel_path,
+                );
+            }
         }
 
         // 1. Write to local disk
@@ -3193,6 +3205,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateSettings(
             if let Some(empty_days) = history.get("empty_trash_after_days").and_then(|e| e.as_u64()) {
                 config.history.empty_trash_after_days = empty_days as u32;
             }
+            if let Some(interval) = history.get("snapshot_interval_mins").and_then(|i| i.as_u64()) {
+                config.history.snapshot_interval_mins = interval as u32;
+            }
         }
 
         sync_engine.set_config(config.sync.clone());
@@ -3201,6 +3216,300 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateSettings(
             Ok(_) => "{\"success\":true}".to_string(),
             Err(e) => format!("{{\"error\":\"Failed to save settings: {}\"}}", e),
         }
+    });
+
+    env.new_string(result).unwrap().into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_triggerDailyNote(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let _input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+
+    let (service, db) = {
+        let state = BRIDGE_STATE.read().unwrap();
+        let s = match &state.vault_service {
+            Some(v) => v.clone(),
+            None => return error_string(&mut env, "Vault service not initialized"),
+        };
+        let d = match &state.database {
+            Some(db_ref) => db_ref.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        };
+        (s, d)
+    };
+
+    let result = get_runtime().block_on(async {
+        use chrono::{Local, Utc};
+        use ulid::Ulid;
+        use noda_core::settings::AppConfig;
+        use noda_core::database::queries;
+        use noda_core::models::note::{Note, NoteId};
+
+        let local_now = Local::now();
+        let date_str = local_now.format("%Y-%m-%d").to_string();
+        let time_str = local_now.format("%H:%M").to_string();
+
+        let existing_note = {
+            let conn = db.conn.lock();
+            match queries::find_daily_note_id(&conn, &date_str) {
+                Ok(n) => n,
+                Err(e) => return format!("{{\"error\":\"find_daily_note_id failed: {}\"}}", e),
+            }
+        };
+
+        let note = if let Some(note_id) = existing_note {
+            let mut note = match service.read_note(note_id).await {
+                Ok(n) => n,
+                Err(e) => return format!("{{\"error\":\"read_note failed: {}\"}}", e),
+            };
+            let section = format!("\n\n## 📌 {}\n\n", time_str);
+            note.body.push_str(&section);
+            note.inline_tags = Note::parse_inline_tags(&note.body);
+            note.updated_at = Utc::now();
+
+            if let Err(e) = service.write_note(&note).await {
+                return format!("{{\"error\":\"write_note failed: {}\"}}", e);
+            }
+
+            {
+                let conn = db.conn.lock();
+                if let Err(e) = queries::upsert_note(&conn, &note, &note.file_path, "dummy_hash") {
+                    return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
+                }
+            }
+
+            note
+        } else {
+            let _ = service.create_folder("Daily Notes").await;
+
+            let settings = AppConfig::load(service.base_path()).await.unwrap_or_default();
+            let mut template_body = String::new();
+
+            if let Some(ref template_id_str) = settings.editor.default_daily_template {
+                if !template_id_str.is_empty() {
+                    if let Ok(template_id) = Ulid::from_string(template_id_str) {
+                        if let Ok(template_note) = service.read_note(NoteId(template_id)).await {
+                            template_body = template_note.body;
+                        }
+                    }
+                }
+            }
+
+            let body = template_body
+                .replace("{{date}}", &date_str)
+                .replace("{{time}}", &time_str);
+
+            let new_id = NoteId::new();
+            let relative_path = format!("Daily Notes/{}.md", new_id.0.to_string());
+            let now = Utc::now();
+
+            let note = Note {
+                id: new_id,
+                parent_id: None,
+                title: date_str,
+                body: body.clone(),
+                color: None,
+                pinned: false,
+                tags: Vec::new(),
+                inline_tags: Note::parse_inline_tags(&body),
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+                file_path: relative_path.clone(),
+            };
+
+            if let Err(e) = service.write_note(&note).await {
+                return format!("{{\"error\":\"write_note failed: {}\"}}", e);
+            }
+
+            {
+                let conn = db.conn.lock();
+                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, "dummy_hash") {
+                    return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
+                }
+            }
+
+            note
+        };
+
+        let dto = NoteDto::from(note);
+        serde_json::to_string(&dto).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
+    });
+
+    env.new_string(result).unwrap().into_raw()
+}
+
+#[derive(serde::Deserialize)]
+struct ToggleTaskStatusParams {
+    note_id: String,
+    line_content: String,
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_toggleTaskStatus(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+
+    let params: ToggleTaskStatusParams = match serde_json::from_str(&input) {
+        Ok(p) => p,
+        Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
+    };
+
+    let (service, db) = {
+        let state = BRIDGE_STATE.read().unwrap();
+        let s = match &state.vault_service {
+            Some(v) => v.clone(),
+            None => return error_string(&mut env, "Vault service not initialized"),
+        };
+        let d = match &state.database {
+            Some(db_ref) => db_ref.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        };
+        (s, d)
+    };
+
+    let result = get_runtime().block_on(async {
+        use ulid::Ulid;
+        use noda_core::models::note::{Note, NoteId};
+        use noda_core::database::queries;
+        use chrono::Utc;
+
+        let parsed_id = match Ulid::from_string(&params.note_id) {
+            Ok(u) => NoteId(u),
+            Err(e) => return format!("{{\"error\":\"Invalid NoteId: {}\"}}", e),
+        };
+
+        let mut note = match service.read_note(parsed_id).await {
+            Ok(n) => n,
+            Err(e) => return format!("{{\"error\":\"Note read failed: {}\"}}", e),
+        };
+
+        let mut lines: Vec<String> = note.body.lines().map(|s| s.to_string()).collect();
+        let mut modified = false;
+
+        let cleaned_target = params.line_content.trim().to_lowercase();
+
+        for line in &mut lines {
+            let trimmed_line = line.trim();
+            if trimmed_line.starts_with("- [ ]") || trimmed_line.starts_with("- [x]") || trimmed_line.starts_with("- [X]")
+               || trimmed_line.starts_with("* [ ]") || trimmed_line.starts_with("* [x]") || trimmed_line.starts_with("* [X]")
+               || trimmed_line.starts_with("+ [ ]") || trimmed_line.starts_with("+ [x]") || trimmed_line.starts_with("+ [X]") {
+                
+                let text_part = if trimmed_line.len() > 5 {
+                    trimmed_line[5..].trim().to_lowercase()
+                } else {
+                    continue;
+                };
+
+                if text_part == cleaned_target {
+                    if trimmed_line.contains("[ ]") {
+                        *line = line.replace("[ ]", "[x]");
+                    } else if trimmed_line.contains("[x]") {
+                        *line = line.replace("[x]", "[ ]");
+                    } else if trimmed_line.contains("[X]") {
+                        *line = line.replace("[X]", "[ ]");
+                    }
+                    modified = true;
+                    break;
+                }
+            }
+        }
+
+        if !modified {
+            for line in &mut lines {
+                let trimmed_line = line.trim();
+                if trimmed_line.starts_with("- [ ") || trimmed_line.starts_with("* [ ") || trimmed_line.starts_with("+ [ ") {
+                    if trimmed_line.to_lowercase().contains(&cleaned_target) {
+                        if trimmed_line.contains("[ ]") {
+                            *line = line.replace("[ ]", "[x]");
+                        } else if trimmed_line.contains("[x]") {
+                            *line = line.replace("[x]", "[ ]");
+                        } else if trimmed_line.contains("[X]") {
+                            *line = line.replace("[X]", "[ ]");
+                        }
+                        modified = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if modified {
+            note.body = lines.join("\n");
+            note.inline_tags = Note::parse_inline_tags(&note.body);
+            note.updated_at = Utc::now();
+
+            if let Err(e) = service.write_note(&note).await {
+                return format!("{{\"error\":\"write_note failed: {}\"}}", e);
+            }
+
+            let relative_path = note.file_path.clone();
+            {
+                let conn = db.conn.lock();
+                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, "dummy_hash") {
+                    return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
+                }
+            }
+        }
+
+        let dto = NoteDto::from(note);
+        serde_json::to_string(&dto).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
+    });
+
+    env.new_string(result).unwrap().into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_listTagsWithCounts(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let _input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+
+    let db = {
+        let state = BRIDGE_STATE.read().unwrap();
+        match &state.database {
+            Some(d) => d.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        }
+    };
+
+    let result = get_runtime().block_on(async {
+        use noda_core::database::queries;
+        let tags = {
+            let conn = db.conn.lock();
+            match queries::list_tags_with_counts(&conn) {
+                Ok(t) => t,
+                Err(e) => return format!("{{\"error\":\"list_tags_with_counts failed: {}\"}}", e),
+            }
+        };
+
+        let dtos: Vec<shared::dtos::TagWithCountDto> = tags
+            .into_iter()
+            .map(|(name, count)| shared::dtos::TagWithCountDto {
+                name,
+                count: count as u32,
+            })
+            .collect();
+
+        serde_json::to_string(&dtos).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
     });
 
     env.new_string(result).unwrap().into_raw()

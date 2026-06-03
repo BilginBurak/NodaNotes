@@ -21,8 +21,10 @@ import androidx.compose.ui.unit.sp
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TagInputBar(
-    tags: List<String>,
-    onTagsChanged: (List<String>) -> Unit,
+    yamlTags: List<String>,
+    inlineTags: List<String>,
+    onYamlTagsChanged: (List<String>) -> Unit,
+    onInlineTagClick: (String) -> Unit,
     suggestions: List<String>,
     onPrefixChanged: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -35,7 +37,7 @@ fun TagInputBar(
             .padding(8.dp)
     ) {
         // Suggestions Autocomplete row
-        val filteredSuggestions = suggestions.filter { it !in tags }
+        val filteredSuggestions = suggestions.filter { it !in yamlTags && it !in inlineTags }
         if (tagText.isNotEmpty() && filteredSuggestions.isNotEmpty()) {
             Text(
                 text = "Suggestions:",
@@ -51,8 +53,8 @@ fun TagInputBar(
                 items(filteredSuggestions) { suggestion ->
                     SuggestionChip(
                         onClick = {
-                            val updated = tags + suggestion
-                            onTagsChanged(updated)
+                            val updated = yamlTags + suggestion
+                            onYamlTagsChanged(updated)
                             tagText = ""
                             onPrefixChanged("")
                         },
@@ -69,21 +71,67 @@ fun TagInputBar(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Render existing tags as chips
-            tags.forEach { tag ->
+            // Render YAML tags
+            yamlTags.forEach { tag ->
                 InputChip(
                     selected = false,
                     onClick = {
-                        // Remove tag on click
-                        onTagsChanged(tags - tag)
+                        onYamlTagsChanged(yamlTags - tag)
                     },
-                    label = { Text(tag) },
+                    label = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(tag)
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "YAML",
+                                    fontSize = 8.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    },
                     trailingIcon = {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Remove tag",
                             modifier = Modifier.size(12.dp)
                         )
+                    }
+                )
+            }
+
+            // Render Inline tags
+            inlineTags.forEach { tag ->
+                InputChip(
+                    selected = false,
+                    onClick = {
+                        onInlineTagClick(tag)
+                    },
+                    label = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(tag)
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "INLINE",
+                                    fontSize = 8.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
                     }
                 )
             }
@@ -102,8 +150,8 @@ fun TagInputBar(
                 keyboardActions = KeyboardActions(
                     onDone = {
                         val clean = tagText.trim().lowercase()
-                        if (clean.isNotEmpty() && clean !in tags) {
-                            onTagsChanged(tags + clean)
+                        if (clean.isNotEmpty() && clean !in yamlTags) {
+                            onYamlTagsChanged(yamlTags + clean)
                         }
                         tagText = ""
                         onPrefixChanged("")

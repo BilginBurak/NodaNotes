@@ -34,7 +34,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableStateOf(0) }
-    val tabTitles = listOf("Appearance", "Editor", "Sync", "History", "Vaults", "Maintenance")
+    val tabTitles = listOf("Appearance", "Editor", "Sync", "History", "Templates", "Vaults", "Maintenance")
 
     Scaffold(
         topBar = {
@@ -87,8 +87,9 @@ fun SettingsScreen(
                             1 -> EditorTab(state.settings, viewModel)
                             2 -> SyncTab(state.settings, viewModel)
                             3 -> HistoryTab(state.settings, viewModel)
-                            4 -> VaultsTab(state.recentVaults, state.currentVault, onNavigateToVaultSelector)
-                            5 -> MaintenanceTab()
+                            4 -> TemplatesTab(state.settings, viewModel)
+                            5 -> VaultsTab(state.recentVaults, state.currentVault, onNavigateToVaultSelector)
+                            6 -> MaintenanceTab()
                         }
                     }
                     is SettingsUiState.Error -> {
@@ -467,6 +468,7 @@ fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
     var localRetentionDays by remember(settings.history.retention_days) { mutableStateOf(settings.history.retention_days.toFloat()) }
     var localMaxSnapshots by remember(settings.history.max_snapshots_per_note) { mutableStateOf(settings.history.max_snapshots_per_note.toFloat()) }
     var localEmptyTrashDays by remember(settings.history.empty_trash_after_days) { mutableStateOf(settings.history.empty_trash_after_days.toFloat()) }
+    var localSnapshotInterval by remember(settings.history.snapshot_interval_mins) { mutableStateOf(settings.history.snapshot_interval_mins.toFloat()) }
 
     Column(
         modifier = Modifier
@@ -483,7 +485,7 @@ fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
                 value = localRetentionDays,
                 onValueChange = { localRetentionDays = it },
                 onValueChangeFinished = {
-                    viewModel.updateHistory(localRetentionDays.toInt(), settings.history.max_snapshots_per_note, settings.history.empty_trash_after_days)
+                    viewModel.updateHistory(localRetentionDays.toInt(), localMaxSnapshots.toInt(), localEmptyTrashDays.toInt(), localSnapshotInterval.toInt())
                 },
                 valueRange = 1f..365f,
                 steps = 364
@@ -498,7 +500,7 @@ fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
                 value = localMaxSnapshots,
                 onValueChange = { localMaxSnapshots = it },
                 onValueChangeFinished = {
-                    viewModel.updateHistory(settings.history.retention_days, localMaxSnapshots.toInt(), settings.history.empty_trash_after_days)
+                    viewModel.updateHistory(localRetentionDays.toInt(), localMaxSnapshots.toInt(), localEmptyTrashDays.toInt(), localSnapshotInterval.toInt())
                 },
                 valueRange = 5f..100f,
                 steps = 95
@@ -513,11 +515,98 @@ fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
                 value = localEmptyTrashDays,
                 onValueChange = { localEmptyTrashDays = it },
                 onValueChangeFinished = {
-                    viewModel.updateHistory(settings.history.retention_days, settings.history.max_snapshots_per_note, localEmptyTrashDays.toInt())
+                    viewModel.updateHistory(localRetentionDays.toInt(), localMaxSnapshots.toInt(), localEmptyTrashDays.toInt(), localSnapshotInterval.toInt())
                 },
                 valueRange = 1f..90f,
                 steps = 89
             )
+        }
+
+        HorizontalDivider()
+
+        Column {
+            Text("Snapshot Interval (${localSnapshotInterval.toInt()} minutes)", style = MaterialTheme.typography.bodyLarge)
+            Text("Time interval between auto-save snapshots when typing continuously", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Slider(
+                value = localSnapshotInterval,
+                onValueChange = { localSnapshotInterval = it },
+                onValueChangeFinished = {
+                    viewModel.updateHistory(localRetentionDays.toInt(), localMaxSnapshots.toInt(), localEmptyTrashDays.toInt(), localSnapshotInterval.toInt())
+                },
+                valueRange = 1f..60f,
+                steps = 59
+            )
+        }
+    }
+}
+
+@Composable
+fun TemplatesTab(settings: SettingsDto, viewModel: SettingsViewModel) {
+    val templates by viewModel.templates.collectAsState()
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Text("Daily Note Template Selection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text("Choose a markdown template file from your '.templates' folder to populate new daily notes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // No template option
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.updateDefaultDailyTemplate(null) }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = settings.editor.default_daily_template.isNullOrEmpty(),
+                onClick = { viewModel.updateDefaultDailyTemplate(null) }
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text("No Template (Blank daily note)", style = MaterialTheme.typography.bodyLarge)
+        }
+
+        if (templates.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No template notes found in '.templates' folder.\nCreate '.templates/' folder in your vault root and put your template files there.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        } else {
+            templates.forEach { template ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.updateDefaultDailyTemplate(template.id) }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = settings.editor.default_daily_template == template.id,
+                        onClick = { viewModel.updateDefaultDailyTemplate(template.id) }
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(template.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Text(template.file_path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
     }
 }

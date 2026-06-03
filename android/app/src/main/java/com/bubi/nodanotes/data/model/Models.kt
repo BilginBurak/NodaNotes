@@ -11,6 +11,7 @@ data class NoteDto(
     val color: String?,
     val pinned: Boolean,
     val tags: List<String>,
+    val inline_tags: List<String> = emptyList(),
     val created_at: String,
     val updated_at: String,
     val file_path: String,
@@ -24,6 +25,7 @@ data class NoteListItemDto(
     val color: String?,
     val pinned: Boolean,
     val tags: List<String>,
+    val inline_tags: List<String> = emptyList(),
     val updated_at: String,
     val file_path: String,
 )
@@ -49,6 +51,7 @@ data class SnapshotDto(
     val timestamp: String,
     val file_path: String,
     val size_bytes: Long,
+    val reason: String = "",
 )
 
 @Serializable
@@ -182,6 +185,7 @@ data class EditorSettingsDto(
     val typography: String,
     val show_word_count: Boolean,
     val auto_save_delay_ms: Int,
+    val default_daily_template: String? = null,
 )
 
 @Serializable
@@ -189,6 +193,7 @@ data class HistorySettingsDto(
     val retention_days: Int,
     val max_snapshots_per_note: Int,
     val empty_trash_after_days: Int,
+    val snapshot_interval_mins: Int = 5,
 )
 
 @Serializable
@@ -205,4 +210,10 @@ data class SettingsDto(
     val editor: EditorSettingsDto,
     val sync: SyncConfigDto,
     val history: HistorySettingsDto,
+)
+
+@Serializable
+data class TagWithCountDto(
+    val name: String,
+    val count: Int,
 )

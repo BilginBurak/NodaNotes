@@ -32,7 +32,9 @@ class NoteRepository : BaseRepository() {
         val body: String,
         val tags: List<String>,
         val color: String?,
-        val pinned: Boolean
+        val pinned: Boolean,
+        val trigger_snapshot: Boolean? = null,
+        val snapshot_reason: String? = null
     )
 
     @Serializable
@@ -50,6 +52,12 @@ class NoteRepository : BaseRepository() {
     private data class MoveNoteParams(
         val note_id: String,
         val target_folder: String
+    )
+
+    @Serializable
+    private data class ToggleTaskStatusParams(
+        val note_id: String,
+        val line_content: String
     )
 
     suspend fun listNotes(folderPath: String?): Result<List<NoteListItemDto>> = withContext(Dispatchers.IO) {
@@ -92,10 +100,12 @@ class NoteRepository : BaseRepository() {
         body: String,
         tags: List<String>,
         color: String?,
-        pinned: Boolean
+        pinned: Boolean,
+        triggerSnapshot: Boolean? = null,
+        snapshotReason: String? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val params = UpdateNoteParams(noteId, title, body, tags, color, pinned)
+            val params = UpdateNoteParams(noteId, title, body, tags, color, pinned, triggerSnapshot, snapshotReason)
             val jsonInput = json.encodeToString(UpdateNoteParams.serializer(), params)
             val result = RustCore.updateNote(jsonInput)
             checkError(result)
@@ -142,6 +152,29 @@ class NoteRepository : BaseRepository() {
         runCatching {
             val result = RustCore.getAllTags("{}")
             parseRustResult(result, ListSerializer(String.serializer()))
+        }
+    }
+
+    suspend fun triggerDailyNote(): Result<NoteDto> = withContext(Dispatchers.IO) {
+        runCatching {
+            val result = RustCore.triggerDailyNote("{}")
+            parseRustResult(result, NoteDto.serializer())
+        }
+    }
+
+    suspend fun toggleTaskStatus(noteId: String, lineContent: String): Result<NoteDto> = withContext(Dispatchers.IO) {
+        runCatching {
+            val params = ToggleTaskStatusParams(noteId, lineContent)
+            val jsonInput = json.encodeToString(ToggleTaskStatusParams.serializer(), params)
+            val result = RustCore.toggleTaskStatus(jsonInput)
+            parseRustResult(result, NoteDto.serializer())
+        }
+    }
+
+    suspend fun listTagsWithCounts(): Result<List<com.bubi.nodanotes.data.model.TagWithCountDto>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val result = RustCore.listTagsWithCounts("{}")
+            parseRustResult(result, ListSerializer(com.bubi.nodanotes.data.model.TagWithCountDto.serializer()))
         }
     }
 }

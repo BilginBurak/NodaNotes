@@ -24,9 +24,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val settingsRepository = SettingsRepository()
     private val syncRepository = SyncRepository()
     private val preferences = VaultPreferences(application)
+    private val noteRepository = com.bubi.nodanotes.data.repository.NoteRepository()
 
     private val _uiState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+    private val _templates = MutableStateFlow<List<NoteListItemDto>>(emptyList())
+    val templates: StateFlow<List<NoteListItemDto>> = _templates.asStateFlow()
 
     private val _connectionTestResult = MutableStateFlow<Result<Unit>?>(null)
     val connectionTestResult: StateFlow<Result<Unit>?> = _connectionTestResult.asStateFlow()
@@ -36,6 +40,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     init {
         loadSettings()
+        loadTemplates()
+    }
+
+    fun loadTemplates() {
+        viewModelScope.launch {
+            noteRepository.listNotes(".templates").onSuccess { list ->
+                _templates.value = list
+            }.onFailure {
+                _templates.value = emptyList()
+            }
+        }
     }
 
     fun loadSettings() {
@@ -88,11 +103,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun updateHistory(retentionDays: Int, maxSnapshotsPerNote: Int, emptyTrashAfterDays: Int) {
+    fun updateHistory(retentionDays: Int, maxSnapshotsPerNote: Int, emptyTrashAfterDays: Int, snapshotIntervalMins: Int) {
         val currentState = _uiState.value
         if (currentState is SettingsUiState.Success) {
             val newSettings = currentState.settings.copy(
-                history = HistorySettingsDto(retentionDays, maxSnapshotsPerNote, emptyTrashAfterDays)
+                history = HistorySettingsDto(retentionDays, maxSnapshotsPerNote, emptyTrashAfterDays, snapshotIntervalMins)
+            )
+            saveSettings(newSettings)
+        }
+    }
+
+    fun updateDefaultDailyTemplate(templateNoteId: String?) {
+        val currentState = _uiState.value
+        if (currentState is SettingsUiState.Success) {
+            val newSettings = currentState.settings.copy(
+                editor = currentState.settings.editor.copy(
+                    default_daily_template = templateNoteId
+                )
             )
             saveSettings(newSettings)
         }

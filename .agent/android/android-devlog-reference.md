@@ -477,3 +477,16 @@ Each action card should have:
 Status line on left edge of result box:
 - Green = clean (0 items found)
 - Blue/Primary = items found, action available
+
+---
+
+## 21. Android Layout Mismatches & Scroll State Binding (June 2026)
+
+### 21.1 NodaAppShell Scope & Nesting Mismatch
+- **Problem:** Missing closing brace `}` at the end of the `drawerContent` lambda block caused all subsequent dialogs and `ModalNavigationDrawer` to be parsed inside `drawerContent`. This caused `FolderTreeItem` to fail compilation with unresolved references. In addition, `selectedTag` and `currentFolder` state variables were declared inside the nested WORKSPACE column instead of at the root level of `drawerContent`, making them inaccessible (out-of-scope) in the tags lists.
+- **Solution:** Hoisted the state declarations to the root level of `drawerContent` and added the missing closing brace `}` after `ModalDrawerSheet` ends (around line 687). This resolved all scope and nesting compiler issues cleanly.
+
+### 21.2 Note List Scroll Binding
+- **Problem:** `lazyListState` was defined and observed in `NoteListScreen.kt` but was not passed to the layout's `LazyColumn`. This prevented scroll events from updating `previousIndex` and `previousScrollOffset`, rendering the auto-hiding floating action button (FAB) static.
+- **Solution:** Added `state = lazyListState` to `LazyColumn` inside `NoteListScreen.kt`. Scroll movements now toggle the FAB's visibility correctly (hides when scrolling down, shows when scrolling up).
+

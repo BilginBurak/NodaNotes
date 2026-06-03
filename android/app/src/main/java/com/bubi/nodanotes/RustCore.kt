@@ -86,4 +86,9 @@ object RustCore {
     // Settings Functions
     external fun getSettings(inputJson: String): String
     external fun updateSettings(inputJson: String): String
+
+    // Daily & Task Functions
+    external fun triggerDailyNote(inputJson: String): String
+    external fun toggleTaskStatus(inputJson: String): String
+    external fun listTagsWithCounts(inputJson: String): String
 }

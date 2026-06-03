@@ -18,6 +18,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.layout.onGloballyPositioned
+import android.content.Context
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.bubi.nodanotes.data.model.FolderDto
@@ -81,382 +85,604 @@ fun NodaAppShell(
     }
 
     val drawerContent: @Composable () -> Unit = {
-        var tagsExpanded by remember { mutableStateOf(false) }
-        val tagsWeight by animateFloatAsState(
-            targetValue = if (tagsExpanded) 0.22f else 0.01f,
-            animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-            label = "tagsWeight"
-        )
-        val foldersWeight by animateFloatAsState(
-            targetValue = if (tagsExpanded) 0.58f else 0.9f,
-            animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-            label = "foldersWeight"
-        )
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val sharedPrefs = remember { context.getSharedPreferences("noda_prefs", Context.MODE_PRIVATE) }
+        var workspaceExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("workspace_expanded", true)) }
+        var foldersExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("folders_expanded", true)) }
+        var tagsExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("tags_expanded", true)) }
+        var managementExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("management_expanded", true)) }
+        var foldersRatio by remember { mutableStateOf(sharedPrefs.getFloat("folders_ratio", 0.5f)) }
+
+        var totalHeightPx by remember { mutableStateOf(1f) }
+
+        val currentFolder by com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolderState.collectAsState()
+        val selectedTag by com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTagState.collectAsState()
 
         ModalDrawerSheet(
             modifier = Modifier.width(280.dp),
             drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
         ) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Column(modifier = Modifier.fillMaxSize()) {
+                // --- WORKSPACE (Fixed Top) ---
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.height(12.dp))
 
-            // Drawer Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.StickyNote2,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = "NodaNotes",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        text = vaultName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-
-            val currentFolder by com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolderState.collectAsState()
-
-            // Drawer Items
-            NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                label = { Text("All Notes", fontWeight = FontWeight.SemiBold, fontSize = 16.sp) },
-                selected = currentRoute == Screen.NoteList.route && currentFolder == null && com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag == null,
-                onClick = {
-                    scope.launch { drawerState.close() }
-                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
-                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
-                    navController.navigate(Screen.NoteList.route) {
-                        popUpTo(Screen.NoteList.route) { inclusive = true }
-                    }
-                },
-                modifier = Modifier
-                    .padding(horizontal = 8.dp, vertical = 1.dp)
-                    .height(40.dp)
-            )
-
-            // Folders Section Header
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "FOLDERS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-                IconButton(
-                    onClick = {
-                        folderInputName = ""
-                        showCreateTopLevelFolderDialog = true
-                    },
-                    modifier = Modifier.size(20.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CreateNewFolder,
-                        contentDescription = "New Folder",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            // Folder Tree list inside Navigation Drawer
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(foldersWeight)
-            ) {
-                if (isFoldersLoading && folders.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                    }
-                } else if (folders.isEmpty()) {
+                    // Header
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Folder,
+                            imageVector = Icons.Default.StickyNote2,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(16.dp)
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "No folders created yet",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            fontSize = 15.sp
-                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "NodaNotes",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = vaultName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 2.dp)
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+
+                    // WORKSPACE accordion header
+                    Surface(
+                        onClick = {
+                            workspaceExpanded = !workspaceExpanded
+                            sharedPrefs.edit().putBoolean("workspace_expanded", workspaceExpanded).apply()
+                        },
+                        color = androidx.compose.ui.graphics.Color.Transparent,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(folders) { folder ->
-                            FolderTreeItem(
-                                folder = folder,
-                                depth = 0,
-                                expandedPaths = expandedPaths,
-                                onToggleExpanded = { drawerViewModel.toggleExpanded(it) },
-                                onFolderClick = { path ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Work,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "WORKSPACE",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                            }
+                            Icon(
+                                imageVector = if (workspaceExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = workspaceExpanded,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // All Notes
+                            NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                label = { Text("All Notes", fontWeight = FontWeight.SemiBold, fontSize = 15.sp) },
+                                selected = currentRoute == Screen.NoteList.route && currentFolder == null && selectedTag == null,
+                                onClick = {
                                     scope.launch { drawerState.close() }
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
                                     com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
-                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = path
                                     navController.navigate(Screen.NoteList.route) {
                                         popUpTo(Screen.NoteList.route) { inclusive = true }
                                     }
                                 },
-                                onLongPressFolder = { folderSelected ->
-                                    activeFolderForAction = folderSelected
-                                    showRenameDialog = false
-                                    showDeleteConfirmDialog = false
-                                    showCreateSubfolderDialog = false
-                                }
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                                    .height(38.dp)
                             )
-                        }
-                    }
-                }
-            }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
-
-            // TAGS Section Header (Collapsible)
-            val tags by drawerViewModel.tags.collectAsState()
-            val selectedTag by com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTagState.collectAsState()
-
-            Surface(
-                onClick = { tagsExpanded = !tagsExpanded },
-                color = androidx.compose.ui.graphics.Color.Transparent,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.LocalOffer,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "TAGS",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                    }
-                    Icon(
-                        imageVector = if (tagsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (tagsExpanded) "Collapse Tags" else "Expand Tags",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            AnimatedVisibility(
-                visible = tagsExpanded,
-                enter = expandVertically(animationSpec = tween(500)) + fadeIn(animationSpec = tween(500)),
-                exit = shrinkVertically(animationSpec = tween(500)) + fadeOut(animationSpec = tween(500)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(tagsWeight)
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (tags.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "No tags found",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                fontSize = 14.sp
-                            )
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            items(tags) { tag ->
-                                val isSelected = selectedTag == tag
-                                NavigationDrawerItem(
-                                    icon = {
-                                        Icon(
-                                            imageVector = Icons.Default.LocalOffer,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    },
-                                    label = {
-                                        Text(
-                                            text = tag,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            fontSize = 14.sp
-                                        )
-                                    },
-                                    selected = isSelected,
-                                    onClick = {
-                                        scope.launch { drawerState.close() }
-                                        com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
-                                        com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = tag
-                                        navController.navigate(Screen.NoteList.route) {
-                                            popUpTo(Screen.NoteList.route) { inclusive = true }
+                            // Daily Notes
+                            NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Today, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                label = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Daily Notes", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    drawerState.close()
+                                                    val repo = com.bubi.nodanotes.data.repository.NoteRepository()
+                                                    repo.triggerDailyNote().fold(
+                                                        onSuccess = { noteDto ->
+                                                            navController.navigate("note_editor/${noteDto.id}")
+                                                        },
+                                                        onFailure = {
+                                                            // fallback or show error
+                                                        }
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "New Daily Note",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
                                         }
-                                    },
-                                    modifier = Modifier
-                                        .padding(vertical = 1.dp)
-                                        .height(28.dp)
+                                    }
+                                },
+                                selected = currentRoute == Screen.NoteList.route && currentFolder == "Daily Notes" && selectedTag == null,
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = "Daily Notes"
+                                    navController.navigate(Screen.NoteList.route) {
+                                        popUpTo(Screen.NoteList.route) { inclusive = true }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                                    .height(38.dp)
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
+
+                // --- MIDDLE RESIZABLE SECTION: FOLDERS & TAGS ---
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            totalHeightPx = coordinates.size.height.toFloat().coerceAtLeast(1f)
+                        }
+                ) {
+                    // --- FOLDERS ACCORDION ---
+                    // Header
+                    Surface(
+                        onClick = {
+                            foldersExpanded = !foldersExpanded
+                            sharedPrefs.edit().putBoolean("folders_expanded", foldersExpanded).apply()
+                        },
+                        color = androidx.compose.ui.graphics.Color.Transparent,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "FOLDERS",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = if (foldersExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    folderInputName = ""
+                                    showCreateTopLevelFolderDialog = true
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CreateNewFolder,
+                                    contentDescription = "New Folder",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
                     }
+
+                    if (foldersExpanded) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(if (tagsExpanded) foldersRatio else 1f)
+                        ) {
+                            if (isFoldersLoading && folders.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                }
+                            } else if (folders.isEmpty()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "No folders created yet",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(vertical = 2.dp)
+                                ) {
+                                    items(folders) { folder ->
+                                        FolderTreeItem(
+                                            folder = folder,
+                                            depth = 0,
+                                            expandedPaths = expandedPaths,
+                                            onToggleExpanded = { drawerViewModel.toggleExpanded(it) },
+                                            onFolderClick = { path ->
+                                                scope.launch { drawerState.close() }
+                                                com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
+                                                com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = path
+                                                navController.navigate(Screen.NoteList.route) {
+                                                    popUpTo(Screen.NoteList.route) { inclusive = true }
+                                                }
+                                            },
+                                            onLongPressFolder = { folderSelected ->
+                                                activeFolderForAction = folderSelected
+                                                showRenameDialog = false
+                                                showDeleteConfirmDialog = false
+                                                showCreateSubfolderDialog = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // --- DRAGGABLE SPLITTER ---
+                    if (foldersExpanded && tagsExpanded) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(12.dp)
+                                .pointerInput(Unit) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        val deltaRatio = dragAmount.y / totalHeightPx
+                                        foldersRatio = (foldersRatio + deltaRatio).coerceIn(0.1f, 0.9f)
+                                        sharedPrefs.edit().putFloat("folders_ratio", foldersRatio).apply()
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(2.dp),
+                                modifier = Modifier
+                                    .width(40.dp)
+                                    .height(4.dp)
+                            ) {}
+                        }
+                    }
+
+                    // --- TAGS ACCORDION ---
+                    // Header
+                    val tags by drawerViewModel.tags.collectAsState()
+                    Surface(
+                        onClick = {
+                            tagsExpanded = !tagsExpanded
+                            sharedPrefs.edit().putBoolean("tags_expanded", tagsExpanded).apply()
+                        },
+                        color = androidx.compose.ui.graphics.Color.Transparent,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.LocalOffer,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "TAGS",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                            }
+                            Icon(
+                                imageVector = if (tagsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    if (tagsExpanded) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(if (foldersExpanded) 1f - foldersRatio else 1f)
+                        ) {
+                            if (tags.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "No tags found",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    items(tags) { tagDto ->
+                                        val isSelected = selectedTag == tagDto.name
+                                        NavigationDrawerItem(
+                                            icon = {
+                                                Icon(
+                                                    imageVector = Icons.Default.LocalOffer,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            },
+                                            label = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = tagDto.name,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        fontSize = 14.sp
+                                                    )
+                                                    Badge(
+                                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                    ) {
+                                                        Text(tagDto.count.toString(), fontSize = 9.sp)
+                                                    }
+                                                }
+                                            },
+                                            selected = isSelected,
+                                            onClick = {
+                                                scope.launch { drawerState.close() }
+                                                com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
+                                                com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = tagDto.name
+                                                navController.navigate(Screen.NoteList.route) {
+                                                    popUpTo(Screen.NoteList.route) { inclusive = true }
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .padding(vertical = 1.dp)
+                                                .height(30.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
+
+                // --- MANAGEMENT & SETTINGS (Fixed Bottom) ---
+                val trashCount by drawerViewModel.trashCount.collectAsState()
+                val conflictCount by drawerViewModel.conflictCount.collectAsState()
+                val attachmentCount by drawerViewModel.attachmentCount.collectAsState()
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Header
+                    Surface(
+                        onClick = {
+                            managementExpanded = !managementExpanded
+                            sharedPrefs.edit().putBoolean("management_expanded", managementExpanded).apply()
+                        },
+                        color = androidx.compose.ui.graphics.Color.Transparent,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "MANAGEMENT & SETTINGS",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                            }
+                            Icon(
+                                imageVector = if (managementExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = managementExpanded,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Trash
+                            NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                label = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Trash", fontSize = 15.sp)
+                                        if (trashCount > 0) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                            ) {
+                                                Text(trashCount.toString(), fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                },
+                                selected = currentRoute == Screen.Trash.route,
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    navController.navigate(Screen.Trash.route)
+                                },
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                                    .height(30.dp)
+                            )
+
+                            // Conflicts
+                            NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Difference, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                label = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Conflicts", fontSize = 15.sp)
+                                        if (conflictCount > 0) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                            ) {
+                                                Text(conflictCount.toString(), fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                },
+                                selected = currentRoute == Screen.Conflicts.route,
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    navController.navigate(Screen.Conflicts.route)
+                                },
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                                    .height(30.dp)
+                            )
+
+                            // Attachments
+                            NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Attachment, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                label = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Attachments", fontSize = 15.sp)
+                                        if (attachmentCount > 0) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            ) {
+                                                Text(attachmentCount.toString(), fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                },
+                                selected = currentRoute == Screen.Attachments.route,
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    navController.navigate(Screen.Attachments.route)
+                                },
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                                    .height(30.dp)
+                            )
+
+                            // Settings
+                            NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                label = { Text("Settings", fontSize = 15.sp) },
+                                selected = currentRoute == Screen.Settings.route,
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    navController.navigate(Screen.Settings.route)
+                                },
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                                    .height(30.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
             }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 6.dp))
-
-            val trashCount by drawerViewModel.trashCount.collectAsState()
-            val conflictCount by drawerViewModel.conflictCount.collectAsState()
-            val attachmentCount by drawerViewModel.attachmentCount.collectAsState()
-
-            // Static links section at the bottom
-            NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                label = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Trash", fontSize = 16.sp)
-                        if (trashCount > 0) {
-                            Badge(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            ) {
-                                Text(trashCount.toString(), fontSize = 9.sp)
-                            }
-                        }
-                    }
-                },
-                selected = currentRoute == Screen.Trash.route,
-                onClick = {
-                    scope.launch { drawerState.close() }
-                    navController.navigate(Screen.Trash.route)
-                },
-                modifier = Modifier
-                    .padding(horizontal = 8.dp, vertical = 1.dp)
-                    .height(30.dp)
-            )
-
-            NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Difference, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                label = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Conflicts", fontSize = 16.sp)
-                        if (conflictCount > 0) {
-                            Badge(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            ) {
-                                Text(conflictCount.toString(), fontSize = 9.sp)
-                            }
-                        }
-                    }
-                },
-                selected = currentRoute == Screen.Conflicts.route,
-                onClick = {
-                    scope.launch { drawerState.close() }
-                    navController.navigate(Screen.Conflicts.route)
-                },
-                modifier = Modifier
-                    .padding(horizontal = 8.dp, vertical = 1.dp)
-                    .height(30.dp)
-            )
-
-            NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Attachment, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                label = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Attachments", fontSize = 16.sp)
-                        if (attachmentCount > 0) {
-                            Badge(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            ) {
-                                Text(attachmentCount.toString(), fontSize = 9.sp)
-                            }
-                        }
-                    }
-                },
-                selected = currentRoute == Screen.Attachments.route,
-                onClick = {
-                    scope.launch { drawerState.close() }
-                    navController.navigate(Screen.Attachments.route)
-                },
-                modifier = Modifier
-                    .padding(horizontal = 8.dp, vertical = 1.dp)
-                    .height(30.dp)
-            )
-
-            NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                label = { Text("Settings", fontSize = 16.sp) },
-                selected = currentRoute == Screen.Settings.route,
-                onClick = {
-                    scope.launch { drawerState.close() }
-                    navController.navigate(Screen.Settings.route)
-                },
-                modifier = Modifier
-                    .padding(horizontal = 8.dp, vertical = 1.dp)
-                    .height(30.dp)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 

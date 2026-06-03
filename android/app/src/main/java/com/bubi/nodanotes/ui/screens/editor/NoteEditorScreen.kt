@@ -12,9 +12,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -84,6 +88,19 @@ fun NoteEditorScreen(
 
     LaunchedEffect(noteId) {
         viewModel.loadNote(noteId)
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                viewModel.saveNoteOnAppExit()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -205,6 +222,37 @@ fun NoteEditorScreen(
                 is NoteEditorUiState.Success -> {
                     val note = state.note
 
+                    var textFieldValue by remember { mutableStateOf(TextFieldValue(note.body)) }
+                    val focusRequester = remember { FocusRequester() }
+
+                    LaunchedEffect(note.body) {
+                        if (note.body != textFieldValue.text) {
+                            textFieldValue = textFieldValue.copy(
+                                text = note.body,
+                                selection = TextRange(note.body.length)
+                            )
+                        }
+                    }
+
+                    val applyFormatting: (String, String) -> Unit = { prefix, suffix ->
+                        val text = textFieldValue.text
+                        val selection = textFieldValue.selection
+                        val start = selection.min
+                        val end = selection.max
+                        val selectedText = text.substring(start, end)
+                        
+                        val newText = text.substring(0, start) + prefix + selectedText + suffix + text.substring(end)
+                        val newSelectionStart = start + prefix.length
+                        val newSelectionEnd = newSelectionStart + selectedText.length
+                        
+                        textFieldValue = TextFieldValue(
+                            text = newText,
+                            selection = TextRange(newSelectionStart, newSelectionEnd)
+                        )
+                        viewModel.onContentChanged(newText)
+                        focusRequester.requestFocus()
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -248,6 +296,13 @@ fun NoteEditorScreen(
                                                 override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
                                                     val url = request?.url?.toString()
                                                     if (url != null) {
+                                                        if (url.startsWith("noda://toggle-task")) {
+                                                            val taskText = android.net.Uri.parse(url).getQueryParameter("text")
+                                                            if (taskText != null) {
+                                                                viewModel.toggleTaskStatus(note.id, taskText)
+                                                            }
+                                                            return true
+                                                        }
                                                         if (url.startsWith("file://") && url.contains(".noda/attachments/")) {
                                                             val name = android.net.Uri.decode(url.substringAfter(".noda/attachments/"))
                                                             previewAttachmentName = name
@@ -262,7 +317,7 @@ fun NoteEditorScreen(
                                                     return super.shouldOverrideUrlLoading(view, request)
                                                 }
                                             }
-                                            settings.javaScriptEnabled = false
+                                            settings.javaScriptEnabled = true
                                             settings.allowFileAccess = true
                                             settings.allowContentAccess = true
                                         }
@@ -365,8 +420,11 @@ fun NoteEditorScreen(
                                 )
                             } else {
                                 BasicTextField(
-                                    value = note.body,
-                                    onValueChange = { viewModel.onContentChanged(it) },
+                                    value = textFieldValue,
+                                    onValueChange = { newValue ->
+                                        textFieldValue = newValue
+                                        viewModel.onContentChanged(newValue.text)
+                                    },
                                     textStyle = TextStyle(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 15.sp,
@@ -376,6 +434,7 @@ fun NoteEditorScreen(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .verticalScroll(rememberScrollState())
+                                        .focusRequester(focusRequester)
                                         .onFocusChanged { isEditorFocused = it.isFocused }
                                 )
                             }
@@ -383,8 +442,20 @@ fun NoteEditorScreen(
 
                         // Tags Input Bar
                         TagInputBar(
-                            tags = note.tags,
-                            onTagsChanged = { viewModel.onTagsChanged(it) },
+                            yamlTags = note.tags,
+                            inlineTags = note.inline_tags,
+                            onYamlTagsChanged = { viewModel.onTagsChanged(it) },
+                            onInlineTagClick = { tag ->
+                                val tagToFind = "#$tag"
+                                val text = textFieldValue.text
+                                val index = text.indexOf(tagToFind)
+                                if (index != -1) {
+                                    textFieldValue = textFieldValue.copy(
+                                        selection = TextRange(index, index + tagToFind.length)
+                                    )
+                                    focusRequester.requestFocus()
+                                }
+                            },
                             suggestions = tagSuggestions,
                             onPrefixChanged = { prefix -> viewModel.loadSuggestions(prefix) }
                         )
@@ -396,9 +467,8 @@ fun NoteEditorScreen(
                             exit = slideOutVertically { it } + fadeOut()
                         ) {
                             FormattingToolbar(
-                                onInsertText = { shortcutText ->
-                                    // Append or insert formatting text
-                                    viewModel.onContentChanged(note.body + shortcutText)
+                                onInsertText = { prefix, suffix ->
+                                    applyFormatting(prefix, suffix)
                                 },
                                 onAttachmentClick = {
                                     filePickerLauncher.launch("*/*")
@@ -747,7 +817,10 @@ fun parseMarkdownToHtml(markdown: String, vaultPath: String?): String {
             val checked = trimmed.contains("[x]") || trimmed.contains("[X]")
             val content = trimmed.substring(6).trim()
             htmlBuilder.append("<li style=\"list-style:none;\">")
-                .append("<input type=\"checkbox\" disabled ").append(if (checked) "checked" else "").append("/>")
+                .append("<input type=\"checkbox\" ").append(if (checked) "checked" else "")
+                .append(" onclick=\"window.location.href='noda://toggle-task?text=' + encodeURIComponent('")
+                .append(content.replace("'", "\\'"))
+                .append("')\" />")
                 .append(parseInlineMarkdown(content, vaultPath))
                 .append("</li>\n")
             continue

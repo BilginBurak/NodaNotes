@@ -68,6 +68,7 @@ class SyncRepository : BaseRepository() {
 
     suspend fun syncNow(): Result<SyncReportDto> = withContext(Dispatchers.IO) {
         runCatching {
+            ActiveNoteTracker.triggerPreSyncSave()
             val result = RustCore.syncNow("{}")
             parseRustResult(result, SyncReportDto.serializer())
         }
@@ -78,5 +79,13 @@ class SyncRepository : BaseRepository() {
             val result = RustCore.getSyncStatus("{}")
             parseRustResult(result, SyncStatusDto.serializer())
         }
+    }
+}
+
+object ActiveNoteTracker {
+    var activeSaveAction: (suspend (String) -> Unit)? = null
+
+    suspend fun triggerPreSyncSave() {
+        activeSaveAction?.invoke("Pre-Sync")
     }
 }

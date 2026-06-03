@@ -7,6 +7,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -37,6 +38,30 @@ fun NoteListScreen(
     val currentFolder by FolderContext.currentFolderState.collectAsState()
     val selectedTag by FolderContext.selectedTagState.collectAsState()
     val vaultName by viewModel.vaultName.collectAsState()
+
+    val lazyListState = rememberLazyListState()
+    var isFabVisible by remember { mutableStateOf(true) }
+    var previousIndex by remember { mutableStateOf(0) }
+    var previousScrollOffset by remember { mutableStateOf(0) }
+
+    LaunchedEffect(lazyListState) {
+        snapshotFlow { Pair(lazyListState.firstVisibleItemIndex, lazyListState.firstVisibleItemScrollOffset) }
+            .collect { (index, offset) ->
+                if (index > previousIndex) {
+                    isFabVisible = false
+                } else if (index < previousIndex) {
+                    isFabVisible = true
+                } else {
+                    if (offset > previousScrollOffset + 10) {
+                        isFabVisible = false
+                    } else if (offset < previousScrollOffset - 10) {
+                        isFabVisible = true
+                    }
+                }
+                previousIndex = index
+                previousScrollOffset = offset
+            }
+    }
 
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -280,19 +305,23 @@ fun NoteListScreen(
             }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    viewModel.createNote(currentFolder) { noteId ->
-                        onNavigateToEditor(noteId)
-                    }
-                },
-                shape = RoundedCornerShape(16.dp),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
+            AnimatedVisibility(
+                visible = isFabVisible,
+                enter = scaleIn() + fadeIn(),
+                exit = scaleOut() + fadeOut()
             ) {
-                Icon(Icons.Default.Add, contentDescription = "New Note")
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("New Note")
+                FloatingActionButton(
+                    onClick = {
+                        viewModel.createNote(currentFolder) { noteId ->
+                            onNavigateToEditor(noteId)
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "New Note")
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -368,16 +397,21 @@ fun NoteListScreen(
                                 }
                             )
                         } else {
-                            val sortedNotes = when (selectedSortOrder) {
-                                SortOrder.UPDATED -> notes.sortedByDescending { it.updated_at }
-                                SortOrder.TITLE -> notes.sortedBy { it.title.lowercase() }
-                                SortOrder.CREATED -> notes.sortedByDescending { it.id }
+                            val sortedNotes = if (currentFolder == "Daily Notes") {
+                                notes.sortedByDescending { it.title }
+                            } else {
+                                when (selectedSortOrder) {
+                                    SortOrder.UPDATED -> notes.sortedByDescending { it.updated_at }
+                                    SortOrder.TITLE -> notes.sortedBy { it.title.lowercase() }
+                                    SortOrder.CREATED -> notes.sortedByDescending { it.id }
+                                }
                             }
 
                             val pinnedNotes = sortedNotes.filter { it.pinned }
                             val remainingNotes = sortedNotes.filter { !it.pinned }
 
                             LazyColumn(
+                                state = lazyListState,
                                 contentPadding = PaddingValues(16.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {

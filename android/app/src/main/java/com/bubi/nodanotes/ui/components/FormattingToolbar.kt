@@ -9,12 +9,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
 fun FormattingToolbar(
-    onInsertText: (String) -> Unit,
+    onInsertText: (String, String) -> Unit,
     onAttachmentClick: () -> Unit,
     onQuickAttachmentClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -31,25 +32,47 @@ fun FormattingToolbar(
             modifier = Modifier.fillMaxWidth()
         ) {
             item {
-                ToolbarButton(icon = Icons.Default.FormatBold, label = "Bold", onClick = { onInsertText("**") })
+                ToolbarButton(icon = Icons.Default.FormatBold, label = "Bold", onClick = { onInsertText("**", "**") })
             }
             item {
-                ToolbarButton(icon = Icons.Default.FormatItalic, label = "Italic", onClick = { onInsertText("*") })
+                ToolbarButton(icon = Icons.Default.FormatItalic, label = "Italic", onClick = { onInsertText("*", "*") })
             }
             item {
-                ToolbarButton(icon = Icons.Default.Title, label = "Heading 1", onClick = { onInsertText("# ") })
+                ToolbarButton(icon = Icons.Default.Title, label = "Heading 1", onClick = { onInsertText("# ", "") })
             }
             item {
-                ToolbarButton(icon = Icons.Default.FormatListBulleted, label = "List", onClick = { onInsertText("- ") })
+                TextButton(
+                    onClick = { onInsertText("## ", "") },
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Text("H2", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
             }
             item {
-                ToolbarButton(icon = Icons.Default.Code, label = "Code Block", onClick = { onInsertText("```\n") })
+                TextButton(
+                    onClick = { onInsertText("### ", "") },
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Text("H3", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
             }
             item {
-                ToolbarButton(icon = Icons.Default.FormatQuote, label = "Quote", onClick = { onInsertText("> ") })
+                ToolbarButton(icon = Icons.Default.FormatListBulleted, label = "List", onClick = { onInsertText("- ", "") })
             }
             item {
-                ToolbarButton(icon = Icons.Default.Link, label = "Link", onClick = { onInsertText("[](url)") })
+                ToolbarButton(icon = Icons.Default.CheckCircleOutline, label = "Checklist", onClick = { onInsertText("- [ ] ", "") })
+            }
+            item {
+                ToolbarButton(icon = Icons.Default.FormatListNumbered, label = "Numbered List", onClick = { onInsertText("1. ", "") })
+            }
+            item {
+                ToolbarButton(icon = Icons.Default.Code, label = "Code Block", onClick = { onInsertText("```\n", "\n```") })
+            }
+            item {
+                ToolbarButton(icon = Icons.Default.FormatQuote, label = "Quote", onClick = { onInsertText("> ", "") })
+            }
+            item {
+                ToolbarButton(icon = Icons.Default.Link, label = "Link", onClick = { onInsertText("[", "](url)") })
             }
             item {
                 ToolbarButton(icon = Icons.Default.Attachment, label = "Attachment", onClick = onAttachmentClick)
