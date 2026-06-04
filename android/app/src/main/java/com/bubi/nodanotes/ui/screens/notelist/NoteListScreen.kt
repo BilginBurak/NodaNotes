@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -358,9 +360,80 @@ fun NoteListScreen(
                 }
             }
 
+            val pullToRefreshState = rememberPullToRefreshState()
+            var isDeepPull by remember { mutableStateOf(false) }
+
+            LaunchedEffect(pullToRefreshState.distanceFraction, isRefreshing) {
+                if (!isRefreshing) {
+                    if (pullToRefreshState.distanceFraction >= 1.5f) {
+                        isDeepPull = true
+                    } else if (pullToRefreshState.distanceFraction < 1.0f) {
+                        isDeepPull = false
+                    }
+                }
+            }
+
             PullToRefreshBox(
+                state = pullToRefreshState,
                 isRefreshing = isRefreshing,
-                onRefresh = { viewModel.triggerFilesystemScan() },
+                onRefresh = {
+                    if (isDeepPull) {
+                        viewModel.triggerSync()
+                    } else {
+                        viewModel.triggerFilesystemScan()
+                    }
+                },
+                indicator = {
+                    val fraction = pullToRefreshState.distanceFraction
+                    if (fraction > 0f || isRefreshing) {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                if (isRefreshing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = if (isDeepPull) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    val rotation = (fraction * 360f) % 360f
+                                    Icon(
+                                        imageVector = if (fraction >= 1.5f) Icons.Default.Sync else Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        tint = if (fraction >= 1.5f) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .graphicsLayer(rotationZ = rotation)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                val text = when {
+                                    isRefreshing -> if (isDeepPull) "Bulutla eşitleniyor..." else "Dosyalar taranıyor..."
+                                    fraction >= 1.5f -> "Bulut eşitlemesi için bırakın..."
+                                    else -> "Yerel tarama için bırakın..."
+                                }
+                                Text(
+                                    text = text,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                },
                 modifier = Modifier.weight(1f)
             ) {
                 when (val state = uiState) {

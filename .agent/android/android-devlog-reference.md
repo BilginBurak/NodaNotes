@@ -515,3 +515,125 @@ Status line on left edge of result box:
 ### 25.1 NodaAppShell Scope & Nesting Mismatch
 - **Problem:** Missing closing brace `}` at the end of the `drawerContent` lambda block caused all subsequent dialogs and `ModalNavigationDrawer` to be parsed inside `drawerContent`. This caused `FolderTreeItem` to fail compilation with unresolved references. In addition, `selectedTag` and `currentFolder` state variables were declared inside the nested WORKSPACE column instead of at the root level of `drawerContent`, making them inaccessible (out-of-scope) in the tags lists.
 - **Solution:** Hoisted the state declarations to the root level of `drawerContent` and added the missing closing brace `}` after `ModalDrawerSheet` ends (around line 687). This resolved all scope and nesting compiler issues cleanly.
+
+## 26. Dual Pull-to-Refresh Mechanism (June 2026)
+
+- **Problem:** Users needed a seamless gesture-based way to trigger both local filesystem scans and cloud sync operations. The default `PullToRefreshBox` only supports a single refresh callback, lacking the capability to distinguish between drag depths or display contextual feedback.
+- **Solution:** Designed and implemented a dual-stage gesture evaluator by tracking the drag progress of the Material 3 `PullToRefreshBox` in [NoteListScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/notelist/NoteListScreen.kt).
+  
+  ### Implementation Details:
+  - **State Evaluation:** Evaluates the `pullToRefreshState.distanceFraction` continuously. A fraction between `1.0f` and `1.5f` represents a "Short Pull", while a fraction exceeding `1.5f` transitions into a "Deep/Long Pull".
+  - **Action Selection:** On drag release, the `onRefresh` callback inspects the computed `isDeepPull` boolean flag. If `true`, it invokes `viewModel.triggerSync()`; otherwise, it initiates a local disk sync via `viewModel.triggerFilesystemScan()`.
+  - **Simplified Visual Feedback:** To ensure a clean interface, the active pull phase was simplified to show exactly two visual states based on drag depth (removing the initial pull-to-scan text):
+    - Drag < 1.5: *"Yerel tarama için bırakın..."* (Short pull threshold)
+    - Drag >= 1.5: *"Bulut eşitlemesi için bırakın..."* (Deep pull threshold)
+    - Refreshing (Short): *"Dosyalar taranıyor..."*
+    - Refreshing (Deep): *"Bulutla eşitleniyor..."*
+
+  ### Code Reference:
+  ```kotlin
+  val pullToRefreshState = rememberPullToRefreshState()
+  var isDeepPull by remember { mutableStateOf(false) }
+
+  LaunchedEffect(pullToRefreshState.distanceFraction, isRefreshing) {
+      if (!isRefreshing) {
+          if (pullToRefreshState.distanceFraction >= 1.5f) {
+              isDeepPull = true
+          } else if (pullToRefreshState.distanceFraction < 1.0f) {
+              isDeepPull = false
+          }
+      }
+  }
+  ```
+
+---
+
+## 27. Auto-Sync Loop Reliability and Status Bar Polling (June 2026)
+
+- **Problem:** Background auto-sync was highly unresponsive because it slept for the full duration of the sync interval (e.g., 15 minutes). If the user changed settings or forced a manual sync, the loop remained stuck in its sleep cycle. Additionally, background runs never updated `lastSyncTime` in SharedPreferences, and the UI status bar failed to reflect that a background sync was currently active.
+- **Solution:** Re-engineered the auto-sync runner inside [MainActivity.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/MainActivity.kt) and bound the Note List status bar to the actual Rust core synchronization engine status in [NoteListViewModel.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/notelist/NoteListViewModel.kt).
+
+  ### Implementation Details:
+  - **Interval Check:** Changed the delay to a constant `15000` ms (15 seconds). On every tick, it loads the latest sync settings directly from the Rust core.
+  - **Timing Strategy:** It reads `vaultPreferences.getLastSyncTime()` and calculates `elapsedSecs = (now - lastSync) / 1000`. Sync is only triggered if `elapsedSecs >= config.interval_secs`.
+  - **State Propagation:** On success, it persists the current timestamp back into `lastSyncTime` in SharedPreferences and triggers `refreshVault()` to sync the UI list with the newly downloaded documents.
+  - **Real-Time Sync Status Display:** Refactored `updateRelativeSyncStatus()` in `NoteListViewModel` to fetch sync status directly from the Rust Core using `syncRepository.getSyncStatus()`. If the Rust engine's `is_syncing` flag is true, the UI status bar immediately renders *"Syncing..."*, ensuring background sync status is visible in real-time.
+
+  ### Code Reference:
+  ```kotlin
+  // In NoteListViewModel.kt
+  fun updateRelativeSyncStatus() {
+      viewModelScope.launch(Dispatchers.IO) {
+          syncRepository.getSyncStatus().fold(
+              onSuccess = { status ->
+                  if (status.is_syncing) {
+                      _syncStatus.value = "Syncing..."
+                  } else {
+                      val lastSync = vaultPreferences.getLastSyncTime()
+                      // ... format standard timestamp strings (e.g. "Synced just now")
+                  }
+              },
+              onFailure = { /* Fallback to SharedPreferences timestamps */ }
+          )
+      }
+  }
+  ```
+
+---
+
+## 28. Input Chip Parameter Specification in TagInputBar (June 2026)
+
+- **Problem:** Compilation failed inside [TagInputBar.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/components/TagInputBar.kt) with error: `No value passed for parameter 'enabled'` and `No value passed for parameter 'selected'` in calls to `InputChipDefaults.inputChipBorder()`.
+- **Solution:** Some Material 3 Compose library configurations do not expose default parameters for the `inputChipBorder()` helper function. The border customization calls were refactored to explicitly pass `enabled = true` and `selected = false` to guarantee compatibility across all compiler configurations.
+
+  ### Code Reference:
+  ```kotlin
+  border = InputChipDefaults.inputChipBorder(
+      enabled = true,
+      selected = false,
+      borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+      borderWidth = 1.dp
+  )
+  ```
+
+---
+
+## 29. SQLite Tag Rebuild Prevention via Incremental Rebuilds (June 2026)
+
+- **Problem:** Every time the app initialized, returned from background, or detected file system changes, it invoked `refreshVault()`, which called the Rust function `rebuild_database_sync`. This function cleared the database cache completely using `DELETE FROM tags` and `DELETE FROM notes`. Because it deleted all tag rows and inserted them back from scratch, the SQLite autoincrement ID sequence constantly bloated, breaking ID stability.
+- **Solution:** Refactored the core database rebuild logic in [rebuild.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/core/src/database/rebuild.rs) to use an incremental synchronization approach instead of purging tables.
+
+  ### Implementation Details:
+  - **No Purge:** The `DELETE FROM notes` and `DELETE FROM tags` statements were removed.
+  - **Upsert Loop:** The scanner performs `upsert_note` on every file currently on disk. For existing files, it updates the note. `sync_note_tags` executes, inserting tag associations.
+  - **Temporary ID Tracking:** Created a SQLite temporary table (`temp_scanned_ids`) inside the transaction to store all note IDs scanned from disk.
+  - **Orphan Cleanup:** Deleted only database notes not present on disk using:
+    `DELETE FROM notes WHERE id NOT IN (SELECT id FROM temp_scanned_ids)`
+    This cascades automatically to the `note_tags` relationship table. At the end of the transaction, a single cleanup query purges orphaned tags:
+    `DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)`
+  - **Impact:** Existing tags are preserved and never deleted, locking their auto-incrementing database IDs permanently.
+
+---
+
+## 30. NoteEditorViewModel AutoSave sessionModified Reset (June 2026)
+
+- **Problem:** Auto-saved files were continuously triggering history snapshot writes labeled with reasons `App-Exit` or `Blur`. This occurred because the `sessionModified` dirty flag in [NoteEditorViewModel.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/editor/NoteEditorViewModel.kt) was never reset to `false` upon a successful auto-save database update.
+- **Solution:** Modified the `onSuccess` block of `saveNoteImmediately(note: NoteDto)` to set `sessionModified = false`. This guarantees that when the editor screen triggers a save on pause or close, it will return early if there are no unsaved changes since the last write, preventing history database clutter and snapshot duplicates.
+
+  ### Code Reference:
+  ```kotlin
+  private suspend fun saveNoteImmediately(note: NoteDto) {
+      // ...
+      noteRepository.updateNote(/* ... */).fold(
+          onSuccess = {
+              if (shouldSnapshot) {
+                  lastSnapshotTime = now
+              }
+              sessionModified = false // Reset dirty flag
+              _saveState.value = SaveState.Saved
+              loadMetadata(note.id)
+          },
+          onFailure = { /* ... */ }
+      )
+  }
+  ```

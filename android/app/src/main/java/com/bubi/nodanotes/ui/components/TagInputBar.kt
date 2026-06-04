@@ -34,7 +34,7 @@ fun TagInputBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(vertical = 4.dp, horizontal = 8.dp)
     ) {
         // Suggestions Autocomplete row
         val filteredSuggestions = suggestions.filter { it !in yamlTags && it !in inlineTags }
@@ -65,99 +65,101 @@ fun TagInputBar(
             Spacer(modifier = Modifier.height(4.dp))
         }
 
-        // Tags List + Input Field Row
-        FlowRow(
+        // Horizontal Tag Bar containing tags & input
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Render YAML tags
-            yamlTags.forEach { tag ->
-                InputChip(
-                    selected = false,
-                    onClick = {
-                        onYamlTagsChanged(yamlTags - tag)
-                    },
-                    label = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(tag)
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    text = "YAML",
-                                    fontSize = 8.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-                    },
-                    trailingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Remove tag",
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-                )
-            }
-
-            // Render Inline tags
-            inlineTags.forEach { tag ->
-                InputChip(
-                    selected = false,
-                    onClick = {
-                        onInlineTagClick(tag)
-                    },
-                    label = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(tag)
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    text = "INLINE",
-                                    fontSize = 8.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-
-            // Text field to add tags
-            BasicTextFieldWithPlaceholder(
-                value = tagText,
-                onValueChange = {
-                    tagText = it
-                    onPrefixChanged(it)
-                },
-                placeholder = "Add tags...",
-                keyboardOptions = KeyboardOptions.Default.copy(
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        val clean = tagText.trim().lowercase()
-                        if (clean.isNotEmpty() && clean !in yamlTags) {
-                            onYamlTagsChanged(yamlTags + clean)
-                        }
-                        tagText = ""
-                        onPrefixChanged("")
-                    }
-                )
+            Icon(
+                imageVector = Icons.Default.LocalOffer,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp)
             )
+            Spacer(modifier = Modifier.width(8.dp))
+
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(end = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // YAML tags with (X) delete button, solid borders/darker backgrounds
+                items(yamlTags) { tag ->
+                    InputChip(
+                        selected = false,
+                        onClick = { onYamlTagsChanged(yamlTags - tag) },
+                        label = { Text(tag) },
+                        border = InputChipDefaults.inputChipBorder(
+                            enabled = true,
+                            selected = false,
+                            borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            borderWidth = 1.dp
+                        ),
+                        colors = InputChipDefaults.inputChipColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                        ),
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Remove tag",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    )
+                }
+
+                // Inline tags, soft/dashed border styling, no X button, clicking highlights tag in editor
+                items(inlineTags) { tag ->
+                    InputChip(
+                        selected = false,
+                        onClick = { onInlineTagClick(tag) },
+                        label = { Text(tag) },
+                        border = InputChipDefaults.inputChipBorder(
+                            enabled = true,
+                            selected = false,
+                            borderColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f),
+                            borderWidth = 1.dp
+                        ),
+                        colors = InputChipDefaults.inputChipColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.1f)
+                        )
+                    )
+                }
+
+                item {
+                    BasicTextFieldWithPlaceholder(
+                        value = tagText,
+                        onValueChange = { newValue ->
+                            if (newValue.endsWith(" ") || newValue.endsWith(",")) {
+                                val newTag = newValue.dropLast(1).trim().lowercase()
+                                if (newTag.isNotEmpty() && newTag !in yamlTags) {
+                                    onYamlTagsChanged(yamlTags + newTag)
+                                }
+                                tagText = ""
+                                onPrefixChanged("")
+                            } else {
+                                tagText = newValue
+                                onPrefixChanged(newValue)
+                            }
+                        },
+                        placeholder = "Add tags...",
+                        keyboardOptions = KeyboardOptions.Default.copy(
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val clean = tagText.trim().lowercase()
+                                if (clean.isNotEmpty() && clean !in yamlTags) {
+                                    onYamlTagsChanged(yamlTags + clean)
+                                }
+                                tagText = ""
+                                onPrefixChanged("")
+                            }
+                        )
+                    )
+                }
+            }
         }
     }
 }

@@ -422,8 +422,80 @@ fun NoteEditorScreen(
                                 BasicTextField(
                                     value = textFieldValue,
                                     onValueChange = { newValue ->
-                                        textFieldValue = newValue
-                                        viewModel.onContentChanged(newValue.text)
+                                        // Smart list continuation and enter handler
+                                        val oldText = textFieldValue.text
+                                        val newText = newValue.text
+                                        val cursorPosition = newValue.selection.start
+                                        
+                                        var finalValue = newValue
+                                        
+                                        // Detect if user inserted a newline (pressed enter)
+                                        if (newText.length == oldText.length + 1 && cursorPosition > 0 && newText[cursorPosition - 1] == '\n') {
+                                            // Find the line preceding the newline
+                                            val textBeforeCursor = newText.substring(0, cursorPosition - 1)
+                                            val lastNewlineIdx = textBeforeCursor.lastIndexOf('\n')
+                                            val prevLine = if (lastNewlineIdx == -1) textBeforeCursor else textBeforeCursor.substring(lastNewlineIdx + 1)
+                                            
+                                            // Match prefixes: "- [ ] ", "- [x] ", "- ", "* ", "1. " etc
+                                            val checklistRegex = Regex("^(\\s*[-*]\\s\\[[ xX]\\]\\s)(.*)")
+                                            val bulletRegex = Regex("^(\\s*[-*]\\s)(.*)")
+                                            val orderedRegex = Regex("^(\\s*(\\d+)\\.\\s)(.*)")
+                                            
+                                            val checklistMatch = checklistRegex.find(prevLine)
+                                            val bulletMatch = bulletRegex.find(prevLine)
+                                            val orderedMatch = orderedRegex.find(prevLine)
+                                            
+                                            if (checklistMatch != null) {
+                                                val prefix = checklistMatch.groupValues[1]
+                                                val content = checklistMatch.groupValues[2].trim()
+                                                if (content.isEmpty()) {
+                                                    // Empty list item - exit list mode by removing prefix
+                                                    val beforeLine = if (lastNewlineIdx == -1) "" else textBeforeCursor.substring(0, lastNewlineIdx + 1)
+                                                    val updatedText = beforeLine + "\n" + newText.substring(cursorPosition)
+                                                    val newCursor = beforeLine.length + 1
+                                                    finalValue = TextFieldValue(updatedText, TextRange(newCursor))
+                                                } else {
+                                                    // Continue empty checklist item: "- [ ] "
+                                                    val cleanPrefix = prefix.replace(Regex("\\[[xX]\\]"), "[ ]")
+                                                    val updatedText = newText.substring(0, cursorPosition) + cleanPrefix + newText.substring(cursorPosition)
+                                                    finalValue = TextFieldValue(updatedText, TextRange(cursorPosition + cleanPrefix.length))
+                                                }
+                                            } else if (bulletMatch != null) {
+                                                val prefix = bulletMatch.groupValues[1]
+                                                val content = bulletMatch.groupValues[2].trim()
+                                                if (content.isEmpty()) {
+                                                    // Empty item - exit list mode
+                                                    val beforeLine = if (lastNewlineIdx == -1) "" else textBeforeCursor.substring(0, lastNewlineIdx + 1)
+                                                    val updatedText = beforeLine + "\n" + newText.substring(cursorPosition)
+                                                    val newCursor = beforeLine.length + 1
+                                                    finalValue = TextFieldValue(updatedText, TextRange(newCursor))
+                                                } else {
+                                                    // Continue bullet: "- " or "* "
+                                                    val updatedText = newText.substring(0, cursorPosition) + prefix + newText.substring(cursorPosition)
+                                                    finalValue = TextFieldValue(updatedText, TextRange(cursorPosition + prefix.length))
+                                                }
+                                            } else if (orderedMatch != null) {
+                                                val prefix = orderedMatch.groupValues[1]
+                                                val num = orderedMatch.groupValues[2].toInt()
+                                                val content = orderedMatch.groupValues[3].trim()
+                                                if (content.isEmpty()) {
+                                                    // Empty item - exit list mode
+                                                    val beforeLine = if (lastNewlineIdx == -1) "" else textBeforeCursor.substring(0, lastNewlineIdx + 1)
+                                                    val updatedText = beforeLine + "\n" + newText.substring(cursorPosition)
+                                                    val newCursor = beforeLine.length + 1
+                                                    finalValue = TextFieldValue(updatedText, TextRange(newCursor))
+                                                } else {
+                                                    // Increment ordered list item: "1. " -> "2. "
+                                                    val spacePrefix = prefix.takeWhile { it.isWhitespace() }
+                                                    val nextPrefix = "$spacePrefix${num + 1}. "
+                                                    val updatedText = newText.substring(0, cursorPosition) + nextPrefix + newText.substring(cursorPosition)
+                                                    finalValue = TextFieldValue(updatedText, TextRange(cursorPosition + nextPrefix.length))
+                                                }
+                                            }
+                                        }
+                                        
+                                        textFieldValue = finalValue
+                                        viewModel.onContentChanged(finalValue.text)
                                     },
                                     textStyle = TextStyle(
                                         fontFamily = FontFamily.Monospace,

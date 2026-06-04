@@ -13,25 +13,41 @@ pub fn rebuild_database_sync(
     notes: &[crate::models::note::Note],
     conn: &mut Connection,
 ) -> Result<(), NodaError> {
-    // Step 2: Use a transaction for atomic and fast updates
     let tx = conn
         .transaction()
         .map_err(|e| NodaError::Database(format!("Failed to start transaction: {}", e)))?;
 
-    // Step 3: Clear existing tables
-    // The SQLite triggers defined in schema.rs will automatically clean up `notes_fts`
-    tx.execute("DELETE FROM notes", [])
-        .map_err(|e| NodaError::Database(format!("Failed to clear notes table: {}", e)))?;
-    tx.execute("DELETE FROM tags", [])
-        .map_err(|e| NodaError::Database(format!("Failed to clear tags table: {}", e)))?;
-
-    // Step 4: Batch insert all scanned notes
+    // 1. Batch upsert all scanned notes (updates existing, inserts new)
     for note in notes {
-        // For now, we leave file_hash empty during a mass rebuild
         upsert_note(&tx, note, &note.file_path, "")?;
     }
 
-    // Step 5: Commit transaction
+    // 2. Identify and delete any notes in the database that are no longer present on disk
+    tx.execute("CREATE TEMP TABLE temp_scanned_ids (id TEXT PRIMARY KEY)", [])
+        .map_err(|e| NodaError::Database(format!("Failed to create temp table: {}", e)))?;
+
+    let mut stmt = tx.prepare("INSERT OR REPLACE INTO temp_scanned_ids (id) VALUES (?1)")
+        .map_err(|e| NodaError::Database(format!("Failed to prepare temp insert: {}", e)))?;
+
+    for note in notes {
+        let note_id_str = note.id.0.to_string();
+        stmt.execute(rusqlite::params![note_id_str])
+            .map_err(|e| NodaError::Database(format!("Failed to insert temp id: {}", e)))?;
+    }
+    drop(stmt);
+
+    tx.execute("DELETE FROM notes WHERE id NOT IN (SELECT id FROM temp_scanned_ids)", [])
+        .map_err(|e| NodaError::Database(format!("Failed to delete removed notes: {}", e)))?;
+
+    tx.execute("DROP TABLE temp_scanned_ids", [])
+        .map_err(|e| NodaError::Database(format!("Failed to drop temp table: {}", e)))?;
+
+    // 3. Clean up any tags that have 0 notes associated with them at the end of the entire rebuild
+    tx.execute(
+        "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)",
+        [],
+    ).map_err(|e| NodaError::Database(format!("Failed to clean orphaned tags: {}", e)))?;
+
     tx.commit()
         .map_err(|e| NodaError::Database(format!("Failed to commit rebuild transaction: {}", e)))?;
 

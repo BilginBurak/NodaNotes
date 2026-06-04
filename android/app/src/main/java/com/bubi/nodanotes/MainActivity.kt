@@ -137,30 +137,27 @@ class MainActivity : ComponentActivity() {
                 if (configResult.isSuccess) {
                     val config = configResult.getOrThrow()
                     if (config.is_configured && config.interval_secs > 0) {
-                        // Wait for configured interval
-                        kotlinx.coroutines.delay(config.interval_secs * 1000)
-                        
-                        // Execute Sync in background
-                        syncRepo.syncNow().onSuccess { report ->
-                            // Update shared state/preferences
-                            vaultPreferences.saveLastSyncReport(
-                                kotlinx.serialization.json.Json.encodeToString(
-                                    com.bubi.nodanotes.data.model.SyncReportDto.serializer(),
-                                    report
+                        val lastSync = vaultPreferences.getLastSyncTime()
+                        val elapsedSecs = (System.currentTimeMillis() - lastSync) / 1000
+                        if (elapsedSecs >= config.interval_secs) {
+                            syncRepo.syncNow().onSuccess { report ->
+                                vaultPreferences.saveLastSyncTime(System.currentTimeMillis())
+                                vaultPreferences.saveLastSyncReport(
+                                    kotlinx.serialization.json.Json.encodeToString(
+                                        com.bubi.nodanotes.data.model.SyncReportDto.serializer(),
+                                        report
+                                    )
                                 )
-                            )
-                            // Post local status notification
-                            val noteListViewModelClass = Class.forName("com.bubi.nodanotes.ui.screens.notelist.NoteListViewModel")
-                            // Broadcast or refresh core vault
-                            com.bubi.nodanotes.data.repository.VaultRepository().refreshVault()
+                                try {
+                                    com.bubi.nodanotes.data.repository.VaultRepository().refreshVault()
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
                         }
-                    } else {
-                        // Check again in 30 seconds if sync not fully configured
-                        kotlinx.coroutines.delay(30000)
                     }
-                } else {
-                    kotlinx.coroutines.delay(30000)
                 }
+                kotlinx.coroutines.delay(15000)
             }
         }
     }

@@ -265,7 +265,7 @@ private fun SnapshotCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = formatTimestamp(snapshot.timestamp),
+                    text = formatTimestamp(snapshot.timestamp) + " [${snapshot.reason}]",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onSurface
@@ -299,31 +299,38 @@ private fun SnapshotCard(
 
 private fun formatTimestamp(timestamp: String): String {
     return try {
-        if (timestamp.length >= 15 && timestamp.contains("_")) {
-            val parts = timestamp.split("_")
-            val datePart = parts[0]
-            val timePart = parts[1]
+        val instant = java.time.Instant.parse(timestamp)
+        val zoneId = java.time.ZoneId.systemDefault()
+        val localDateTime = java.time.ZonedDateTime.ofInstant(instant, zoneId)
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy - HH:mm", java.util.Locale("tr", "TR"))
+        localDateTime.format(formatter)
+    } catch (e: Exception) {
+        try {
+            if (timestamp.length >= 15 && timestamp.contains("_")) {
+                val parts = timestamp.split("_")
+                val datePart = parts[0]
+                val timePart = parts[1]
 
-            val year = datePart.substring(0, 4)
-            val monthNum = datePart.substring(4, 6).toInt()
-            val day = datePart.substring(6, 8).toInt()
+                val year = datePart.substring(0, 4)
+                val monthNum = datePart.substring(4, 6).toInt()
+                val day = datePart.substring(6, 8).toInt()
 
-            val hour = timePart.substring(0, 2)
-            val minute = timePart.substring(2, 4)
-            val second = timePart.substring(4, 6)
+                val hour = timePart.substring(0, 2)
+                val minute = timePart.substring(2, 4)
 
-            val months = listOf(
-                "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-            )
-            val monthStr = months.getOrNull(monthNum - 1) ?: "$monthNum"
+                val months = listOf(
+                    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
+                )
+                val monthStr = months.getOrNull(monthNum - 1) ?: "$monthNum"
 
-            "$monthStr $day, $year at $hour:$minute:$second"
-        } else {
+                "$day $monthStr $year - $hour:$minute"
+            } else {
+                timestamp
+            }
+        } catch (ex: Exception) {
             timestamp
         }
-    } catch (e: Exception) {
-        timestamp
     }
 }
 

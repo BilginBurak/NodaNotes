@@ -540,15 +540,18 @@ fun HistoryTab(settings: SettingsDto, viewModel: SettingsViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TemplatesTab(settings: SettingsDto, viewModel: SettingsViewModel) {
     val templates by viewModel.templates.collectAsState()
-    val scrollState = rememberScrollState()
+    var expanded by remember { mutableStateOf(false) }
+
+    val currentTemplate = templates.find { it.id == settings.editor.default_daily_template }
+    val currentLabel = currentTemplate?.title ?: "No Template (Blank daily note)"
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
@@ -557,54 +560,45 @@ fun TemplatesTab(settings: SettingsDto, viewModel: SettingsViewModel) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // No template option
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { viewModel.updateDefaultDailyTemplate(null) }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
         ) {
-            RadioButton(
-                selected = settings.editor.default_daily_template.isNullOrEmpty(),
-                onClick = { viewModel.updateDefaultDailyTemplate(null) }
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Text("No Template (Blank daily note)", style = MaterialTheme.typography.bodyLarge)
-        }
-
-        if (templates.isEmpty()) {
-            Box(
+            OutlinedTextField(
+                readOnly = true,
+                value = currentLabel,
+                onValueChange = {},
+                label = { Text("Selected Template") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                contentAlignment = Alignment.Center
+                    .menuAnchor()
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
             ) {
-                Text(
-                    text = "No template notes found in '.templates' folder.\nCreate '.templates/' folder in your vault root and put your template files there.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-            }
-        } else {
-            templates.forEach { template ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { viewModel.updateDefaultDailyTemplate(template.id) }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = settings.editor.default_daily_template == template.id,
-                        onClick = { viewModel.updateDefaultDailyTemplate(template.id) }
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(template.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                        Text(template.file_path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                DropdownMenuItem(
+                    text = { Text("No Template (Blank daily note)") },
+                    onClick = {
+                        viewModel.updateDefaultDailyTemplate(null)
+                        expanded = false
                     }
+                )
+                templates.forEach { template ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(template.title, fontWeight = FontWeight.SemiBold)
+                                Text(template.file_path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        onClick = {
+                            viewModel.updateDefaultDailyTemplate(template.id)
+                            expanded = false
+                        }
+                    )
                 }
             }
         }

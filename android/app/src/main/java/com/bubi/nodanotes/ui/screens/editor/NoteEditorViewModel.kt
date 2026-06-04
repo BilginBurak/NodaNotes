@@ -145,8 +145,8 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
             onSuccess = {
                 if (shouldSnapshot) {
                     lastSnapshotTime = now
-                    sessionModified = false
                 }
+                sessionModified = false
                 _saveState.value = SaveState.Saved
                 loadMetadata(note.id)
             },

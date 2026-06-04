@@ -320,7 +320,8 @@ pub fn update_note_file_path(conn: &Connection, id: NoteId, file_path: &str) -> 
 pub fn sync_note_tags(conn: &Connection, note: &Note) -> Result<(), NodaError> {
     let note_id = note.id.0.to_string();
     
-    // 1. Delete existing relationships for this note
+    // 1. Delete existing note_tags relationships for this note only.
+    // Do NOT delete the tags themselves, as we will clean up orphaned tags at the end.
     conn.execute("DELETE FROM note_tags WHERE note_id = ?1", params![note_id])
         .map_err(|e| NodaError::Database(format!("Failed to clear note tags: {}", e)))?;
         
@@ -336,7 +337,7 @@ pub fn sync_note_tags(conn: &Connection, note: &Note) -> Result<(), NodaError> {
         }
     }
     
-    // 4. Insert tags into `tags` table and link in `note_tags`
+    // 4. Insert tags into `tags` table using ON CONFLICT DO NOTHING, and link in `note_tags`
     for tag_name in &yaml_tags {
         // Insert into tags if not exists
         conn.execute(

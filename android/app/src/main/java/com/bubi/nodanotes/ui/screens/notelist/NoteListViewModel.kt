@@ -58,14 +58,23 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
             noteRepository.getAllNotes().fold(
                 onSuccess = { allNotes ->
                     val tagFilter = FolderContext.selectedTag
+                    
+                    // Filter Daily Notes isolation
+                    val dailyNotesPrefix = "Daily Notes/"
                     val folderFiltered = if (folderPath == null) {
-                        allNotes
+                        // All Notes: exclude Daily Notes
+                        allNotes.filter { !it.file_path.startsWith(dailyNotesPrefix) }
+                    } else if (folderPath == "Daily Notes") {
+                        // Daily Notes screen: only show Daily Notes
+                        allNotes.filter { it.file_path.startsWith(dailyNotesPrefix) }
                     } else {
+                        // Standard folder: filter by subfolder hierarchy
                         allNotes.filter { note ->
                             val noteFolder = note.file_path.substringBeforeLast('/', "")
                             noteFolder == folderPath || noteFolder.startsWith("$folderPath/")
                         }
                     }
+
                     val finalFiltered = if (tagFilter == null) {
                         folderFiltered
                     } else {
@@ -112,28 +121,62 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updateRelativeSyncStatus() {
-        val lastSync = vaultPreferences.getLastSyncTime()
-        if (lastSync == 0L) {
-            _syncStatus.value = "Never synced"
-            return
+        viewModelScope.launch(Dispatchers.IO) {
+            syncRepository.getSyncStatus().fold(
+                onSuccess = { status ->
+                    if (status.is_syncing) {
+                        _syncStatus.value = "Syncing..."
+                    } else {
+                        val lastSync = vaultPreferences.getLastSyncTime()
+                        if (lastSync == 0L) {
+                            _syncStatus.value = "Never synced"
+                        } else {
+                            val elapsed = System.currentTimeMillis() - lastSync
+                            if (elapsed < 60000) {
+                                _syncStatus.value = "Synced just now"
+                            } else {
+                                val mins = elapsed / 60000
+                                if (mins < 60) {
+                                    _syncStatus.value = "Synced $mins min${if (mins > 1) "s" else ""} ago"
+                                } else {
+                                    val hours = mins / 60
+                                    if (hours < 24) {
+                                        _syncStatus.value = "Synced $hours hour${if (hours > 1) "s" else ""} ago"
+                                    } else {
+                                        val sdf = java.text.SimpleDateFormat("MMM d, yyyy HH:mm", java.util.Locale.US)
+                                        _syncStatus.value = "Synced: " + sdf.format(java.util.Date(lastSync))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                onFailure = {
+                    val lastSync = vaultPreferences.getLastSyncTime()
+                    if (lastSync == 0L) {
+                        _syncStatus.value = "Never synced"
+                    } else {
+                        val elapsed = System.currentTimeMillis() - lastSync
+                        if (elapsed < 60000) {
+                            _syncStatus.value = "Synced just now"
+                        } else {
+                            val mins = elapsed / 60000
+                            if (mins < 60) {
+                                _syncStatus.value = "Synced $mins min${if (mins > 1) "s" else ""} ago"
+                            } else {
+                                val hours = mins / 60
+                                if (hours < 24) {
+                                    _syncStatus.value = "Synced $hours hour${if (hours > 1) "s" else ""} ago"
+                                } else {
+                                    val sdf = java.text.SimpleDateFormat("MMM d, yyyy HH:mm", java.util.Locale.US)
+                                    _syncStatus.value = "Synced: " + sdf.format(java.util.Date(lastSync))
+                                }
+                            }
+                        }
+                    }
+                }
+            )
         }
-        val elapsed = System.currentTimeMillis() - lastSync
-        if (elapsed < 60000) {
-            _syncStatus.value = "Synced just now"
-            return
-        }
-        val mins = elapsed / 60000
-        if (mins < 60) {
-            _syncStatus.value = "Synced $mins min${if (mins > 1) "s" else ""} ago"
-            return
-        }
-        val hours = mins / 60
-        if (hours < 24) {
-            _syncStatus.value = "Synced $hours hour${if (hours > 1) "s" else ""} ago"
-            return
-        }
-        val sdf = java.text.SimpleDateFormat("MMM d, yyyy HH:mm", java.util.Locale.US)
-        _syncStatus.value = "Synced: " + sdf.format(java.util.Date(lastSync))
     }
 
     fun triggerFilesystemScan() {
