@@ -29,6 +29,14 @@ import com.bubi.nodanotes.data.preferences.VaultPreferences
 import com.bubi.nodanotes.ui.navigation.NodaNavGraph
 import com.bubi.nodanotes.ui.navigation.Screen
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.background
+
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -111,15 +119,22 @@ fun NodaAppShell(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.StickyNote2,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = com.bubi.nodanotes.R.drawable.ic_launcher_foreground),
+                                contentDescription = "Noda Logo",
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
@@ -127,59 +142,31 @@ fun NodaAppShell(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 16.sp
+                                fontSize = 18.sp
                             )
                             Text(
                                 text = vaultName,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 13.sp
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
                     // WORKSPACE accordion header
-                    Surface(
-                        onClick = {
+                    SidebarSectionHeader(
+                        title = "Workspace",
+                        icon = Icons.Default.Work,
+                        expanded = workspaceExpanded,
+                        onHeaderClick = {
                             workspaceExpanded = !workspaceExpanded
                             sharedPrefs.edit().putBoolean("workspace_expanded", workspaceExpanded).apply()
-                        },
-                        color = androidx.compose.ui.graphics.Color.Transparent,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Work,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "WORKSPACE",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                )
-                            }
-                            Icon(
-                                imageVector = if (workspaceExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
                         }
-                    }
+                    )
 
                     AnimatedVisibility(
                         visible = workspaceExpanded,
@@ -208,46 +195,20 @@ fun NodaAppShell(
                             // Daily Notes
                             NavigationDrawerItem(
                                 icon = { Icon(Icons.Default.Today, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                label = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Daily Notes", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                                        IconButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    drawerState.close()
-                                                    val repo = com.bubi.nodanotes.data.repository.NoteRepository()
-                                                    repo.triggerDailyNote().fold(
-                                                        onSuccess = { noteDto ->
-                                                            navController.navigate("note_editor/${noteDto.id}")
-                                                        },
-                                                        onFailure = {
-                                                            // fallback or show error
-                                                        }
-                                                    )
-                                                }
-                                            },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Add,
-                                                contentDescription = "New Daily Note",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                },
+                                label = { Text("Daily Notes", fontWeight = FontWeight.SemiBold, fontSize = 15.sp) },
                                 selected = currentRoute == Screen.NoteList.route && currentFolder == "Daily Notes" && selectedTag == null,
                                 onClick = {
-                                    scope.launch { drawerState.close() }
-                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
-                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = "Daily Notes"
-                                    navController.navigate(Screen.NoteList.route) {
-                                        popUpTo(Screen.NoteList.route) { inclusive = true }
+                                    scope.launch {
+                                        drawerState.close()
+                                        val repo = com.bubi.nodanotes.data.repository.NoteRepository()
+                                        repo.triggerDailyNote().fold(
+                                            onSuccess = { noteDto ->
+                                                navController.navigate("note_editor/${noteDto.id}")
+                                            },
+                                            onFailure = {
+                                                // fallback or show error
+                                            }
+                                        )
                                     }
                                 },
                                 modifier = Modifier
@@ -270,54 +231,21 @@ fun NodaAppShell(
                         }
                 ) {
                     // --- FOLDERS ACCORDION ---
-                    // Header
-                    Surface(
-                        onClick = {
+                    SidebarSectionHeader(
+                        title = "Folders",
+                        icon = Icons.Default.Folder,
+                        expanded = foldersExpanded,
+                        onHeaderClick = {
                             foldersExpanded = !foldersExpanded
                             sharedPrefs.edit().putBoolean("folders_expanded", foldersExpanded).apply()
                         },
-                        color = androidx.compose.ui.graphics.Color.Transparent,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "FOLDERS",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = if (foldersExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    folderInputName = ""
-                                    showCreateTopLevelFolderDialog = true
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CreateNewFolder,
-                                    contentDescription = "New Folder",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                        actionIcon = Icons.Default.CreateNewFolder,
+                        actionDescription = "New Folder",
+                        onActionClick = {
+                            folderInputName = ""
+                            showCreateTopLevelFolderDialog = true
                         }
-                    }
+                    )
 
                     if (foldersExpanded) {
                         Box(
@@ -333,7 +261,7 @@ fun NodaAppShell(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -359,6 +287,7 @@ fun NodaAppShell(
                                             folder = folder,
                                             depth = 0,
                                             expandedPaths = expandedPaths,
+                                            currentFolderPath = currentFolder,
                                             onToggleExpanded = { drawerViewModel.toggleExpanded(it) },
                                             onFolderClick = { path ->
                                                 scope.launch { drawerState.close() }
@@ -410,45 +339,15 @@ fun NodaAppShell(
                     // --- TAGS ACCORDION ---
                     // Header
                     val tags by drawerViewModel.tags.collectAsState()
-                    Surface(
-                        onClick = {
+                    SidebarSectionHeader(
+                        title = "Tags",
+                        icon = Icons.Default.LocalOffer,
+                        expanded = tagsExpanded,
+                        onHeaderClick = {
                             tagsExpanded = !tagsExpanded
                             sharedPrefs.edit().putBoolean("tags_expanded", tagsExpanded).apply()
-                        },
-                        color = androidx.compose.ui.graphics.Color.Transparent,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.LocalOffer,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "TAGS",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                )
-                            }
-                            Icon(
-                                imageVector = if (tagsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
                         }
-                    }
+                    )
 
                     if (tagsExpanded) {
                         Box(
@@ -510,7 +409,7 @@ fun NodaAppShell(
                                             },
                                             modifier = Modifier
                                                 .padding(vertical = 1.dp)
-                                                .height(30.dp)
+                                                .height(38.dp)
                                         )
                                     }
                                 }
@@ -528,45 +427,15 @@ fun NodaAppShell(
 
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // Header
-                    Surface(
-                        onClick = {
+                    SidebarSectionHeader(
+                        title = "Management & Settings",
+                        icon = Icons.Default.Settings,
+                        expanded = managementExpanded,
+                        onHeaderClick = {
                             managementExpanded = !managementExpanded
                             sharedPrefs.edit().putBoolean("management_expanded", managementExpanded).apply()
-                        },
-                        color = androidx.compose.ui.graphics.Color.Transparent,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "MANAGEMENT & SETTINGS",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                )
-                            }
-                            Icon(
-                                imageVector = if (managementExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
                         }
-                    }
+                    )
 
                     AnimatedVisibility(
                         visible = managementExpanded,
@@ -601,7 +470,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(30.dp)
+                                    .height(38.dp)
                             )
 
                             // Conflicts
@@ -631,7 +500,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(30.dp)
+                                    .height(38.dp)
                             )
 
                             // Attachments
@@ -661,7 +530,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(30.dp)
+                                    .height(38.dp)
                             )
 
                             // Settings
@@ -675,7 +544,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(30.dp)
+                                    .height(38.dp)
                             )
                         }
                     }
@@ -902,22 +771,35 @@ fun FolderTreeItem(
     folder: FolderDto,
     depth: Int,
     expandedPaths: Set<String>,
+    currentFolderPath: String?,
     onToggleExpanded: (String) -> Unit,
     onFolderClick: (String?) -> Unit,
     onLongPressFolder: (FolderDto) -> Unit
 ) {
     val isExpanded = expandedPaths.contains(folder.path)
     val hasChildren = folder.children.isNotEmpty()
+    val isSelected = currentFolderPath == folder.path
 
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .combinedClickable(
                     onClick = { onFolderClick(folder.path) },
                     onLongClick = { onLongPressFolder(folder) }
                 )
-                .padding(start = (12 * depth + 12).dp, top = 4.dp, bottom = 4.dp, end = 12.dp),
+                .background(
+                    if (isSelected) MaterialTheme.colorScheme.secondaryContainer 
+                    else androidx.compose.ui.graphics.Color.Transparent
+                )
+                .padding(
+                    start = (12 * depth + 4).dp,
+                    top = 6.dp,
+                    bottom = 6.dp,
+                    end = 12.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
@@ -925,10 +807,18 @@ fun FolderTreeItem(
                 modifier = Modifier.size(20.dp)
             ) {
                 if (hasChildren) {
+                    val chevronRotation by animateFloatAsState(
+                        targetValue = if (isExpanded) 90f else 0f,
+                        animationSpec = tween(durationMillis = 150),
+                        label = "folder_chevron"
+                    )
                     Icon(
-                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        imageVector = Icons.Default.ChevronRight,
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier
+                            .size(14.dp)
+                            .graphicsLayer(rotationZ = chevronRotation),
+                        tint = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
                     Spacer(modifier = Modifier.size(14.dp))
@@ -936,18 +826,18 @@ fun FolderTreeItem(
             }
             Spacer(modifier = Modifier.width(4.dp))
             Icon(
-                imageVector = Icons.Default.Folder,
+                imageVector = if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = folder.name,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 fontSize = 15.sp,
-                color = MaterialTheme.colorScheme.onSurface
+                color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
             )
         }
 
@@ -957,11 +847,80 @@ fun FolderTreeItem(
                     folder = child,
                     depth = depth + 1,
                     expandedPaths = expandedPaths,
+                    currentFolderPath = currentFolderPath,
                     onToggleExpanded = onToggleExpanded,
                     onFolderClick = onFolderClick,
                     onLongPressFolder = onLongPressFolder
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SidebarSectionHeader(
+    title: String,
+    icon: ImageVector,
+    expanded: Boolean,
+    onHeaderClick: () -> Unit,
+    actionIcon: ImageVector? = null,
+    actionDescription: String? = null,
+    onActionClick: (() -> Unit)? = null
+) {
+    val rotationState by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        label = "chevron_rotation"
+    )
+
+    Surface(
+        onClick = onHeaderClick,
+        color = androidx.compose.ui.graphics.Color.Transparent,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = title.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.weight(1f)
+            )
+            if (actionIcon != null && onActionClick != null) {
+                IconButton(
+                    onClick = onActionClick,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = actionIcon,
+                        contentDescription = actionDescription,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Icon(
+                imageVector = Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(18.dp)
+                    .graphicsLayer(rotationZ = rotationState)
+            )
         }
     }
 }

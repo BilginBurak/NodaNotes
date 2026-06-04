@@ -665,3 +665,19 @@ Status line on left edge of result box:
   - **Manual Save UI Control:** Added a dynamic Save button inside the TopAppBar in [NoteEditorScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/editor/NoteEditorScreen.kt) when `saveState` is `SaveState.Unsaved`. Clicking the button invokes `viewModel.saveNoteManually()`, which immediately writes a snapshot with the reason `"Manual"`.
   - **Back Navigation Simplification:** Simplified the back button action to let `saveNoteOnExitSync("Blur")` handle saving on exit synchronously, avoiding double-saves or race conditions on back navigation.
   - **Cargo Tests Fixes:** Adjusted trash and history unit tests in Rust to ensure the note body is modified before second deletions/snapshots, keeping unit tests aligned with duplicate suppression logic.
+
+---
+
+## 33. Sidebar Redesign and Daily Notes Integration (June 2026)
+
+- **Problem:** The Navigation Drawer had inconsistent design standards across its accordion sections, and the FOLDERS chevron was misaligned compared to other sections. The app's header also used a generic icon instead of the official NodaNotes logo. Additionally, creating Daily Notes was difficult and lacked intuitive triggers in the UI.
+- **Solution:** Redesigned the sidebar and added multiple seamless entry points for Daily Notes.
+
+  ### Implementation Details:
+  - **Unified Accordions:** Created a reusable `SidebarSectionHeader` with a left-aligned icon, uppercase bold letter-spaced title, and a right-aligned chevron with a smooth 180-degree rotation animation via `animateFloatAsState`.
+  - **Real App Logo:** Replaced the generic `StickyNote2` icon in the drawer header with the launcher icon resource (`com.bubi.nodanotes.R.mipmap.ic_launcher`) styled inside a rounded `Image`.
+  - **Folder and Navigation Item Styling:** Updated the heights of all drawer items to `38.dp` for a premium look and added custom highlights (secondary container background) to active folders within the tree view.
+  - **Daily Notes Entry Points:**
+    - *Drawer Shortcut:* Simplified the "Daily Notes" drawer item so that clicking the row itself launches today's daily note immediately (creating it or appending a timestamped entry if it exists).
+    - *Top Bar Shortcut:* Added a calendar/today icon button in `NoteListScreen.kt`'s TopAppBar to trigger and open today's daily note in one tap.
+    - *FAB Interceptor:* Modified the Note List FAB behavior so that clicking it while inside the "Daily Notes" folder view automatically runs `triggerDailyNote` instead of creating a generic untitled note.

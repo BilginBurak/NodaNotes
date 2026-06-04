@@ -244,6 +244,21 @@ fun NoteListScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = {
+                            scope.launch {
+                                val repo = com.bubi.nodanotes.data.repository.NoteRepository()
+                                repo.triggerDailyNote().fold(
+                                    onSuccess = { noteDto ->
+                                        onNavigateToEditor(noteDto.id)
+                                    },
+                                    onFailure = {
+                                        // Handle error
+                                    }
+                                )
+                            }
+                        }) {
+                            Icon(Icons.Default.Today, contentDescription = "Daily Note")
+                        }
                         IconButton(onClick = onSearchClick) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
                         }
@@ -314,8 +329,25 @@ fun NoteListScreen(
             ) {
                 FloatingActionButton(
                     onClick = {
-                        viewModel.createNote(currentFolder) { noteId ->
-                            onNavigateToEditor(noteId)
+                        if (currentFolder == "Daily Notes") {
+                            scope.launch {
+                                val repo = com.bubi.nodanotes.data.repository.NoteRepository()
+                                repo.triggerDailyNote().fold(
+                                    onSuccess = { noteDto ->
+                                        onNavigateToEditor(noteDto.id)
+                                    },
+                                    onFailure = {
+                                        // Fallback to normal note creation
+                                        viewModel.createNote(currentFolder) { noteId ->
+                                            onNavigateToEditor(noteId)
+                                        }
+                                    }
+                                )
+                            }
+                        } else {
+                            viewModel.createNote(currentFolder) { noteId ->
+                                onNavigateToEditor(noteId)
+                            }
                         }
                     },
                     shape = RoundedCornerShape(16.dp),
