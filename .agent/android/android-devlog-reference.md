@@ -636,4 +636,18 @@ Status line on left edge of result box:
           onFailure = { /* ... */ }
       )
   }
+
+---
+
+## 31. Flat File-Based Snapshot History & SQLite Removal (June 2026)
+
+- **Problem:** Storing version history snapshots under individual nested subdirectories (`.noda/history/{note_id}/`) required redundant metadata tables (`history_snapshots`) in SQLite and heavy directory nesting. This made folder maintenance slow and WebDAV synchronization highly inefficient because it had to process many nested directories.
+- **Solution:** Designed and executed a database-independent flat snapshot history system directly inside the `.noda/history/` directory.
+
+  ### Implementation Details:
+  - **Flat Layout:** Saved history snapshot files directly under `.noda/history/` without subfolders, following the pattern `[NoteID]_[YYYYMMDD-HHMMSS]_[reason].md`.
+  - **Local Time Formatting:** Filenames use the local timezone (`%Y%m%d-%H%M%S`) for readability. `list_snapshots` parses this local timestamp and converts it to `DateTime<Utc>` for standard DTO serialization.
+  - **Single Traversals:** History retrieval (`list_snapshots`) runs a flat `read_dir` over `.noda/history/` and filters files starting with the targeted `NoteID` instead of making database queries.
+  - **SQLite Cleanups:** Removed the `history_snapshots` table from the schema. Incremented database schema version to `4` and implemented migration v4 to drop `history_snapshots` tables in active databases.
+  - **System Integration:** Completely stripped all history snapshot insert/delete queries from JNI Bridge, Tauri commands, sync engine, trash deletion, and rebuild tasks. Tested everything with `cargo test` and compiled JNI Bridge and Android app packages successfully.
   ```

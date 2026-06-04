@@ -137,7 +137,7 @@ impl AppState {
     pub async fn shutdown(&self) {
         if let Some(vault_path) = &*self.vault_path.read() {
             let db_opt = self.database.read().clone();
-            if let Some(db) = db_opt {
+            if let Some(_db) = db_opt {
                 if let Ok(local_notes) = noda_core::vault::scan::scan_vault(vault_path).await {
                     for note in local_notes {
                         if let Ok(snaps) = noda_core::history::list_snapshots(vault_path, note.id).await {
@@ -152,20 +152,7 @@ impl AppState {
                             };
 
                             if needs_snapshot {
-                                if let Ok(snap) = noda_core::history::snapshot(vault_path, &note, "App-Exit").await {
-                                    let conn = db.conn.lock();
-                                    let timestamp_utc = snap.timestamp;
-                                    let rel_path = snap.absolute_path.strip_prefix(vault_path)
-                                        .map(|p| p.to_string_lossy().to_string())
-                                        .unwrap_or_else(|_| snap.absolute_path.to_string_lossy().to_string());
-                                    let _ = noda_core::database::queries::insert_history_snapshot(
-                                        &conn,
-                                        &note.id.0.to_string(),
-                                        &timestamp_utc.to_rfc3339(),
-                                        "App-Exit",
-                                        &rel_path,
-                                    );
-                                }
+                                let _ = noda_core::history::snapshot(vault_path, &note, "App-Exit").await;
                             }
                         }
                     }

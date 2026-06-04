@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::schema::INIT_SCHEMA;
 use tracing::info;
 
-const CURRENT_SCHEMA_VERSION: i32 = 3;
+const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     // Check if schema_version table exists
@@ -81,6 +81,20 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
 
         current_version = 3;
+    }
+
+    if current_version < 4 {
+        info!("Applying database migration v4: dropping history_snapshots table");
+        conn.execute_batch(r#"
+            DROP TABLE IF EXISTS history_snapshots;
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v4: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (4)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 4;
     }
 
     info!("Database is up to date (version {})", current_version);

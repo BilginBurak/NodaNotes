@@ -275,20 +275,7 @@ impl SyncEngine {
                 };
 
                 if needs_snapshot {
-                    if let Ok(snap) = crate::history::snapshot(vault_path, note, "Pre-Sync").await {
-                        let conn = database.conn.lock();
-                        let timestamp_utc = snap.timestamp;
-                        let rel_path = snap.absolute_path.strip_prefix(vault_path)
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|_| snap.absolute_path.to_string_lossy().to_string());
-                        let _ = crate::database::queries::insert_history_snapshot(
-                            &conn,
-                            &note.id.0.to_string(),
-                            &timestamp_utc.to_rfc3339(),
-                            "Pre-Sync",
-                            &rel_path,
-                        );
-                    }
+                    let _ = crate::history::snapshot(vault_path, note, "Pre-Sync").await;
                 }
             }
         }

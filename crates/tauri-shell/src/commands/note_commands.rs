@@ -184,20 +184,7 @@ pub async fn update_note(
     if trigger_snapshot {
         // Take a snapshot of the PREVIOUS state before we overwrite it
         let reason = snapshot_reason.as_deref().unwrap_or("Unknown");
-        if let Ok(snap) = history::snapshot(&vault_path, &existing_note_full, reason).await {
-            let conn = db.conn.lock();
-            let timestamp_utc = snap.timestamp;
-            let rel_path = snap.absolute_path.strip_prefix(&vault_path)
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| snap.absolute_path.to_string_lossy().to_string());
-            let _ = queries::insert_history_snapshot(
-                &conn,
-                &existing_note_full.id.0.to_string(),
-                &timestamp_utc.to_rfc3339(),
-                reason,
-                &rel_path,
-            );
-        }
+        let _ = history::snapshot(&vault_path, &existing_note_full, reason).await;
     }
 
     // 1. Write to local disk

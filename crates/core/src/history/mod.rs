@@ -121,8 +121,8 @@ mod tests {
         // Take snapshot 1
         let snap1 = snapshot(dir.path(), &note, "Blur").await.unwrap();
         
-        // Wait 50ms to ensure the second file gets a different %3f timestamp
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // Wait 1 second to ensure the second file gets a different timestamp in flat layout
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         
         note.title = "V2".to_string();
         note.body = "World".to_string();

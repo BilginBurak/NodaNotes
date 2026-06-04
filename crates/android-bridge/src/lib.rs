@@ -957,20 +957,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
             let vault_path = service.base_path();
             let reason = params.snapshot_reason.as_deref().unwrap_or("Android");
             // Snapshot the PREVIOUS state before we overwrite it
-            if let Ok(snap) = noda_core::history::snapshot(vault_path, &existing_note, reason).await {
-                let conn = db.conn.lock();
-                let timestamp_str = snap.timestamp.to_rfc3339();
-                let rel_path = snap.absolute_path.strip_prefix(vault_path)
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| snap.absolute_path.to_string_lossy().to_string());
-                let _ = noda_core::database::queries::insert_history_snapshot(
-                    &conn,
-                    &existing_note.id.0.to_string(),
-                    &timestamp_str,
-                    reason,
-                    &rel_path,
-                );
-            }
+            let _ = noda_core::history::snapshot(vault_path, &existing_note, reason).await;
         }
 
         // 1. Write to local disk

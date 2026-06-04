@@ -71,13 +71,4 @@ CREATE TABLE IF NOT EXISTS note_tags (
     FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
     FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
-
--- 3. Geçmiş (snapshot) kayıtlarının tutulduğu tablo
-CREATE TABLE IF NOT EXISTS history_snapshots (
-    note_id TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    PRIMARY KEY (note_id, timestamp)
-);
 "#;
