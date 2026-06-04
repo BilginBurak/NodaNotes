@@ -155,9 +155,14 @@ class NoteRepository : BaseRepository() {
         }
     }
 
-    suspend fun triggerDailyNote(): Result<NoteDto> = withContext(Dispatchers.IO) {
+    @Serializable
+    private data class TriggerDailyNoteParams(val date: String?)
+
+    suspend fun triggerDailyNote(date: String? = null): Result<NoteDto> = withContext(Dispatchers.IO) {
         runCatching {
-            val result = RustCore.triggerDailyNote("{}")
+            val params = TriggerDailyNoteParams(date)
+            val jsonInput = json.encodeToString(TriggerDailyNoteParams.serializer(), params)
+            val result = RustCore.triggerDailyNote(jsonInput)
             parseRustResult(result, NoteDto.serializer())
         }
     }

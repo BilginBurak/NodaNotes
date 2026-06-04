@@ -3239,8 +3239,14 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_triggerDailyNote(
         use noda_core::database::queries;
         use noda_core::models::note::{Note, NoteId};
 
+        #[derive(serde::Deserialize)]
+        struct TriggerDailyNoteParams {
+            date: Option<String>,
+        }
+
         let local_now = Local::now();
-        let date_str = local_now.format("%Y-%m-%d").to_string();
+        let params: TriggerDailyNoteParams = serde_json::from_str(&_input).unwrap_or(TriggerDailyNoteParams { date: None });
+        let date_str = params.date.unwrap_or_else(|| local_now.format("%Y-%m-%d").to_string());
         let time_str = local_now.format("%H:%M").to_string();
 
         let existing_note = {

@@ -198,17 +198,11 @@ fun NodaAppShell(
                                 label = { Text("Daily Notes", fontWeight = FontWeight.SemiBold, fontSize = 15.sp) },
                                 selected = currentRoute == Screen.NoteList.route && currentFolder == "Daily Notes" && selectedTag == null,
                                 onClick = {
-                                    scope.launch {
-                                        drawerState.close()
-                                        val repo = com.bubi.nodanotes.data.repository.NoteRepository()
-                                        repo.triggerDailyNote().fold(
-                                            onSuccess = { noteDto ->
-                                                navController.navigate("note_editor/${noteDto.id}")
-                                            },
-                                            onFailure = {
-                                                // fallback or show error
-                                            }
-                                        )
+                                    scope.launch { drawerState.close() }
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = "Daily Notes"
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
+                                    navController.navigate(Screen.NoteList.route) {
+                                        popUpTo(Screen.NoteList.route) { inclusive = true }
                                     }
                                 },
                                 modifier = Modifier
@@ -248,16 +242,17 @@ fun NodaAppShell(
                     )
 
                     if (foldersExpanded) {
+                        val filteredFolders = folders.filter { it.name != "Daily Notes" }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(if (tagsExpanded) foldersRatio else 1f)
                         ) {
-                            if (isFoldersLoading && folders.isEmpty()) {
+                            if (isFoldersLoading && filteredFolders.isEmpty()) {
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(modifier = Modifier.size(20.dp))
                                 }
-                            } else if (folders.isEmpty()) {
+                            } else if (filteredFolders.isEmpty()) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -282,7 +277,7 @@ fun NodaAppShell(
                                     modifier = Modifier.fillMaxSize(),
                                     contentPadding = PaddingValues(vertical = 2.dp)
                                 ) {
-                                    items(folders) { folder ->
+                                    items(filteredFolders) { folder ->
                                         FolderTreeItem(
                                             folder = folder,
                                             depth = 0,

@@ -681,3 +681,29 @@ Status line on left edge of result box:
     - *Drawer Shortcut:* Simplified the "Daily Notes" drawer item so that clicking the row itself launches today's daily note immediately (creating it or appending a timestamped entry if it exists).
     - *Top Bar Shortcut:* Added a calendar/today icon button in `NoteListScreen.kt`'s TopAppBar to trigger and open today's daily note in one tap.
     - *FAB Interceptor:* Modified the Note List FAB behavior so that clicking it while inside the "Daily Notes" folder view automatically runs `triggerDailyNote` instead of creating a generic untitled note.
+
+---
+
+## 34. Dynamic Calendar Integration and Daily Notes Navigation Improvements (June 2026)
+
+- **Problem:** Tapping the calendar/today shortcut in the TopAppBar or clicking the "Daily Notes" drawer item immediately triggered a note creation/edit page, which was too aggressive. Users needed to see a clean, month-by-month grid layout showing which days had daily notes and be able to navigate lists of daily notes. Furthermore, JNI's `triggerDailyNote` only targeted today's date, preventing historical daily note creation.
+- **Solution:** Integrated a professional, dynamic Compose-based monthly calendar dialog in [NoteListScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/notelist/NoteListScreen.kt), modified the drawer shortcut to navigate to a filtered note list, and updated the JNI layer to accept custom dates.
+
+  ### Implementation Details:
+  - **Custom Date JNI Support:** Updated `Java_com_bubi_nodanotes_RustCore_triggerDailyNote` in [lib.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/android-bridge/src/lib.rs) to parse an optional `date` string from JSON:
+    ```rust
+    #[derive(serde::Deserialize)]
+    struct TriggerDailyNoteParams {
+        date: Option<String>,
+    }
+    ```
+    If a custom date is provided (e.g. `YYYY-MM-DD`), the core creates or appends to that specific date's note.
+  - **Kotlin Repository Extension:** Modified `NoteRepository.triggerDailyNote(date: String? = null)` to serialize the date parameter to JNI.
+  - **Daily Notes Drawer Route:** In [NodaAppShell.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/components/NodaAppShell.kt), changed the WORKSPACE "Daily Notes" item click behavior to navigate to the NoteList screen with folder filter `currentFolder = "Daily Notes"`.
+  - **Sidebar Folder Exclusion:** Filtered the folders list displayed under the `FOLDERS` tree to completely exclude the `"Daily Notes"` root folder, preventing duplication.
+  - **Dynamic Month-View Calendar Dialog:**
+    - Replaced the TopAppBar Today button action to open `showCalendarDialog = true`.
+    - Custom Compose dialog featuring forward/backward month navigation arrows and a dynamic 7-column weekday layout.
+    - Queries all notes on launch, isolates ones starting with `"Daily Notes/"`, and renders a subtle primary-colored dot badge below the date if a note exists.
+    - Clicking a day cell calls `triggerDailyNote("YYYY-MM-DD")` to create/append the note and launches the editor.
+    - Added a bottom button to trigger today's daily note directly.

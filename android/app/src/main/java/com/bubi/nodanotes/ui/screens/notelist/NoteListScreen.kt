@@ -26,6 +26,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bubi.nodanotes.data.model.NoteListItemDto
 import com.bubi.nodanotes.ui.components.NoteCard
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+import java.util.Locale
+import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -78,6 +87,9 @@ fun NoteListScreen(
     var isSelectionMode by remember { mutableStateOf(false) }
     val selectedNotes = remember { mutableStateListOf<NoteListItemDto>() }
 
+    var showCalendarDialog by remember { mutableStateOf(false) }
+    var dailyNoteDates by remember { mutableStateOf(setOf<String>()) }
+
     var showExitDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = true) {
@@ -129,6 +141,192 @@ fun NoteListScreen(
         )
     }
 
+    if (showCalendarDialog) {
+        Dialog(
+            onDismissRequest = { showCalendarDialog = false }
+        ) {
+            var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+            val firstOfMonth = currentMonth.atDay(1)
+            val firstDayOfWeek = firstOfMonth.dayOfWeek
+            val emptyCellsBefore = firstDayOfWeek.value - 1
+            val daysInMonth = currentMonth.lengthOfMonth()
+            
+            val cells = remember(currentMonth) {
+                val list = mutableListOf<LocalDate?>()
+                repeat(emptyCellsBefore) { list.add(null) }
+                for (day in 1..daysInMonth) {
+                    list.add(currentMonth.atDay(day))
+                }
+                while (list.size % 7 != 0) {
+                    list.add(null)
+                }
+                list.chunked(7)
+            }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    .padding(horizontal = 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Header: Month Year + navigation arrows
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
+                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Month")
+                        }
+                        
+                        Text(
+                            text = "${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${currentMonth.year}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        
+                        IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Next Month")
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Weekday headers
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        val days = listOf("M", "T", "W", "T", "F", "S", "S")
+                        days.forEach { day ->
+                            Text(
+                                text = day,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.weight(1f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Days grid
+                    cells.forEach { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            row.forEach { date ->
+                                if (date == null) {
+                                    Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
+                                } else {
+                                    val isToday = date == LocalDate.now()
+                                    val hasDailyNote = dailyNoteDates.contains(date.toString())
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .aspectRatio(1f)
+                                            .padding(2.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (isToday) MaterialTheme.colorScheme.primaryContainer
+                                                else androidx.compose.ui.graphics.Color.Transparent
+                                            )
+                                            .clickable {
+                                                scope.launch {
+                                                    val repo = com.bubi.nodanotes.data.repository.NoteRepository()
+                                                    repo.triggerDailyNote(date.toString()).fold(
+                                                        onSuccess = { noteDto ->
+                                                            showCalendarDialog = false
+                                                            onNavigateToEditor(noteDto.id)
+                                                        },
+                                                        onFailure = {}
+                                                    )
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                            modifier = Modifier.fillMaxSize()
+                                        ) {
+                                            Text(
+                                                text = date.dayOfMonth.toString(),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isToday) MaterialTheme.colorScheme.onPrimaryContainer
+                                                        else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (hasDailyNote) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(5.dp)
+                                                        .clip(RoundedCornerShape(50))
+                                                        .background(MaterialTheme.colorScheme.primary)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(20.dp))
+                    
+                    // Bottom actions: Today shortcut + close
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val repo = com.bubi.nodanotes.data.repository.NoteRepository()
+                                repo.triggerDailyNote(null).fold(
+                                    onSuccess = { noteDto ->
+                                        showCalendarDialog = false
+                                        onNavigateToEditor(noteDto.id)
+                                    },
+                                    onFailure = {}
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(Icons.Default.Today, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Trigger Today's Daily Note", fontWeight = FontWeight.Bold)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    TextButton(
+                        onClick = { showCalendarDialog = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Close", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+
     // Observe syncStatus but do not show toast anymore as it is removed by the user requirement.
     // LaunchedEffect(syncStatus) logic removed completely.
 
@@ -136,6 +334,21 @@ fun NoteListScreen(
         viewModel.loadNotes(currentFolder)
         isSelectionMode = false
         selectedNotes.clear()
+    }
+
+    LaunchedEffect(showCalendarDialog) {
+        if (showCalendarDialog) {
+            val repo = com.bubi.nodanotes.data.repository.NoteRepository()
+            repo.getAllNotes().fold(
+                onSuccess = { notes ->
+                    dailyNoteDates = notes
+                        .filter { it.file_path.startsWith("Daily Notes/") }
+                        .map { it.title }
+                        .toSet()
+                },
+                onFailure = {}
+            )
+        }
     }
 
     // Lifecycle observer for ON_RESUME
@@ -245,19 +458,9 @@ fun NoteListScreen(
                     },
                     actions = {
                         IconButton(onClick = {
-                            scope.launch {
-                                val repo = com.bubi.nodanotes.data.repository.NoteRepository()
-                                repo.triggerDailyNote().fold(
-                                    onSuccess = { noteDto ->
-                                        onNavigateToEditor(noteDto.id)
-                                    },
-                                    onFailure = {
-                                        // Handle error
-                                    }
-                                )
-                            }
+                            showCalendarDialog = true
                         }) {
-                            Icon(Icons.Default.Today, contentDescription = "Daily Note")
+                            Icon(Icons.Default.Today, contentDescription = "Open Calendar")
                         }
                         IconButton(onClick = onSearchClick) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
