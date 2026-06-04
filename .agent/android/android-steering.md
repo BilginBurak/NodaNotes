@@ -264,3 +264,12 @@ On every vault open, the Rust core MUST:
 - **Forbidden:** Silent file rename (`note (2).md` style)
 - **Forbidden:** Full re-upload sync
 - **Forbidden:** `armeabi-v7a`, `x86`, `x86_64` builds (arm64-v8a only)
+
+---
+
+## 12. Project-Specific Patterns
+
+### 12.1 Deterministic Note History Snapshots
+- **Content-Based De-duplication:** When executing snapshot history logic, the Rust backend MUST compare the proposed snapshot contents (`body`, `title`, `tags`, `color`, `pinned`) against the most recent snapshot saved on disk. If they match exactly, the write operation is skipped to prevent duplicate records and disk bloat.
+- **State-Tracking & Dirty Flag Lifecycle:** In the Kotlin editor, the dirty session flag (`sessionModified`) must only be reset to `false` when a snapshot is actually committed to disk (either on manual save, or when the timer-based auto-save crosses the configured threshold interval and triggers a snapshot). If a standard auto-save occurs without snapshotting, the session remains `dirty` (`sessionModified = true`) to ensure any subsequent Blur or App-Exit event correctly captures the changes.
+

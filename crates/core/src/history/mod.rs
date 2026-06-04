@@ -20,6 +20,24 @@ pub async fn snapshot<P: AsRef<Path>>(
     note: &Note,
     reason: &str,
 ) -> Result<Snapshot, NodaError> {
+    // Check if there is an existing snapshot that has identical content
+    if let Ok(snaps) = list_snapshots(&vault_path, note.id).await {
+        if let Some(latest_snap) = snaps.first() {
+            if let Ok(restored_note) = restore(&vault_path, latest_snap).await {
+                let is_dirty = note.body != restored_note.body
+                    || note.title != restored_note.title
+                    || note.tags != restored_note.tags
+                    || note.color != restored_note.color
+                    || note.pinned != restored_note.pinned;
+                
+                if !is_dirty {
+                    // Note is identical to the latest snapshot on disk. Do not write a new one, return the latest.
+                    return Ok(latest_snap.clone());
+                }
+            }
+        }
+    }
+
     let snap = save_snapshot(&vault_path, note, reason).await?;
     let config = crate::settings::AppConfig::load(&vault_path).await.unwrap_or_default();
     let policy = RetentionPolicy {
@@ -121,8 +139,15 @@ mod tests {
         // Take snapshot 1
         let snap1 = snapshot(dir.path(), &note, "Blur").await.unwrap();
         
-        // Wait 1 second to ensure the second file gets a different timestamp in flat layout
+        // Wait 1 second to ensure that if a snapshot were taken, it would get a different timestamp
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        // Take snapshot again with no changes — should return the same snapshot and not write a new file
+        let snap1_dup = snapshot(dir.path(), &note, "Manual").await.unwrap();
+        assert_eq!(snap1_dup.absolute_path, snap1.absolute_path);
+        assert_eq!(list_snapshots(dir.path(), note.id).await.unwrap().len(), 1);
+
+        // Wait 1 second again before V2 changes
         
         note.title = "V2".to_string();
         note.body = "World".to_string();

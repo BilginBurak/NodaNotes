@@ -113,6 +113,9 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         // Permanent delete test
+        // Modify the note body so that it has real changes and triggers a new snapshot
+        note.body = "Trash me again".to_string();
+        service.write_note(&note).await.unwrap();
         let entry2 = soft_delete(dir.path(), &path).await.unwrap();
         
         // Assert snapshot was created again

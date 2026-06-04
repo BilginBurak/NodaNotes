@@ -133,13 +133,21 @@ fun NoteEditorScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        viewModel.saveNoteImmediately()
                         onBackClick()
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
+                    if (saveState is SaveState.Unsaved) {
+                        IconButton(onClick = { viewModel.saveNoteManually() }) {
+                            Icon(
+                                imageVector = Icons.Default.Save,
+                                contentDescription = "Save Note",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     IconButton(onClick = { viewModel.toggleReaderMode() }) {
                         Icon(
                             imageVector = if (isReaderMode) Icons.Default.EditNote else Icons.Default.MenuBook,

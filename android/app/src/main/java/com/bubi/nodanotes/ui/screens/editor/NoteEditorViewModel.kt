@@ -125,6 +125,15 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun saveNoteManually() {
+        if (_saveState.value != SaveState.Unsaved) return
+        val successState = _uiState.value as? NoteEditorUiState.Success ?: return
+        autoSaveJob?.cancel()
+        viewModelScope.launch(Dispatchers.IO) {
+            saveWithReason(successState.note, "Manual")
+        }
+    }
+
     private suspend fun saveNoteImmediately(note: NoteDto) {
         _saveState.value = SaveState.Saving
         val settings = com.bubi.nodanotes.data.repository.SettingsRepository().getSettings().getOrNull()
@@ -145,8 +154,8 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
             onSuccess = {
                 if (shouldSnapshot) {
                     lastSnapshotTime = now
+                    sessionModified = false
                 }
-                sessionModified = false
                 _saveState.value = SaveState.Saved
                 loadMetadata(note.id)
             },

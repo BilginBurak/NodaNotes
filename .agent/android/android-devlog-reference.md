@@ -651,3 +651,17 @@ Status line on left edge of result box:
   - **SQLite Cleanups:** Removed the `history_snapshots` table from the schema. Incremented database schema version to `4` and implemented migration v4 to drop `history_snapshots` tables in active databases.
   - **System Integration:** Completely stripped all history snapshot insert/delete queries from JNI Bridge, Tauri commands, sync engine, trash deletion, and rebuild tasks. Tested everything with `cargo test` and compiled JNI Bridge and Android app packages successfully.
   ```
+
+---
+
+## 32. Deterministic Note Snapshotting & Manual Save Trigger (June 2026)
+
+- **Problem:** Previously, auto-saves continuously wrote duplicate note snapshots even when no content changes had occurred. Furthermore, the editor lacked a manual save trigger in the interface, and the dirty state tracking did not correctly distinguish between content-only autosaves versus snapshotting saves.
+- **Solution:** Designed and implemented a unified deterministic snapshotting strategy in Rust Core, paired with Kotlin UI triggers to support the 5 core snapshot rules (Blur, App-Exit, Manual, AutoSave interval, and Pre-Sync).
+
+  ### Implementation Details:
+  - **Rust-First Duplicate Prevention:** Modified `snapshot` in [crates/core/src/history/mod.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/core/src/history/mod.rs) to load the latest snapshot file from disk, restore it, and compare `body`, `title`, `tags`, `color`, and `pinned` values against the current note. If the content is identical (not dirty), snapshot creation is bypassed, returning the existing snapshot.
+  - **AutoSave vs. Dirty Flag Sync:** Auto-saves on the Kotlin side only reset `sessionModified = false` if a snapshot is actually taken (based on `snapshot_interval_mins`). If a standard auto-save is run without a snapshot, `sessionModified` remains `true` to ensure subsequent exit events (Blur, App-Exit) will trigger the final snapshot.
+  - **Manual Save UI Control:** Added a dynamic Save button inside the TopAppBar in [NoteEditorScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/editor/NoteEditorScreen.kt) when `saveState` is `SaveState.Unsaved`. Clicking the button invokes `viewModel.saveNoteManually()`, which immediately writes a snapshot with the reason `"Manual"`.
+  - **Back Navigation Simplification:** Simplified the back button action to let `saveNoteOnExitSync("Blur")` handle saving on exit synchronously, avoiding double-saves or race conditions on back navigation.
+  - **Cargo Tests Fixes:** Adjusted trash and history unit tests in Rust to ensure the note body is modified before second deletions/snapshots, keeping unit tests aligned with duplicate suppression logic.
