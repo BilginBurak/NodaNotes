@@ -857,3 +857,38 @@ Sync işlemi tamamlandığında, halihazırda yerelde ve sunucuda aynı olan ve 
         }
 ```
 Bu sayede, işlem görmeyen ancak halihazırda eşit olan tüm ek dosyalar yerel `remote_state.json` dosyasına işlenir ve tekrarlayan fast-check bypass döngüsü tamamen engellenir.
+
+---
+
+## 38. Pre-Sync Snapshot Delay Fix (June 2026)
+
+### 38.1 The Problem
+In Step 4 of the Rust Core sync engine, a `Pre-Sync` snapshot of a modified note is dynamically created on disk under `.noda/history/` to preserve content before reconciliation.
+However, because `local_raw` was scanned in Step 2 (before Step 4 executed), this newly created `.md` snapshot file was never captured in the current cycle's `raw_plan`.
+As a result, the `Pre-Sync` snapshot was left behind on disk, untracked by `remote_state.json`. In the next sync cycle, it was scanned as a new raw file, bypassing fast-check and triggering full-sync calculations purely to upload the forgotten snapshot.
+
+### 38.2 The Solution
+The sync engine inside [engine.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/core/src/sync/engine.rs) was modified to re-scan `local_raw` immediately after Step 4 completes, right before calculating the delta plan:
+```rust
+        // Re-scan local raw files to capture the newly taken Pre-Sync snapshots
+        let local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
+```
+This ensures that the `Pre-Sync` snapshot is uploaded in the **very same sync cycle** it is created, keeping both local and remote states fully aligned and preventing next-cycle fast-check bypasses.
+
+---
+
+## 39. activeNoteSessionModified Reset on triggerSnapshot (June 2026)
+
+### 39.1 The Problem
+When triggering a sync, the Svelte frontend notes store called `saveActiveNote(true)` to save the editor state and take a snapshot on the backend.
+However, in [notes.ts](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/frontend/src/lib/stores/notes.ts), `activeNoteSessionModified` was only reset to `false` if `reason` was `"Manual"` or `"Blur"`. Since the sync flow called `saveActiveNote(true)` with a `null` reason, `activeNoteSessionModified` remained `true` even though a snapshot was successfully taken.
+Consequently, on the next sync click, Svelte bypassed early-returns (thinking there were unsaved changes) and called `ipc.updateNote` again, which rewrote the note file and bumped its `updated_at` timestamp. This artificially dirtied the note, prompting the sync engine to upload the identical file again and again.
+
+### 39.2 The Solution
+Updated `saveActiveNote` inside [notes.ts](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/frontend/src/lib/stores/notes.ts) to reset `activeNoteSessionModified` to `false` whenever `triggerSnapshot` is `true`:
+```typescript
+    if (triggerSnapshot || reason === 'Manual' || reason === 'Blur') {
+      activeNoteSessionModified.set(false);
+    }
+```
+This ensures that once a snapshot is taken (whether for auto-save, manual save, exit, or sync pre-saves), the session state is cleanly finalized, preventing redundant file modifications and resolving the infinite identical upload loop.

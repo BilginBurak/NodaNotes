@@ -154,7 +154,7 @@ export async function saveActiveNote(triggerSnapshot: boolean = false, reason: s
     );
     activeNote.set(updated);
     activeNoteDirty.set(false);
-    if (reason === 'Manual' || reason === 'Blur') {
+    if (triggerSnapshot || reason === 'Manual' || reason === 'Blur') {
       activeNoteSessionModified.set(false);
     }
     lastSavedAt.set(new Date());

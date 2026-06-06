@@ -434,6 +434,9 @@ impl SyncEngine {
             }
         };
 
+        // Re-scan local raw files to capture the newly taken Pre-Sync snapshots
+        let local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
+
         // Calculate delta plans
         let note_plan = calculate_delta(&local_notes, &remote_entries, &remote_state, "");
         let raw_plan = calculate_raw_delta(&local_raw, &remote_entries, &remote_state, "");
