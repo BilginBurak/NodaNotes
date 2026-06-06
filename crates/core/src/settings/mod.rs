@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use crate::errors::NodaError;
 use crate::sync::engine::SyncConfig;
+use crate::sync::client::WebDavClient;
 
 fn default_theme() -> String { "dark".to_string() }
 fn default_accent_color() -> String { "blue".to_string() }
@@ -99,27 +100,98 @@ impl AppConfig {
         let config_path = vault_path.as_ref().join(".noda/settings.json");
         
         // Ensure sync config is synced from older files if it exists but settings.json doesn't
-        if !config_path.exists() {
+        let mut config = if !config_path.exists() {
             let old_sync = SyncConfig::load(vault_path.as_ref()).await.unwrap_or_default();
-            let default_config = Self {
+            Self {
                 sync: old_sync,
                 ..Default::default()
-            };
-            return Ok(default_config);
-        }
+            }
+        } else {
+            let content = tokio::fs::read_to_string(&config_path)
+                .await
+                .map_err(NodaError::Io)?;
+                
+            serde_json::from_str(&content)
+                .map_err(|e| NodaError::Sync(format!("Failed to parse settings: {}", e)))?
+        };
 
-        let content = tokio::fs::read_to_string(&config_path)
-            .await
-            .map_err(NodaError::Io)?;
-            
-        let config = serde_json::from_str(&content)
-            .map_err(|e| NodaError::Sync(format!("Failed to parse settings: {}", e)))?;
+        if config.sync.device_name.is_empty() {
+            config.sync.device_name = SyncConfig::generate_random_device_name();
+            // Save immediately so it's persisted on disk
+            let _ = config.save(vault_path).await;
+        }
             
         Ok(config)
     }
 
     pub async fn save<P: AsRef<Path>>(&self, vault_path: P) -> Result<(), NodaError> {
         let config_path = vault_path.as_ref().join(".noda/settings.json");
+
+        // Load the existing settings directly from disk without calling AppConfig::load to avoid recursion
+        let old_config: Option<AppConfig> = if config_path.exists() {
+            if let Ok(content) = tokio::fs::read_to_string(&config_path).await {
+                serde_json::from_str(&content).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(old_config) = old_config {
+            if !self.sync.webdav_url.is_empty() 
+                && self.sync.device_name != old_config.sync.device_name 
+                && !self.sync.device_name.is_empty() 
+            {
+                // Create client using the proposed sync settings
+                let client = WebDavClient::new(
+                    &self.sync.webdav_url,
+                    &self.sync.webdav_username,
+                    self.sync.webdav_password.as_deref().unwrap_or(""),
+                )?;
+                
+                // Scan the WebDAV .noda/sync/ folder
+                let conflict = match client.propfind(".noda/sync", 1).await {
+                    Ok(entries) => {
+                        let expected_file = format!("{}.sync", self.sync.device_name);
+                        let mut found = false;
+                        for entry in entries {
+                            if !entry.is_collection {
+                                if let Some(filename) = std::path::Path::new(&entry.href).file_name() {
+                                    if filename.to_string_lossy() == expected_file {
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        found
+                    }
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if err_str.contains("404") || err_str.contains("Not Found") {
+                            false
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                };
+
+                if conflict {
+                    return Err(NodaError::Sync("This device name is already taken!".to_string()));
+                }
+
+                // If old device name is not empty, delete the old .sync file from remote WebDAV
+                if !old_config.sync.device_name.is_empty() {
+                    let old_sync_path = format!(".noda/sync/{}.sync", old_config.sync.device_name);
+                    let _ = client.delete(&old_sync_path).await;
+                }
+
+                // Create the new .sync file on remote WebDAV
+                let new_sync_path = format!(".noda/sync/{}.sync", self.sync.device_name);
+                let _ = client.put(&new_sync_path, Vec::new()).await;
+            }
+        }
         
         if let Some(parent) = config_path.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(NodaError::Io)?;

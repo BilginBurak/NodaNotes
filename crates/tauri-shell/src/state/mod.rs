@@ -102,6 +102,7 @@ impl AppState {
                 webdav_username: "".to_string(),
                 webdav_password: None,
                 interval_secs: 300, // 5 minutes default
+                device_name: "".to_string(),
             });
         let sync_engine = SyncEngine::new(sync_config);
 

@@ -285,6 +285,7 @@ fun SyncTab(settings: SettingsDto, viewModel: SettingsViewModel) {
     var webdavUrl by remember { mutableStateOf(settings.sync.webdav_url) }
     var username by remember { mutableStateOf(settings.sync.webdav_username) }
     var password by remember { mutableStateOf(settings.sync.webdav_password ?: "") }
+    var deviceName by remember { mutableStateOf(settings.sync.device_name) }
     var interval by remember { mutableStateOf(settings.sync.interval_secs.toString()) }
     var showPassword by remember { mutableStateOf(false) }
 
@@ -327,6 +328,15 @@ fun SyncTab(settings: SettingsDto, viewModel: SettingsViewModel) {
                     Icon(imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = "Toggle password")
                 }
             },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        OutlinedTextField(
+            value = deviceName,
+            onValueChange = { deviceName = it },
+            label = { Text("Device Name") },
+            placeholder = { Text("e.g. My-Android-Phone") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -407,7 +417,7 @@ fun SyncTab(settings: SettingsDto, viewModel: SettingsViewModel) {
         ) {
             Button(
                 onClick = {
-                    viewModel.updateSync(webdavUrl, username, password.ifEmpty { null }, interval.toLongOrNull() ?: 0L)
+                    viewModel.updateSync(webdavUrl, username, password.ifEmpty { null }, interval.toLongOrNull() ?: 0L, deviceName)
                     showSaveSuccess = true
                 },
                 modifier = Modifier.weight(1f)

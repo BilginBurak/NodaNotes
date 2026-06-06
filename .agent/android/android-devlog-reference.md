@@ -707,3 +707,153 @@ Status line on left edge of result box:
     - Queries all notes on launch, isolates ones starting with `"Daily Notes/"`, and renders a subtle primary-colored dot badge below the date if a note exists.
     - Clicking a day cell calls `triggerDailyNote("YYYY-MM-DD")` to create/append the note and launches the editor.
     - Added a bottom button to trigger today's daily note directly.
+
+---
+
+## 35. WebDAV Sync Optimization, Empty Marker Protocol & Double-Locked Fast-Check (June 2026)
+
+### 35.1 The Paradox: Why Fast-Check Originally Failed
+Originally, when a device synchronized, it wrote a JSON object with timestamps and device names inside `.noda/sync/[device_name].sync`. Because the file contents (specifically the timestamp values) changed on every single sync cycle, the WebDAV server (such as InfiniCloud) generated a completely new `ETag` on each write.
+This created an endless synchronization loop:
+1. Device A uploads its `.sync` signature containing the current timestamp.
+2. The WebDAV server updates the file and generates a new ETag.
+3. On the next synchronization check, Device A queries the `.noda/sync/` directory via `PROPFIND`.
+4. It detects the new ETag on its own `.sync` file, mistakes this self-generated signature change for an external modification made by another device, and triggers a full delta/scan cycle.
+5. Consequently, the client was constantly "fighting its own footprint," resulting in unnecessary 20-second sync operations even when zero user notes were modified.
+
+---
+
+### 35.2 The Architectural Solution
+
+To resolve this loop and maximize sync performance, a three-part protocol was implemented:
+
+#### 1. Local State Isolation (`remote_state.json` Schema)
+The synchronization tracking metadata was refactored in [remote_state.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/core/src/sync/remote_state.rs). Peripheral device tracking is now completely isolated from file-level tracking. The root structure of `.noda/sync/remote_state.json` is organized as:
+
+```json
+{
+  "last_sync_time": "2026-06-05T00:25:00Z",
+  "devices": {
+    "Macbook-Pro-M4": {
+      "last_known_etag": "4e-653769405f8a8",
+      "last_known_modified": "2026-06-05T00:16:54Z"
+    },
+    "Android-Mobile": {
+      "last_known_etag": "2a-65376980bc742",
+      "last_known_modified": "2026-06-05T00:18:22Z"
+    }
+  },
+  "files": {
+    "01KSBN3M3TCRS9344JMA1THR75.md": {
+      "etag": "1a-6537532432214",
+      "last_modified": "2026-06-04T22:37:59Z",
+      "size": 1024,
+      "local_updated_at": "2026-06-04T22:37:50Z"
+    }
+  }
+}
+```
+
+#### 2. Zero-Byte Marker Protocol (Empty Sync Files)
+* **Rule:** The `.sync` files uploaded to the WebDAV server under `.noda/sync/` MUST be completely empty (0 bytes). No text, JSON, or timestamps are allowed.
+* **PUT Operation:** When completing a synchronization, the engine performs an empty PUT request (`body = Vec::new()`) to `.noda/sync/[device_name].sync`.
+* **ETag Capture:** Some WebDAV servers do not return the new ETag directly in the response headers of a `PUT` request. To guarantee compatibility across all servers (including InfiniCloud), the sync engine immediately executes a `PROPFIND` request with `Depth: 0` on the newly uploaded `.sync` file. The server's generated ETag and last-modified time are captured and saved directly into `remote_state.devices.[device_name]` in the local cache.
+
+---
+
+### 35.3 The Multi-Device Fast-Check Decision Tree
+The sync engine uses the following decision tree to evaluate whether it can exit in 0.1 seconds or must execute a full synchronization:
+
+```mermaid
+graph TD
+    A[Sync Engine Triggered] --> B{Local Changes Present?<br>Is Dirty?}
+    
+    B -- YES --> C[Bypass Fast-Check]
+    C --> D[Run Delta Upload]
+    D --> E[Upload 0-Byte .sync file]
+    E --> F[Capture Server ETag via PROPFIND Depth:0]
+    F --> G[Save ETag to devices.last_known_etag]
+    G --> H[DONE]
+    
+    B -- NO --> I[PROPFIND Depth:1 on .noda/sync/]
+    I --> J{Loop through OTHER devices<br>Ignore our own signature}
+    
+    J --> K{Do remote ETags match<br>local cache 'devices'?}
+    K -- YES (All Match) --> L[No remote or external changes]
+    L --> M[TERMINATE SYNC IN 0.1 SECONDS]
+    
+    K -- NO (Mismatch / New Device) --> N[External change detected!]
+    N --> O[Run Full/Delta Sync]
+    O --> P[Update notes & files]
+    P --> Q[Save updated remote ETags to cache]
+    Q --> H
+```
+
+---
+
+### 35.4 Network & Concurrency Optimizations
+In addition to the Decision Tree, the engine includes the following performance improvements:
+* **HTTP Optimization:** Configured `reqwest` client builder with `.gzip(true)` and `.brotli(true)` for automatic transparent payload compression. Network timeout is capped at `10s` and `tcp_nodelay(true)` is enabled for fast connection teardowns.
+* **Persistent Queue Batching:** Implemented `enqueue_batch` and `set_entries` in [queue.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/core/src/sync/queue.rs) to write the planned actions to disk in a single transaction, eliminating the performance hit of serializing to disk $2N$ times.
+* **Concurrent Action Executor:** Refactored action execution inside [engine.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/core/src/sync/engine.rs) to use `tokio::task::JoinSet` to process up to 10 HTTP sync requests in parallel. Thread-safe Mutex locks protect shared updates to `remote_state` and progress reporting.
+
+---
+
+### 35.5 Device Name Settings & Conflict Verification
+To support multi-device configuration:
+* **Settings Input:** Added the `device_name` field to settings screens in Svelte (for PC) and Jetpack Compose (for Android).
+* **Duplicate Verification:** When a user updates their device name, Noda runs a `PROPFIND` under `.noda/sync/` on the server. If a `.sync` signature exists for the new name, the API returns `"This device name is already taken!"` to prevent overwriting other devices' states. If free, it deletes the old `.sync` file, uploads the new 0-byte file, and registers the name.
+
+---
+
+## 36. Strict Read/Write Separation & Device Pruning (June 2026)
+
+### 36.1 The Ping-Pong Loop Bypass Problem
+Previously, when any device bypassed fast-check to download changes from the server (but had no local modifications to push), it would still upload its own `.sync` file at the end of the sync cycle. This modified the file's ETag and last-modified time on the server, which then caused all other devices to bypass fast-check on their next cycles, creating an endless loop of unnecessary full-sync checks across all machines.
+
+### 36.2 The Solution (The Strict Read/Write Separation)
+* **Kural 1:** Cihaz buluttaki kendi `.sync` dosyasını **yalnızca ve yalnızca** yerelde değişiklik yapıp buluta dosya yüklediğinde veya sildiğinde (`local_changed == true`) günceller. Eğer cihaz sadece buluttan veri çekmişse veya hiçbir dosya alışverişi olmamışsa buluttaki kendi `.sync` dosyasına dokunmaz.
+* **Kural 2:** Cihaz, her sync sonunda diğer tüm cihazların güncel remote `.sync` imzalarını çekerek kendi yerel `remote_state.json` önbelleğindeki `devices` listesine yazar. Böylece bir sonraki boş döngüde fast-check anında başarılı olur.
+
+### 36.3 Active Remote-to-Local State Pruning (Cihaz Budama Mekanizması)
+* **Problem:** Bir cihaz manuel veya harici olarak WebDAV sunucusundan (`.noda/sync/` altından) silindiğinde, diğer cihazların yerel `remote_state.json` dosyasında bu cihaz silinmiş olarak güncellenmiyordu. Bu da "ghost device" kayıtlarının kalıcı olarak birikmesine neden oluyordu.
+* **Çözüm:** Sync başında `.noda/sync` sorgulanıp aktif cihazların listesi çekilir. Yerel `remote_state.devices` map'i içindeki bir cihaz adı aktif uzak sunucu listesinde yoksa (ve kendi cihaz adımız değilse), bu cihaz anında yerel bellekten ve disk önbelleğinden silinir (budanır). Aynı işlem sync bitiminde de tekrarlanır.
+
+### 36.4 Strict Token Matching (Sıkı Token Eşleşmesi)
+* **Problem:** Hatalı bypass ve döngülerin önüne geçmek için `.sync` dosyaları için `size == 0` fallback mantığı kaldırılmıştır.
+* **Çözüm:** Diğer cihazların imzaları karşılaştırılırken sunucudaki ETag ve Last-Modified değerleri için birebir sıkı string eşitliği (`==`) aranır. Sunucu saat farkı olmadığı için (hepsi aynı WebDAV sunucu saatini kullandığı için) Last-Modified eşleştirmelerinde 3 saniyelik tolerans kaldırılmış, birebir eşitlik (`t1 == t2`) zorunlu kılınmıştır.
+
+---
+
+## 37. Identical Raw/Attachment File Reconciliation (June 2026)
+
+### 37.1 The Problem
+Tauri (PC) ve Android aynı WebDAV sunucusunu kullanmasına rağmen yerel sync durumlarını (`remote_state.json`) kendi disklerinde bağımsız saklar. Tauri yeni bir ek dosya (attachment) yüklediğinde, Android sync başlattığında bu dosyayı ilk kez tarar.
+Ancak, senkronizasyon motorunun son adımında sadece notlar (Note) için veritabanı/cache eşleştirmesi yapılıyor, ek dosyalar (raw/attachments) ise tamamen unutuluyordu. Android sunucudaki dosya ile yerelindeki dosyanın boyut olarak birebir aynı olduğunu görüp hiçbir transfer aksiyonu üretmiyordu. Fakat aksiyon üretilmediği için bu dosya `remote_state.json` içindeki `files` map'ine hiç eklenmiyordu.
+Bu durum, Android'in her sync başlatışında bu attachment dosyasını "Lokalde yeni bulunmuş, henüz senkronize edilmemiş" sanarak sonsuz bir bypass/full sync döngüsüne girmesine yol açıyordu.
+
+### 37.2 The Solution
+Sync işlemi tamamlandığında, halihazırda yerelde ve sunucuda aynı olan ve hiçbir transfer aksiyonu üretmeyen notlar için yapılan önbellek temizliğinin aynısı raw/attachment dosyaları için de eklenmiştir:
+```rust
+        // For any raw/attachment files that were already identical and had no action, ensure they are in remote_state
+        for local_raw_file in &local_raw {
+            let path = &local_raw_file.relative_path;
+            if !remote_state.files.contains_key(path) {
+                if let Some(remote_entry) = remote_map.get(path) {
+                    let remote_size = remote_entry.size.unwrap_or(0);
+                    // Attachments are immutable; if size matches, they are identical.
+                    if local_raw_file.size == remote_size {
+                        let lm = remote_entry.last_modified.as_ref()
+                            .and_then(|s| crate::sync::delta::parse_last_modified(s));
+                        remote_state.files.insert(path.clone(), RemoteFileMetadata {
+                            etag: remote_entry.etag.clone(),
+                            last_modified: lm,
+                            size: remote_size,
+                            local_updated_at: Some(local_raw_file.modified),
+                        });
+                    }
+                }
+            }
+        }
+```
+Bu sayede, işlem görmeyen ancak halihazırda eşit olan tüm ek dosyalar yerel `remote_state.json` dosyasına işlenir ve tekrarlayan fast-check bypass döngüsü tamamen engellenir.

@@ -8,6 +8,7 @@ export const syncConfig    = writable<SyncConfig>({
   webdav_url: '',
   webdav_username: '',
   interval_secs: 300,
+  device_name: '',
 });
 export const syncConflicts  = writable<ConflictEntry[]>([]);
 export const loadingSync    = writable<boolean>(false);

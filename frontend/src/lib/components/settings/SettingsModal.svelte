@@ -42,6 +42,7 @@
   let syncWebdavUrl = $state('');
   let syncWebdavUsername = $state('');
   let syncIntervalSecs = $state(300);
+  let syncDeviceName = $state('');
   let historyRetentionDays = $state(30);
   let historyMaxSnapshots = $state(50);
   let historyEmptyTrashDays = $state(30);
@@ -335,6 +336,7 @@
       syncWebdavUsername = config.sync.webdav_username;
       webdavPassword = config.sync.webdav_password || '';
       syncIntervalSecs = config.sync.interval_secs;
+      syncDeviceName = config.sync.device_name || '';
       historyRetentionDays = config.history.retention_days;
       historyMaxSnapshots = config.history.max_snapshots_per_note;
       historyEmptyTrashDays = config.history.empty_trash_after_days;
@@ -350,7 +352,8 @@
         webdav_url: syncWebdavUrl,
         webdav_username: syncWebdavUsername,
         webdav_password: webdavPassword || undefined,
-        interval_secs: syncIntervalSecs
+        interval_secs: syncIntervalSecs,
+        device_name: syncDeviceName
       });
       validationStatus = 'success';
       setTimeout(() => { validationStatus = 'idle'; }, 3000);
@@ -375,7 +378,8 @@
           webdav_url: syncWebdavUrl,
           webdav_username: syncWebdavUsername,
           webdav_password: webdavPassword || undefined,
-          interval_secs: syncIntervalSecs
+          interval_secs: syncIntervalSecs,
+          device_name: syncDeviceName
         },
         history: {
           retention_days: historyRetentionDays,
@@ -641,6 +645,12 @@
               <option value={3600}>Every hour</option>
             </select>
             <span class="input-desc">How often the engine should wake up and run background sync checks.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="sync-device-name">Device Name</label>
+            <input id="sync-device-name" type="text" placeholder="e.g. My-Macbook" bind:value={syncDeviceName} />
+            <span class="input-desc">Used to identify this device during fast-check early-exit checks.</span>
           </div>
 
           <div class="verify-wrapper">

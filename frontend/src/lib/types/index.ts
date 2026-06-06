@@ -131,6 +131,7 @@ export interface SyncConfig {
   webdav_username: string;
   webdav_password?: string;
   interval_secs: number;
+  device_name: string;
 }
 
 export interface AppearanceSettings {

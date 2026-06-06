@@ -19,11 +19,20 @@ pub struct RemoteFileMetadata {
     pub local_updated_at: Option<DateTime<Utc>>,
 }
 
+/// Metadata stored for other devices sync states
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct DeviceMetadata {
+    pub last_known_etag: Option<String>,
+    pub last_known_modified: Option<DateTime<Utc>>,
+}
+
 /// The local cache of remote file states used to calculate three-way sync deltas
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct RemoteState {
     #[serde(default)]
     pub last_sync_time: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub devices: HashMap<String, DeviceMetadata>, // key: device_name (e.g. "android")
     pub files: HashMap<String, RemoteFileMetadata>, // key: path relative to vault root
 }
 

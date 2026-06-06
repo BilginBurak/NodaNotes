@@ -16,7 +16,7 @@ uuid = { version = "1.8", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2.5"
 notify = "6.1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "brotli"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 pulldown-cmark = "0.10"
 gray_matter = "0.2"

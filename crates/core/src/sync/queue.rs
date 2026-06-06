@@ -65,6 +65,22 @@ impl SyncQueue {
         Ok(())
     }
 
+    /// Enqueues a batch of sync actions and flushes to disk once
+    pub async fn enqueue_batch(&mut self, actions: Vec<SyncAction>) -> Result<(), NodaError> {
+        if actions.is_empty() {
+            return Ok(());
+        }
+        for action in actions {
+            let entry = SyncQueueEntry {
+                id: Ulid::new().to_string(),
+                action,
+            };
+            self.entries.push(entry);
+        }
+        self.flush().await?;
+        Ok(())
+    }
+
     /// Dequeues the oldest sync action and flushes to disk immediately
     pub async fn dequeue(&mut self) -> Option<SyncQueueEntry> {
         if self.entries.is_empty() {
@@ -110,6 +126,18 @@ impl SyncQueue {
     /// Returns a slice of the queue entries
     pub fn entries(&self) -> &[SyncQueueEntry] {
         &self.entries
+    }
+
+    /// Returns the entries and clears the queue in memory
+    pub fn take_entries(&mut self) -> Vec<SyncQueueEntry> {
+        std::mem::take(&mut self.entries)
+    }
+
+    /// Sets the queue entries and flushes to disk
+    pub async fn set_entries(&mut self, entries: Vec<SyncQueueEntry>) -> Result<(), NodaError> {
+        self.entries = entries;
+        self.flush().await?;
+        Ok(())
     }
 }
 

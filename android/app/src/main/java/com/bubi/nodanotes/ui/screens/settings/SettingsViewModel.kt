@@ -90,11 +90,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun updateSync(webdavUrl: String, username: String, password: String?, intervalSecs: Long) {
+    fun updateSync(webdavUrl: String, username: String, password: String?, intervalSecs: Long, deviceName: String) {
         val currentState = _uiState.value
         if (currentState is SettingsUiState.Success) {
             val newSettings = currentState.settings.copy(
-                sync = SyncConfigDto(webdavUrl, username, password, intervalSecs)
+                sync = SyncConfigDto(webdavUrl, username, password, intervalSecs, deviceName)
             )
             if (password != null) {
                 preferences.saveWebdavPassword(password)

@@ -115,6 +115,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_initVault(
                 webdav_username: "".to_string(),
                 webdav_password: None,
                 interval_secs: 300,
+                device_name: "".to_string(),
             });
         let sync_engine = SyncEngine::new(sync_config);
 
@@ -2126,6 +2127,8 @@ struct SaveSyncConfigParams {
     username: String,
     password: Option<String>,
     interval_secs: u64,
+    #[serde(default)]
+    device_name: String,
 }
 
 #[no_mangle]
@@ -2163,6 +2166,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_saveSyncConfig(
             webdav_username: params.username,
             webdav_password: params.password,
             interval_secs: params.interval_secs,
+            device_name: params.device_name,
         };
 
         let _ = sync_engine.stop_sync().await;
@@ -2204,6 +2208,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_loadSyncConfig(
     let result = serde_json::json!({
         "webdav_url": config.webdav_url,
         "username": config.webdav_username,
+        "device_name": config.device_name,
         "interval_secs": config.interval_secs,
         "is_configured": is_configured
     }).to_string();
@@ -3088,6 +3093,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getSettings(
                         webdav_username: config.sync.webdav_username,
                         webdav_password: config.sync.webdav_password,
                         interval_secs: config.sync.interval_secs,
+                        device_name: config.sync.device_name,
                     },
                     history: shared::dtos::HistorySettingsDto {
                         retention_days: config.history.retention_days,
@@ -3179,6 +3185,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateSettings(
             }
             if let Some(interval) = sync.get("interval_secs").and_then(|i| i.as_u64()) {
                 config.sync.interval_secs = interval;
+            }
+            if let Some(device_name) = sync.get("device_name").and_then(|d| d.as_str()) {
+                config.sync.device_name = device_name.to_string();
             }
         }
 

@@ -202,6 +202,7 @@ data class SyncConfigDto(
     val webdav_username: String,
     val webdav_password: String?,
     val interval_secs: Long,
+    val device_name: String = "",
 )
 
 @Serializable

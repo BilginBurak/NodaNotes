@@ -170,6 +170,8 @@ pub mod dtos {
         pub webdav_username: String,
         pub webdav_password: Option<String>,
         pub interval_secs: u64,
+        #[serde(default)]
+        pub device_name: String,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
