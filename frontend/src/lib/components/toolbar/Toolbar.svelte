@@ -310,44 +310,4 @@
     background-color: var(--bg-selected);
   }
 
-  /* Genel icon buton (geçmiş, vb.) */
-  .icon-btn {
-    background-color: transparent;
-    border: 1px solid transparent;
-    color: var(--text-tertiary);
-    padding: 5px 7px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.12s ease;
-  }
-
-  .icon-btn svg {
-    width: 14px;
-    height: 14px;
-    display: block;
-  }
-
-  .icon-btn:hover {
-    color: var(--text-secondary);
-    background-color: var(--bg-control);
-    border-color: var(--border-subtle);
-  }
-
-  .icon-btn.active {
-    color: var(--accent);
-    background-color: var(--accent-muted);
-    border-color: var(--accent-border);
-  }
-
-  /* Dikey ayırıcı */
-  .divider-v {
-    width: 1px;
-    height: 16px;
-    background-color: var(--border-subtle);
-    flex-shrink: 0;
-    margin: 0 2px;
-  }
 </style>

@@ -17,7 +17,6 @@ use crate::sync::delta::{calculate_delta, calculate_raw_delta, LocalRawFile, Syn
 use crate::sync::remote_state::{load_remote_state, save_remote_state, RemoteState, RemoteFileMetadata};
 use crate::sync::queue::SyncQueue;
 use crate::sync::conflict::{handle_conflict, ConflictEntry};
-use crate::vault::scan::scan_vault;
 use crate::vault::service::VaultService;
 use crate::models::note::Note;
 
@@ -301,8 +300,6 @@ impl SyncEngine {
                     return Err(e);
                 }
             };
-
-            local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
 
             // Pre-Sync Snapshot timing alignment
             for note in &local_notes {
@@ -741,93 +738,6 @@ impl SyncEngine {
         }
         Ok(report)
     }
-}
-
-fn has_local_changes(
-    local_notes: &[Note],
-    local_raw: &[LocalRawFile],
-    remote_state: &RemoteState,
-) -> bool {
-    if remote_state.last_sync_time.is_none() {
-        tracing::debug!("has_local_changes: no last_sync_time, returning true");
-        return true;
-    }
-
-    let mut local_files = std::collections::HashSet::new();
-
-    // Check note files for modifications.
-    // We use a 3-second threshold to account for:
-    // - WebDAV HTTP dates have 1-second granularity (RFC 2822)
-    // - Server/client clock skew
-    // - Sub-second precision loss when timestamps round-trip through HTTP headers
-    const TIMESTAMP_THRESHOLD_SECS: i64 = 3;
-
-    for note in local_notes {
-        local_files.insert(note.file_path.clone());
-        if let Some(meta) = remote_state.files.get(&note.file_path) {
-            // ETag is authoritative — if it exists and matches our stored version,
-            // the file content on the server matches what we last uploaded.
-            // No need to check timestamps in that case.
-            if let Some(stored_at) = meta.local_updated_at {
-                let diff = note.updated_at.signed_duration_since(stored_at).num_seconds().abs();
-                if diff > TIMESTAMP_THRESHOLD_SECS {
-                    tracing::debug!(
-                        "has_local_changes: note {} changed (updated_at diff={}s > {}s threshold)",
-                        note.file_path, diff, TIMESTAMP_THRESHOLD_SECS
-                    );
-                    return true;
-                }
-            } else {
-                tracing::debug!("has_local_changes: note {} has no local_updated_at in state", note.file_path);
-                return true;
-            }
-        } else {
-            tracing::debug!("has_local_changes: note {} not in remote_state.files (new local note)", note.file_path);
-            return true;
-        }
-    }
-
-    // Check attachment files only (NOT history files — they are created on every note save
-    // and checking them causes fast-check to always be bypassed).
-    for raw in local_raw {
-        if raw.relative_path.starts_with(".noda/history/") {
-            continue;
-        }
-        local_files.insert(raw.relative_path.clone());
-        if let Some(meta) = remote_state.files.get(&raw.relative_path) {
-            if let Some(last_saved) = meta.local_updated_at {
-                let diff = raw.modified.signed_duration_since(last_saved).num_seconds().abs();
-                if diff > TIMESTAMP_THRESHOLD_SECS {
-                    tracing::debug!(
-                        "has_local_changes: raw file {} changed (modified diff={}s > {}s threshold)",
-                        raw.relative_path, diff, TIMESTAMP_THRESHOLD_SECS
-                    );
-                    return true;
-                }
-            } else {
-                tracing::debug!("has_local_changes: raw file {} has no local_updated_at", raw.relative_path);
-                return true;
-            }
-        } else {
-            tracing::debug!("has_local_changes: raw file {} not in remote_state.files (new local file)", raw.relative_path);
-            return true;
-        }
-    }
-
-    // Check for files that existed remotely but are now deleted locally.
-    // Skip our own sync control files and history files from deletion detection.
-    for (path, _) in &remote_state.files {
-        if path.starts_with(".noda/sync/") || path.starts_with(".noda/history/") {
-            continue;
-        }
-        if !local_files.contains(path) {
-            tracing::debug!("has_local_changes: remote file {} no longer exists locally (deleted)", path);
-            return true;
-        }
-    }
-
-    tracing::debug!("has_local_changes: no local changes detected — fast-check eligible");
-    false
 }
 
 async fn execute_single_action(
