@@ -873,7 +873,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_createNote(
         let relative_path = note.file_path.clone();
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, true) {
                 return format!("{{\"error\":\"Database write failed: {}\"}}", e);
             }
         }
@@ -970,7 +970,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
         let relative_path = note.file_path.clone();
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, true) {
                 return format!("{{\"error\":\"Database write failed: {}\"}}", e);
             }
         }
@@ -1039,7 +1039,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_renameNote(
         let relative_path = note.file_path.clone();
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, true) {
                 return format!("{{\"error\":\"Database write failed: {}\"}}", e);
             }
         }
@@ -1660,7 +1660,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreSnapshot(
         // 2. Update DB
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &merged_note, &relative_path, "dummy_hash", true) {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &merged_note, &relative_path, true) {
                 return format!("{{\"error\":\"Database update failed: {}\"}}", e);
             }
         }
@@ -1833,7 +1833,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreFromTrash(
 
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &restored_note, &target_entry.original_path, "dummy_hash", true) {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &restored_note, &target_entry.original_path, true) {
                 return format!("{{\"error\":\"Database sync failed: {}\"}}", e);
             }
         }
@@ -2663,7 +2663,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_resolveConflict(
 
             {
                 let conn = db.conn.lock();
-                if let Err(e) = noda_core::database::queries::upsert_note(&conn, &restored_note, &relative_path, "dummy_hash", true) {
+                if let Err(e) = noda_core::database::queries::upsert_note(&conn, &restored_note, &relative_path, true) {
                     return format!("{{\"error\":\"Failed to update DB: {}\"}}", e);
                 }
             }
@@ -3309,7 +3309,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_triggerDailyNote(
 
             {
                 let conn = db.conn.lock();
-                if let Err(e) = queries::upsert_note(&conn, &note, &note.file_path, "dummy_hash", true) {
+                if let Err(e) = queries::upsert_note(&conn, &note, &note.file_path, true) {
                     return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
                 }
             }
@@ -3360,7 +3360,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_triggerDailyNote(
 
             {
                 let conn = db.conn.lock();
-                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
+                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, true) {
                     return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
                 }
             }
@@ -3488,7 +3488,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_toggleTaskStatus(
             let relative_path = note.file_path.clone();
             {
                 let conn = db.conn.lock();
-                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
+                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, true) {
                     return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
                 }
             }

@@ -52,9 +52,17 @@ impl Database {
             Ok(db) => db,
             Err(e) => {
                 tracing::warn!("Database open failed: {}. Attempting fresh rebuild...", e);
-                // If corrupt, remove the file and try again
+                // If corrupt, remove the main database file and its WAL/SHM files and try again
                 if db_path.exists() {
                     tokio::fs::remove_file(&db_path).await.map_err(NodaError::Io)?;
+                }
+                let wal_path = std::path::PathBuf::from(format!("{}-wal", db_path.to_string_lossy()));
+                if wal_path.exists() {
+                    tokio::fs::remove_file(&wal_path).await.map_err(NodaError::Io)?;
+                }
+                let shm_path = std::path::PathBuf::from(format!("{}-shm", db_path.to_string_lossy()));
+                if shm_path.exists() {
+                    tokio::fs::remove_file(&shm_path).await.map_err(NodaError::Io)?;
                 }
                 Self::open(&db_path)?
             }
@@ -91,7 +99,7 @@ mod tests {
         
         // Verify schema version
         let version: i32 = conn.query_row("SELECT MAX(version) FROM schema_version", [], |row| row.get(0)).unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         
         // Verify notes table exists
         let table_count: i32 = conn.query_row(

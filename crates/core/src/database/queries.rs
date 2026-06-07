@@ -122,16 +122,15 @@ pub fn get_note(conn: &Connection, id: NoteId) -> Result<Option<Note>, NodaError
     Ok(note)
 }
 
-pub fn insert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &str) -> Result<(), NodaError> {
-    let tags_json = serde_json::to_string(&note.tags).unwrap_or_else(|_| "[]".to_string());
+pub fn insert_note(conn: &Connection, note: &Note, file_path: &str) -> Result<(), NodaError> {
     let parent_id_str = note.parent_id.map(|id| id.0.to_string());
     
     let created_str = note.created_at.to_rfc3339();
     let updated_str = note.updated_at.to_rfc3339();
 
     conn.execute(
-        "INSERT INTO notes (id, parent_id, title, body, color, pinned, tags, status, created, updated, file_path, file_hash) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             note.id.0.to_string(),
             parent_id_str,
@@ -139,12 +138,10 @@ pub fn insert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
             note.body,
             note.color,
             note.pinned,
-            tags_json,
             note.status,
             created_str,
             updated_str,
-            file_path,
-            file_hash
+            file_path
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to insert note: {}", e)))?;
     
@@ -153,8 +150,7 @@ pub fn insert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
     Ok(())
 }
 
-pub fn update_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &str) -> Result<(), NodaError> {
-    let tags_json = serde_json::to_string(&note.tags).unwrap_or_else(|_| "[]".to_string());
+pub fn update_note(conn: &Connection, note: &Note, file_path: &str) -> Result<(), NodaError> {
     let parent_id_str = note.parent_id.map(|id| id.0.to_string());
     
     let created_str = note.created_at.to_rfc3339();
@@ -162,7 +158,7 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
 
     conn.execute(
         "UPDATE notes SET 
-            parent_id = ?2, title = ?3, body = ?4, color = ?5, pinned = ?6, tags = ?7, status = ?8, created = ?9, updated = ?10, file_path = ?11, file_hash = ?12
+            parent_id = ?2, title = ?3, body = ?4, color = ?5, pinned = ?6, status = ?7, created = ?8, updated = ?9, file_path = ?10
          WHERE id = ?1",
         params![
             note.id.0.to_string(),
@@ -171,12 +167,10 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
             note.body,
             note.color,
             note.pinned,
-            tags_json,
             note.status,
             created_str,
             updated_str,
-            file_path,
-            file_hash
+            file_path
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to update note: {}", e)))?;
     
@@ -185,28 +179,25 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
     Ok(())
 }
 
-pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &str, mark_dirty: bool) -> Result<(), NodaError> {
-    let tags_json = serde_json::to_string(&note.tags).unwrap_or_else(|_| "[]".to_string());
+pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, mark_dirty: bool) -> Result<(), NodaError> {
     let parent_id_str = note.parent_id.map(|id| id.0.to_string());
     
     let created_str = note.created_at.to_rfc3339();
     let updated_str = note.updated_at.to_rfc3339();
 
     conn.execute(
-        "INSERT INTO notes (id, parent_id, title, body, color, pinned, tags, status, created, updated, file_path, file_hash) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(id) DO UPDATE SET
             parent_id = excluded.parent_id,
             title = excluded.title,
             body = excluded.body,
             color = excluded.color,
             pinned = excluded.pinned,
-            tags = excluded.tags,
             status = excluded.status,
             created = excluded.created,
             updated = excluded.updated,
-            file_path = excluded.file_path,
-            file_hash = excluded.file_hash",
+            file_path = excluded.file_path",
         params![
             note.id.0.to_string(),
             parent_id_str,
@@ -214,12 +205,10 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
             note.body,
             note.color,
             note.pinned,
-            tags_json,
             note.status,
             created_str,
             updated_str,
-            file_path,
-            file_hash
+            file_path
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to upsert note: {}", e)))?;
     
@@ -795,7 +784,7 @@ mod tests {
         note.pinned = true;
 
         // Insert
-        insert_note(&conn, &note, "test.md", "hash123").unwrap();
+        insert_note(&conn, &note, "test.md").unwrap();
 
         // Get
         let fetched = get_note(&conn, note.id).unwrap().unwrap();
@@ -810,7 +799,7 @@ mod tests {
 
         // Update
         note.title = "Updated Note".to_string();
-        update_note(&conn, &note, "test.md", "hash456").unwrap();
+        update_note(&conn, &note, "test.md").unwrap();
         
         let fetched2 = get_note(&conn, note.id).unwrap().unwrap();
         assert_eq!(fetched2.title, "Updated Note");

@@ -923,3 +923,46 @@ This ensures that once a snapshot is taken (whether for auto-save, manual save, 
 
 ### 40.5 Time-Corrected Pre-Sync Snapshot Execution
 * **Pre-Sync Snapshots:** Moved the history snapshot block to execute strictly before any network requests or remote directory scans are performed, and only if `local_changed == true`. Writing to the vault or the history folder after WebDAV operations begin is strictly forbidden, ensuring full database consistency and clean logs.
+
+---
+
+## 41. Smart Hybrid Local Control & Double-Locked Fast-Check (June 2026)
+
+### 41.1 Cold Boot Light Scan (Açılış Sigortası)
+- **Problem:** When the application is closed, the user might modify files using external editors or filesystems. Scanning and hashing every file in the vault on startup is extremely slow and battery-draining.
+- **Solution:** Implemented `run_cold_boot_scan` in `queries.rs` (called inside `Database::open_or_rebuild` on connection startup). It performs a fast, lightweight traversal of the vault filesystem using synchronous `std::fs::read_dir`. It reads only the `size` and `mtime` (OS modified time) of each file and compares them with the cached `sync_file_states` in SQLite. If a mismatch is found, it updates `is_dirty = 1` for that file's row.
+
+### 41.2 Event-Driven Runtime Flagging
+- **Rule:** Every JNI or Tauri action that creates, updates, soft-deletes, restores, or resolves conflicts on notes MUST pass `mark_dirty = true` when calling database queries (`upsert_note`, `delete_note`, `delete_note_by_path`).
+- **Attachments:** Added explicit calls to `set_file_dirty` on attachment addition and deletion, marking the attachment path (e.g. `.noda/attachments/pic.png`) as dirty.
+- **Watcher Integration:** The file watcher (`sync_batch_with_db`) runs `check_file_mismatch` on local disk modifications, flagging files as dirty in the database ONLY when a mismatch is detected, preventing false positives from watcher cooldown and network writes.
+
+### 41.3 O(1) Local Change Check
+- **Implementation:** The sync engine checks `SELECT EXISTS(SELECT 1 FROM sync_file_states WHERE is_dirty = 1)` to determine if there are any local changes. If false, it completely avoids directory scanning and file hashing, exiting the local change check phase in **O(1) time**.
+
+---
+
+## 42. Database Schema Normalization & Duplicate Pruning (June 2026)
+
+### 42.1 Removal of notes.tags and notes.file_hash Columns
+- **Relational Optimization:** Dropped the redundant `tags` column from the `notes` table, as tags are already managed relationally via the `tags` and `note_tags` tables.
+- **Sync Cleanup:** Removed the legacy `file_hash` column from the `notes` table, as change tracking is fully managed under `sync_file_states.hash`.
+- **Rust Signatures:** Refactored `insert_note`, `update_note`, and `upsert_note` in `queries.rs` to drop the `file_hash` parameter from their signatures and exclude these columns from SQL inserts/updates. Removed `"dummy_hash"` parameters from all call sites in JNI, Tauri, and internal watcher loops.
+
+### 42.2 FTS5 Trigger Normalization
+- **Implementation:** Rewrote the database triggers (`notes_ai`, `notes_ad`, and `notes_au`) and recreated the FTS5 virtual table `notes_fts` to exclude the `tags` column. Full-text searches are performed over the note's `title` and `body` fields, while tag searches are handled relationally via the `tags` table using SQL joins.
+
+### 42.3 Database Migration v7
+- Implemented migration version `7` in `migrations.rs` to automatically apply `ALTER TABLE notes DROP COLUMN tags` and `ALTER TABLE notes DROP COLUMN file_hash` (supported in modern SQLite/rusqlite), drop/rebuild `notes_fts` without the tags column, and rebuild the virtual index from existing notes. Updated the expected schema version assertion in connection tests to `7`.
+
+---
+
+## 43. SQLite Migration v7 Dependency Ordering & WAL/SHM Cleanup (June 2026)
+
+### 43.1 The Schema Dependency Ordering Problem
+* **Problem:** In SQLite, attempting to run `ALTER TABLE notes DROP COLUMN tags` while active database triggers (`notes_ai`, `notes_ad`, `notes_au`) or the virtual table `notes_fts` still refer to the `tags` column results in compile-time schema dependencies or validation errors. This aborts/rolls back the migration transaction and can lock or leave the database in an inconsistent state.
+* **Solution:** Reordered migration v7 in `migrations.rs` to drop the triggers (`notes_ai`, `notes_ad`, `notes_au`) and the FTS table (`notes_fts`) *first*, before executing the `ALTER TABLE notes DROP COLUMN` statements. The triggers and FTS virtual table are then recreated cleanly.
+
+### 43.2 SQLite WAL/SHM File Cleanup on Rebuild
+* **Problem:** When `Database::open` failed due to the aborted migration/corruption, the fallback logic inside `Database::open_or_rebuild` deleted `index.db` but left the Write-Ahead Log (`index.db-wal`) and Shared Memory (`index.db-shm`) sidecar files intact. When the app retried `open`, SQLite attempted WAL recovery by matching the stale WAL/SHM files with the newly created, empty 0-byte `index.db` file. This caused recovery to fail, resulting in a persistent `Database error: Failed to check schema version: disk I/O error` error popup.
+* **Solution:** Updated `Database::open_or_rebuild` in [connection.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/core/src/database/connection.rs) to explicitly delete `index.db-wal` and `index.db-shm` if they exist whenever deleting the corrupt `index.db`. This guarantees a completely fresh SQLite state on database rebuilds.

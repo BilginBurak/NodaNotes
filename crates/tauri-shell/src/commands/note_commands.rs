@@ -67,7 +67,7 @@ pub async fn create_note(
     let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
+        queries::upsert_note(&conn, &note, &relative_path, true)
             .map_err(AppError::from)?;
     }
 
@@ -194,7 +194,7 @@ pub async fn update_note(
     let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
+        queries::upsert_note(&conn, &note, &relative_path, true)
             .map_err(AppError::from)?;
     }
 
@@ -248,7 +248,7 @@ pub async fn rename_note(
     let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
+        queries::upsert_note(&conn, &note, &relative_path, true)
             .map_err(AppError::from)?;
     }
 
@@ -399,7 +399,7 @@ pub async fn import_note(
     let rel_path = final_note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &final_note, &rel_path, "dummy_hash", true)
+        queries::upsert_note(&conn, &final_note, &rel_path, true)
             .map_err(AppError::from)?;
     }
 
@@ -445,7 +445,7 @@ pub async fn import_note_from_content(
     let rel_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &note, &rel_path, "dummy_hash", true)
+        queries::upsert_note(&conn, &note, &rel_path, true)
             .map_err(AppError::from)?;
     }
 
@@ -598,7 +598,7 @@ pub async fn trigger_daily_note(
         
         {
             let conn = db.conn.lock();
-            queries::upsert_note(&conn, &note, &note.file_path, "dummy_hash", true)
+            queries::upsert_note(&conn, &note, &note.file_path, true)
                 .map_err(AppError::from)?;
         }
             
@@ -646,7 +646,7 @@ pub async fn trigger_daily_note(
         
         {
             let conn = db.conn.lock();
-            queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
+            queries::upsert_note(&conn, &note, &relative_path, true)
                 .map_err(AppError::from)?;
         }
             
@@ -750,7 +750,7 @@ pub async fn toggle_task_status(
         let relative_path = note.file_path.clone();
         {
             let conn = db.conn.lock();
-            queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
+            queries::upsert_note(&conn, &note, &relative_path, true)
                 .map_err(AppError::from)?;
         }
     }

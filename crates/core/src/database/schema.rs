@@ -10,19 +10,16 @@ CREATE TABLE IF NOT EXISTS notes (
     body      TEXT NOT NULL,
     color     TEXT,                          -- optional
     pinned    BOOLEAN NOT NULL DEFAULT 0,
-    tags      TEXT NOT NULL DEFAULT '[]',    -- JSON array
     status    TEXT NOT NULL DEFAULT 'active',
     created   TEXT NOT NULL,                 -- ISO 8601
     updated   TEXT NOT NULL,                 -- ISO 8601
-    file_path TEXT NOT NULL,                 -- Relative path from vault root
-    file_hash TEXT                           -- For change detection
+    file_path TEXT NOT NULL                  -- Relative path from vault root
 );
 
 -- Full-text search index (external content table)
 CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     title,
     body,
-    tags,
     content=notes,
     content_rowid=rowid,
     tokenize='unicode61 remove_diacritics 2'
@@ -30,20 +27,20 @@ CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
 
 -- Triggers to keep FTS5 in sync with notes table
 CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
-    INSERT INTO notes_fts(rowid, title, body, tags)
-    VALUES (new.rowid, new.title, new.body, new.tags);
+    INSERT INTO notes_fts(rowid, title, body)
+    VALUES (new.rowid, new.title, new.body);
 END;
 
 CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
-    INSERT INTO notes_fts(notes_fts, rowid, title, body, tags)
-    VALUES ('delete', old.rowid, old.title, old.body, old.tags);
+    INSERT INTO notes_fts(notes_fts, rowid, title, body)
+    VALUES ('delete', old.rowid, old.title, old.body);
 END;
 
 CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
-    INSERT INTO notes_fts(notes_fts, rowid, title, body, tags)
-    VALUES ('delete', old.rowid, old.title, old.body, old.tags);
-    INSERT INTO notes_fts(rowid, title, body, tags)
-    VALUES (new.rowid, new.title, new.body, new.tags);
+    INSERT INTO notes_fts(notes_fts, rowid, title, body)
+    VALUES ('delete', old.rowid, old.title, old.body);
+    INSERT INTO notes_fts(rowid, title, body)
+    VALUES (new.rowid, new.title, new.body);
 END;
 
 -- Schema version tracking

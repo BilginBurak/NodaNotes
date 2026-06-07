@@ -255,17 +255,17 @@ mod tests {
         let mut note1 = Note::new();
         note1.title = "Rust Programming".to_string();
         note1.body = "Rust is a systems programming language that runs blazingly fast.".to_string();
-        insert_note(&conn, &note1, "1.md", "").unwrap();
+        insert_note(&conn, &note1, "1.md").unwrap();
 
         let mut note2 = Note::new();
         note2.title = "Cooking".to_string();
         note2.body = "Today we will learn how to cook pasta.".to_string();
-        insert_note(&conn, &note2, "2.md", "").unwrap();
+        insert_note(&conn, &note2, "2.md").unwrap();
 
         let mut note3 = Note::new();
         note3.title = "Attachments".to_string();
         note3.body = "Check this attachment: ![xxh3_265b76ac10173dcc.jpg](noda://attachments/xxh3_265b76ac10173dcc.jpg)".to_string();
-        insert_note(&conn, &note3, "3.md", "").unwrap();
+        insert_note(&conn, &note3, "3.md").unwrap();
 
         // Perform search
         let results = search_notes(&conn, "rust fast").unwrap();
@@ -291,14 +291,14 @@ mod tests {
         note1.title = "Rust Programming".to_string();
         note1.body = "Rust is amazing.".to_string();
         let path1 = note1.file_path.clone();
-        insert_note(&conn, &note1, &path1, "").unwrap();
+        insert_note(&conn, &note1, &path1).unwrap();
 
         let mut note2 = Note::new();
         note2.title = "Cooking Pasta".to_string();
         note2.body = "Let's cook pasta.".to_string();
         let path2 = "pasta_recipe.md".to_string();
         note2.file_path = path2.clone();
-        insert_note(&conn, &note2, &path2, "").unwrap();
+        insert_note(&conn, &note2, &path2).unwrap();
 
         // 1. Search by full Note ID (ULID)
         let id_str = note1.id.0.to_string();

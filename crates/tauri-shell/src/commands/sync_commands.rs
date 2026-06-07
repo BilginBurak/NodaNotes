@@ -375,7 +375,7 @@ pub async fn resolve_conflict_keep_remote(
 
     {
         let conn = db.conn.lock();
-        noda_core::database::queries::upsert_note(&conn, &updated_note, &local_relative_path, "dummy_hash", true)
+        noda_core::database::queries::upsert_note(&conn, &updated_note, &local_relative_path, true)
             .map_err(AppError::from)?;
     }
 

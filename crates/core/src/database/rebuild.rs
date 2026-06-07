@@ -19,7 +19,7 @@ pub fn rebuild_database_sync(
 
     // 1. Batch upsert all scanned notes (updates existing, inserts new)
     for note in notes {
-        upsert_note(&tx, note, &note.file_path, "", false)?;
+        upsert_note(&tx, note, &note.file_path, false)?;
     }
 
     // 2. Identify and delete any notes in the database that are no longer present on disk

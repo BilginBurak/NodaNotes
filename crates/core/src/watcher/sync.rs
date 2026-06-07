@@ -28,7 +28,6 @@ pub async fn sync_batch_with_db<P: AsRef<Path>>(
                 match crate::vault::scan::parse_or_create_note_from_file(&path, root).await {
                     Ok(note) => {
                         let new_relative_path = note.file_path.clone();
-                        let file_hash = "dummy_hash";
                         let db_conn = conn.lock();
 
                         // If the path has changed, remove the old path entry from DB
@@ -50,7 +49,7 @@ pub async fn sync_batch_with_db<P: AsRef<Path>>(
                             }
                         }
 
-                        if let Err(e) = queries::upsert_note(&db_conn, &note, &new_relative_path, file_hash, is_mismatch) {
+                        if let Err(e) = queries::upsert_note(&db_conn, &note, &new_relative_path, is_mismatch) {
                             error!("Failed to upsert note in db during sync: {}", e);
                         } else {
                             info!("Synced {} to db (mark_dirty={})", new_relative_path, is_mismatch);

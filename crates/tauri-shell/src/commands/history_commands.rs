@@ -131,7 +131,7 @@ pub async fn restore_snapshot(
     // 5. Update SQLite database
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &merged_note, &relative_path, "dummy_hash", true)
+        queries::upsert_note(&conn, &merged_note, &relative_path, true)
             .map_err(AppError::from)?;
     }
 

@@ -129,7 +129,7 @@ pub async fn restore_from_trash(
     // 4. Upsert back to SQLite database
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &restored_note, &target_entry.original_path, "dummy_hash", true)
+        queries::upsert_note(&conn, &restored_note, &target_entry.original_path, true)
             .map_err(AppError::from)?;
     }
 

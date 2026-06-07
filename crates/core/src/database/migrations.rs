@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::schema::INIT_SCHEMA;
 use tracing::info;
 
-const CURRENT_SCHEMA_VERSION: i32 = 6;
+const CURRENT_SCHEMA_VERSION: i32 = 7;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     // Check if schema_version table exists
@@ -24,7 +24,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         .unwrap_or(0)
     } else {
         // First run, apply initial schema
-        info!("Applying initial database schema (v5)");
+        info!("Applying initial database schema (v7)");
         conn.execute_batch(INIT_SCHEMA)
             .map_err(|e| NodaError::Database(format!("Failed to apply initial schema: {}", e)))?;
         
@@ -138,6 +138,59 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
 
         current_version = 6;
+    }
+
+    if current_version < 7 {
+        info!("Applying database migration v7: removing tags and file_hash columns from notes table and updating FTS5 triggers");
+        conn.execute_batch(r#"
+            -- Drop old triggers first so they don't block column dropping
+            DROP TRIGGER IF EXISTS notes_ai;
+            DROP TRIGGER IF EXISTS notes_ad;
+            DROP TRIGGER IF EXISTS notes_au;
+
+            -- Recreate FTS5 table without tags column (drop first)
+            DROP TABLE IF EXISTS notes_fts;
+
+            -- Drop columns from notes
+            ALTER TABLE notes DROP COLUMN tags;
+            ALTER TABLE notes DROP COLUMN file_hash;
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+                title,
+                body,
+                content=notes,
+                content_rowid=rowid,
+                tokenize='unicode61 remove_diacritics 2'
+            );
+
+            -- Recreate triggers
+            CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+                INSERT INTO notes_fts(rowid, title, body)
+                VALUES (new.rowid, new.title, new.body);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+                INSERT INTO notes_fts(notes_fts, rowid, title, body)
+                VALUES ('delete', old.rowid, old.title, old.body);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
+                INSERT INTO notes_fts(notes_fts, rowid, title, body)
+                VALUES ('delete', old.rowid, old.title, old.body);
+                INSERT INTO notes_fts(rowid, title, body)
+                VALUES (new.rowid, new.title, new.body);
+            END;
+
+            -- Rebuild FTS5 index from the existing notes data
+            INSERT INTO notes_fts(notes_fts) VALUES('rebuild');
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v7: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (7)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 7;
     }
 
     info!("Database is up to date (version {})", current_version);

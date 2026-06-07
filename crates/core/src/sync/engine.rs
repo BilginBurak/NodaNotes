@@ -928,10 +928,9 @@ async fn execute_single_action(
                     let note_hash = xxhash_rust::xxh3::xxh3_64(markdown.as_bytes());
                     let note_hash_hex = format!("{:016x}", note_hash);
 
-                    // Also update note FTS hash in SQLite note cache
                     let db_result = {
                         let db_conn = database.conn.lock();
-                        crate::database::queries::upsert_note(&db_conn, &note, relative_path, &note_hash_hex, false)
+                        crate::database::queries::upsert_note(&db_conn, &note, relative_path, false)
                     };
                     let _ = db_result;
 
@@ -1063,7 +1062,7 @@ async fn execute_single_action(
 
                                 let db_result = {
                                     let db_conn = database.conn.lock();
-                                    crate::database::queries::upsert_note(&db_conn, &note, relative_path, &note_hash_hex, false)
+                                    crate::database::queries::upsert_note(&db_conn, &note, relative_path, false)
                                 };
                                 db_result?;
 
