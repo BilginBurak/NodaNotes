@@ -259,167 +259,222 @@ impl SyncEngine {
             config.webdav_password.as_deref().unwrap_or(""),
         )?;
 
-        // Step 1: Load remote state (cheap disk read) — done first to enable fast-check
-        let mut remote_state = load_remote_state(vault_path).await.unwrap_or_default();
+        // Step 1: Load remote state from database
+        let mut remote_state = {
+            let conn = database.conn.lock();
+            load_remote_state(&conn).unwrap_or_default()
+        };
 
-        // Step 2: Scan local notes and raw files
-        let local_notes = match scan_vault(vault_path).await {
-            Ok(notes) => notes,
-            Err(e) => {
-                self.update_status(SyncStatus::Error(format!("Local vault scan failed: {}", e)));
-                return Err(e);
+        // Step 2: Fast-Check — O(1) query for local changes
+        let local_changed = {
+            let conn = database.conn.lock();
+            let has_tracking = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sync_file_states)",
+                [],
+                |row| row.get::<_, i32>(0)
+            ).unwrap_or(0) != 0;
+
+            if !has_tracking {
+                true
+            } else {
+                conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sync_file_states WHERE is_dirty = 1)",
+                    [],
+                    |row| row.get::<_, i32>(0)
+                ).unwrap_or(0) != 0
             }
         };
 
-        // Raw files: attachments + history (history is excluded from dirty-check, but used in raw_plan)
-        let local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
+        let mut local_notes = Vec::new();
+        let mut local_raw = Vec::new();
 
-        // Step 3: Fast-Check — check for local changes BEFORE any expensive operations
-        let local_changed = has_local_changes(&local_notes, &local_raw, &remote_state);
-
-        // Step 3: Fast-Check & Remote Device Pruning
-        // Query the remote sync directory first to reconcile active remote devices and run fast-check
-        let sync_dir_path = ".noda/sync";
-        let mut active_remote_devices = std::collections::HashSet::new();
-        let mut pruning_happened = false;
-
-        let remote_sync_entries_res = client.propfind(sync_dir_path, 1).await;
-        if let Ok(ref remote_sync_entries) = remote_sync_entries_res {
-            for entry in remote_sync_entries {
-                if entry.is_collection {
-                    continue;
+        if local_changed {
+            // Load local notes from the SQLite database cache instead of scan_vault to save IO
+            let notes_res = {
+                let conn = database.conn.lock();
+                crate::database::queries::list_full_notes(&conn)
+            };
+            local_notes = match notes_res {
+                Ok(notes) => notes,
+                Err(e) => {
+                    self.update_status(SyncStatus::Error(format!("Local database notes load failed: {}", e)));
+                    return Err(e);
                 }
-                let rel_path = crate::sync::delta::get_relative_path(&entry.href, "");
-                let filename = std::path::Path::new(&rel_path)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("");
+            };
 
-                if filename.ends_with(".sync") {
-                    let device_name = filename.strip_suffix(".sync").unwrap_or(filename).to_string();
-                    active_remote_devices.insert(device_name);
+            local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
+
+            // Pre-Sync Snapshot timing alignment
+            for note in &local_notes {
+                let is_dirty = {
+                    let conn = database.conn.lock();
+                    conn.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM sync_file_states WHERE path = ?1 AND is_dirty = 1)",
+                        rusqlite::params![note.file_path],
+                        |row| row.get::<_, i32>(0)
+                    ).unwrap_or(0) != 0
+                };
+
+                if is_dirty {
+                    if let Ok(snaps) = crate::history::list_snapshots(vault_path, note.id).await {
+                        let needs_snapshot = if let Some(latest_snap) = snaps.first() {
+                            if let Ok(restored_note) = crate::history::restore(vault_path, latest_snap).await {
+                                note.body != restored_note.body || note.title != restored_note.title || note.tags != restored_note.tags
+                            } else {
+                                true
+                            }
+                        } else {
+                            true
+                        };
+
+                        if needs_snapshot {
+                            let _ = crate::history::snapshot(vault_path, note, "Pre-Sync").await;
+                        }
+                    }
                 }
             }
 
-            // Prune local cached devices that are no longer active on the WebDAV server
-            let local_device_keys: Vec<String> = remote_state.devices.keys().cloned().collect();
-            for cached_device in local_device_keys {
-                if cached_device != config.device_name && !active_remote_devices.contains(&cached_device) {
-                    tracing::info!("Pruning ghost device {} from local state", cached_device);
-                    remote_state.devices.remove(&cached_device);
-                    pruning_happened = true;
-                }
-            }
-
-            if pruning_happened {
-                let _ = save_remote_state(vault_path, &remote_state).await;
-            }
+            local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
         }
+
+        // Step 4: Fast-Check remote validation (if local is clean)
+        let mut fast_check_ok = false;
 
         if !local_changed {
             tracing::info!("No local changes detected. Initiating Fast-Check remote validation.");
-            match &remote_sync_entries_res {
-                Ok(remote_sync_entries) => {
-                    let mut fast_check_ok = true;
-                    let mut remote_other_sync_paths = std::collections::HashSet::new();
+            let sync_dir_path = ".noda/sync";
+            let res = client.propfind(sync_dir_path, 1).await;
+            
+            if let Ok(ref remote_sync_entries) = res {
+                let mut active_remote_devices = std::collections::HashSet::new();
+                let mut pruning_happened = false;
 
-                    for entry in remote_sync_entries {
-                        if entry.is_collection {
-                            continue;
-                        }
-                        let rel_path = crate::sync::delta::get_relative_path(&entry.href, "");
-                        let filename = std::path::Path::new(&rel_path)
-                            .file_name()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("");
-
-                        if filename.ends_with(".sync") {
-                            let device_name = filename.strip_suffix(".sync").unwrap_or(filename).to_string();
-                            // Skip our own device — we only care about OTHER devices' signatures
-                            if device_name == config.device_name {
-                                continue;
-                            }
-                            remote_other_sync_paths.insert(device_name.clone());
-
-                            if let Some(cached_device) = remote_state.devices.get(&device_name) {
-                                // Primary check: ETag equality (trimmed of quotes)
-                                let etag_matches = match (&entry.etag, &cached_device.last_known_etag) {
-                                    (Some(e1), Some(e2)) => e1.trim_matches('"') == e2.trim_matches('"'),
-                                    _ => false,
-                                };
-
-                                // Secondary check: Last-Modified equality (strict == match for server clocks)
-                                let lm_matches = if !etag_matches {
-                                    let entry_lm = entry.last_modified.as_ref()
-                                        .and_then(|s| crate::sync::delta::parse_last_modified(s));
-                                    match (entry_lm, cached_device.last_known_modified) {
-                                        (Some(t1), Some(t2)) => t1 == t2,
-                                        _ => false,
-                                    }
-                                } else {
-                                    true
-                                };
-
-                                if !etag_matches && !lm_matches {
-                                    tracing::info!(
-                                        "fast-check: remote device {} signature mismatch \
-                                        (etag matches: {}, lm matches: {}), bypassing",
-                                        device_name, etag_matches, lm_matches
-                                    );
-                                    fast_check_ok = false;
-                                    break;
-                                }
-                            } else {
-                                tracing::info!("fast-check: new remote device found: {}, bypassing", device_name);
-                                fast_check_ok = false;
-                                break;
-                            }
-                        }
+                // 1. Reconcile / prune ghost devices first
+                for entry in remote_sync_entries {
+                    if entry.is_collection {
+                        continue;
                     }
+                    let rel_path = crate::sync::delta::get_relative_path(&entry.href, "");
+                    let filename = std::path::Path::new(&rel_path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
 
-                    if fast_check_ok {
-                        for (device_name, _) in &remote_state.devices {
-                            if device_name != &config.device_name && !remote_other_sync_paths.contains(device_name) {
-                                tracing::info!("Cached remote device {} sync file no longer exists, bypassing fast-check", device_name);
-                                fast_check_ok = false;
-                                break;
-                            }
-                        }
-                    }
-
-                    if fast_check_ok {
-                        tracing::info!("Fast-check succeeded. No local or remote changes. Early exit.");
-                        self.update_status(SyncStatus::Idle);
-                        if let Some(cb) = &*self.sync_finished_callback.read() {
-                            cb(SyncReport::default());
-                        }
-                        return Ok(SyncReport::default());
+                    if filename.ends_with(".sync") {
+                        let device_name = filename.strip_suffix(".sync").unwrap_or(filename).to_string();
+                        active_remote_devices.insert(device_name);
                     }
                 }
-                Err(e) => {
-                    tracing::warn!("Failed to fetch remote sync directory for Fast-Check: {}. Proceeding to full sync.", e);
+
+                // Prune local cached devices that are no longer active on the WebDAV server
+                let local_device_keys: Vec<String> = remote_state.devices.keys().cloned().collect();
+                for cached_device in local_device_keys {
+                    if cached_device != config.device_name && !active_remote_devices.contains(&cached_device) {
+                        tracing::info!("Pruning ghost device {} from local state", cached_device);
+                        remote_state.devices.remove(&cached_device);
+                        pruning_happened = true;
+                    }
+                }
+
+                if pruning_happened {
+                    let conn = database.conn.lock();
+                    let _ = save_remote_state(&conn, &remote_state);
+                }
+
+                // 2. Perform validation against other devices
+                let mut check_passed = true;
+                let mut remote_other_sync_paths = std::collections::HashSet::new();
+
+                for entry in remote_sync_entries {
+                    if entry.is_collection {
+                        continue;
+                    }
+                    let rel_path = crate::sync::delta::get_relative_path(&entry.href, "");
+                    let filename = std::path::Path::new(&rel_path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
+
+                    if filename.ends_with(".sync") {
+                        let device_name = filename.strip_suffix(".sync").unwrap_or(filename).to_string();
+                        // Skip our own device
+                        if device_name == config.device_name {
+                            continue;
+                        }
+                        remote_other_sync_paths.insert(device_name.clone());
+
+                        if let Some(cached_device) = remote_state.devices.get(&device_name) {
+                            // Strict String Equality (==) for ETag and Last-Modified
+                            let etag_matches = match (&entry.etag, &cached_device.last_known_etag) {
+                                (Some(e1), Some(e2)) => e1 == e2,
+                                _ => false,
+                            };
+
+                            let lm_matches = match (&entry.last_modified, &cached_device.last_known_modified) {
+                                (Some(lm1), Some(lm2)) => lm1 == &lm2.to_rfc3339() || {
+                                    if let Some(dt1) = crate::sync::delta::parse_last_modified(lm1) {
+                                        dt1 == *lm2
+                                    } else {
+                                        false
+                                    }
+                                },
+                                _ => false,
+                            };
+
+                            if !etag_matches && !lm_matches {
+                                tracing::info!(
+                                    "fast-check: remote device {} signature mismatch (etag matches: {}, lm matches: {}), bypassing",
+                                    device_name, etag_matches, lm_matches
+                                );
+                                check_passed = false;
+                                break;
+                            }
+                        } else {
+                            tracing::info!("fast-check: new remote device found: {}, bypassing", device_name);
+                            check_passed = false;
+                            break;
+                        }
+                    }
+                }
+
+                if check_passed {
+                    for (device_name, _) in &remote_state.devices {
+                        if device_name != &config.device_name && !remote_other_sync_paths.contains(device_name) {
+                            tracing::info!("Cached remote device {} sync file no longer exists, bypassing fast-check", device_name);
+                            check_passed = false;
+                            break;
+                        }
+                    }
+                }
+
+                if check_passed {
+                    fast_check_ok = true;
                 }
             }
         }
 
-        // Step 4: Fast-check bypassed — take pre-sync snapshots for modified notes before reconciliation.
-        // This is intentionally done AFTER fast-check to avoid unnecessary snapshot creation on idle cycles.
-        for note in &local_notes {
-            if let Ok(snaps) = crate::history::list_snapshots(vault_path, note.id).await {
-                let needs_snapshot = if let Some(latest_snap) = snaps.first() {
-                    if let Ok(restored_note) = crate::history::restore(vault_path, latest_snap).await {
-                        note.body != restored_note.body || note.title != restored_note.title || note.tags != restored_note.tags
-                    } else {
-                        true
-                    }
-                } else {
-                    true
-                };
-
-                if needs_snapshot {
-                    let _ = crate::history::snapshot(vault_path, note, "Pre-Sync").await;
-                }
+        if fast_check_ok {
+            tracing::info!("Fast-check succeeded. No local or remote changes. Early exit.");
+            self.update_status(SyncStatus::Idle);
+            if let Some(cb) = &*self.sync_finished_callback.read() {
+                cb(SyncReport::default());
             }
+            return Ok(SyncReport::default());
+        }
+
+        if !local_changed {
+            let notes_res = {
+                let conn = database.conn.lock();
+                crate::database::queries::list_full_notes(&conn)
+            };
+            local_notes = match notes_res {
+                Ok(notes) => notes,
+                Err(e) => {
+                    self.update_status(SyncStatus::Error(format!("Local database notes load failed: {}", e)));
+                    return Err(e);
+                }
+            };
+            local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
         }
 
         let mut sync_queue = SyncQueue::load(vault_path).await?;
@@ -433,9 +488,6 @@ impl SyncEngine {
                 return Err(e);
             }
         };
-
-        // Re-scan local raw files to capture the newly taken Pre-Sync snapshots
-        let local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
 
         // Calculate delta plans
         let note_plan = calculate_delta(&local_notes, &remote_entries, &remote_state, "");
@@ -505,33 +557,22 @@ impl SyncEngine {
                 let vs_c = vault_service_arc.clone();
                 let cc_c = conflict_callback_clone.clone();
 
+                let action = entry.action.clone();
+                active_tasks += 1;
                 join_set.spawn(async move {
-                    let relative_path_for_error = match &entry.action {
+                    let path = match &action {
                         SyncAction::Upload { relative_path } => relative_path.clone(),
                         SyncAction::Download { relative_path, .. } => relative_path.clone(),
                         SyncAction::DeleteRemote { relative_path } => relative_path.clone(),
                         SyncAction::DeleteLocal { relative_path } => relative_path.clone(),
                         SyncAction::Conflict { relative_path, .. } => relative_path.clone(),
                     };
-
-                    let res = execute_single_action(
-                        &entry.action,
-                        &client_c,
-                        &vp_c,
-                        &db_c,
-                        &re_c,
-                        &rs_c,
-                        &rep_c,
-                        &vs_c,
-                        &cc_c,
-                    ).await;
-
-                    match res {
-                        Ok(()) => Ok(()),
-                        Err(e) => Err((entry, relative_path_for_error, e)),
+                    if let Err(e) = execute_single_action(&action, &client_c, &vp_c, &db_c, &re_c, &rs_c, &rep_c, &vs_c, &cc_c).await {
+                        Err((entry, path, e))
+                    } else {
+                        Ok(())
                     }
                 });
-                active_tasks += 1;
             }
 
             while let Some(res) = join_set.join_next().await {
@@ -586,11 +627,16 @@ impl SyncEngine {
                     if crate::sync::delta::is_local_remote_identical(local_note, remote_entry) {
                         let lm = remote_entry.last_modified.as_ref()
                             .and_then(|s| crate::sync::delta::parse_last_modified(s));
+                        let local_content = local_note.to_markdown().unwrap_or_default();
+                        let local_hash = xxhash_rust::xxh3::xxh3_64(local_content.as_bytes());
+                        let hash_hex = format!("{:016x}", local_hash);
                         remote_state.files.insert(path.clone(), RemoteFileMetadata {
                             etag: remote_entry.etag.clone(),
                             last_modified: lm,
                             size: remote_entry.size.unwrap_or(0),
                             local_updated_at: Some(local_note.updated_at),
+                            hash: hash_hex,
+                                is_dirty: false,
                         });
                     }
                 }
@@ -602,24 +648,27 @@ impl SyncEngine {
             let path = &local_raw_file.relative_path;
             if !remote_state.files.contains_key(path) {
                 if let Some(remote_entry) = remote_map.get(path) {
-                    let remote_size = remote_entry.size.unwrap_or(0);
-                    // Attachments are immutable; if size matches, they are identical.
-                    if local_raw_file.size == remote_size {
-                        let lm = remote_entry.last_modified.as_ref()
-                            .and_then(|s| crate::sync::delta::parse_last_modified(s));
-                        remote_state.files.insert(path.clone(), RemoteFileMetadata {
-                            etag: remote_entry.etag.clone(),
-                            last_modified: lm,
-                            size: remote_size,
-                            local_updated_at: Some(local_raw_file.modified),
-                        });
-                    }
+                    let remote_size = remote_entry.size.unwrap_or(local_raw_file.size);
+                    let lm = remote_entry.last_modified.as_ref()
+                        .and_then(|s| crate::sync::delta::parse_last_modified(s));
+                    let raw_bytes = std::fs::read(vault_path.join(path)).unwrap_or_default();
+                    let raw_hash = xxhash_rust::xxh3::xxh3_64(&raw_bytes);
+                    let hash_hex = format!("{:016x}", raw_hash);
+                    remote_state.files.insert(path.clone(), RemoteFileMetadata {
+                        etag: remote_entry.etag.clone(),
+                        last_modified: lm,
+                        size: remote_size,
+                        local_updated_at: Some(local_raw_file.modified),
+                        hash: hash_hex,
+                                is_dirty: false,
+                    });
                 }
             }
         }
 
+
         // Upload our own empty (0-byte) .sync file only if local changes were made/uploaded
-        if local_changed {
+        if report.uploads > 0 {
             let our_sync_file_name = format!("{}.sync", config.device_name);
             let our_sync_rel_path = format!(".noda/sync/{}", our_sync_file_name);
 
@@ -681,7 +730,10 @@ impl SyncEngine {
 
         // Save updated remote state to survive crash
         remote_state.last_sync_time = Some(chrono::Utc::now());
-        save_remote_state(vault_path, &remote_state).await?;
+        {
+            let conn = database.conn.lock();
+            save_remote_state(&conn, &remote_state)?;
+        }
 
         self.update_status(SyncStatus::Idle);
         if let Some(cb) = &*self.sync_finished_callback.read() {
@@ -797,6 +849,9 @@ async fn execute_single_action(
                     ensure_remote_parent_dirs_exist(client, relative_path, remote_entries, "").await?;
                     client.put(relative_path, bytes.clone()).await?;
 
+                    let raw_hash = xxhash_rust::xxh3::xxh3_64(&bytes);
+                    let hash_hex = format!("{:016x}", raw_hash);
+
                     let meta = tokio::fs::metadata(&full_path).await.ok();
                     let modified = meta.as_ref()
                         .and_then(|m| m.modified().ok())
@@ -818,6 +873,8 @@ async fn execute_single_action(
                                 last_modified: lm,
                                 size: remote_entry.size.unwrap_or(bytes.len() as u64),
                                 local_updated_at: Some(modified),
+                                hash: hash_hex,
+                                is_dirty: false,
                             });
                         } else {
                             state_guard.files.insert(relative_path.clone(), RemoteFileMetadata {
@@ -825,9 +882,12 @@ async fn execute_single_action(
                                 last_modified: Some(modified),
                                 size: bytes.len() as u64,
                                 local_updated_at: Some(modified),
+                                hash: hash_hex,
+                                is_dirty: false,
                             });
                         }
                     }
+
 
                     {
                         let mut report_guard = report.lock();
@@ -857,6 +917,24 @@ async fn execute_single_action(
                     ensure_remote_parent_dirs_exist(client, relative_path, remote_entries, "").await?;
                     client.put(relative_path, markdown.as_bytes().to_vec()).await?;
 
+                    // Post-sync post-flush OS metadata read:
+                    let full_path = vault_path.join(relative_path);
+                    let meta = tokio::fs::metadata(&full_path).await.ok();
+                    let modified = meta.as_ref()
+                        .and_then(|m| m.modified().ok())
+                        .map(|t| chrono::DateTime::<chrono::Utc>::from(t))
+                        .unwrap_or(note.updated_at);
+
+                    let note_hash = xxhash_rust::xxh3::xxh3_64(markdown.as_bytes());
+                    let note_hash_hex = format!("{:016x}", note_hash);
+
+                    // Also update note FTS hash in SQLite note cache
+                    let db_result = {
+                        let db_conn = database.conn.lock();
+                        crate::database::queries::upsert_note(&db_conn, &note, relative_path, &note_hash_hex, false)
+                    };
+                    let _ = db_result;
+
                     let updated_entry = match client.propfind(relative_path, 0).await {
                         Ok(mut entries) => entries.pop(),
                         Err(_) => None,
@@ -871,14 +949,18 @@ async fn execute_single_action(
                                 etag: remote_entry.etag,
                                 last_modified: lm,
                                 size: remote_entry.size.unwrap_or(markdown.len() as u64),
-                                local_updated_at: Some(note.updated_at),
+                                local_updated_at: Some(modified),
+                                hash: note_hash_hex,
+                                is_dirty: false,
                             });
                         } else {
                             state_guard.files.insert(relative_path.clone(), RemoteFileMetadata {
                                 etag: None,
-                                last_modified: Some(note.updated_at),
+                                last_modified: Some(modified),
                                 size: markdown.len() as u64,
-                                local_updated_at: Some(note.updated_at),
+                                local_updated_at: Some(modified),
+                                hash: note_hash_hex,
+                                is_dirty: false,
                             });
                         }
                     }
@@ -904,6 +986,9 @@ async fn execute_single_action(
 
                     tokio::fs::write(&full_path, &bytes).await.map_err(NodaError::Io)?;
 
+                    let raw_hash = xxhash_rust::xxh3::xxh3_64(&bytes);
+                    let hash_hex = format!("{:016x}", raw_hash);
+
                     let meta = tokio::fs::metadata(&full_path).await.ok();
                     let modified = meta.as_ref()
                         .and_then(|m| m.modified().ok())
@@ -920,6 +1005,8 @@ async fn execute_single_action(
                             last_modified: lm,
                             size: remote_entry.size.unwrap_or(bytes.len() as u64),
                             local_updated_at: Some(modified),
+                            hash: hash_hex,
+                                is_dirty: false,
                         });
                     }
 
@@ -963,9 +1050,20 @@ async fn execute_single_action(
 
                                 vault_service.write_note(&note).await?;
 
+                                // Post-sync post-flush OS metadata read:
+                                let full_path = vault_path.join(relative_path);
+                                let meta = tokio::fs::metadata(&full_path).await.ok();
+                                let modified = meta.as_ref()
+                                    .and_then(|m| m.modified().ok())
+                                    .map(|t| chrono::DateTime::<chrono::Utc>::from(t))
+                                    .unwrap_or(note.updated_at);
+
+                                let note_hash = xxhash_rust::xxh3::xxh3_64(content.as_bytes());
+                                let note_hash_hex = format!("{:016x}", note_hash);
+
                                 let db_result = {
                                     let db_conn = database.conn.lock();
-                                    crate::database::queries::upsert_note(&db_conn, &note, relative_path, "dummy_hash")
+                                    crate::database::queries::upsert_note(&db_conn, &note, relative_path, &note_hash_hex, false)
                                 };
                                 db_result?;
 
@@ -978,7 +1076,9 @@ async fn execute_single_action(
                                         etag: remote_entry.etag.clone(),
                                         last_modified: lm,
                                         size: remote_entry.size.unwrap_or(bytes.len() as u64),
-                                        local_updated_at: Some(note.updated_at),
+                                        local_updated_at: Some(modified),
+                                        hash: note_hash_hex,
+                                is_dirty: false,
                                     });
                                 }
 
@@ -1033,7 +1133,7 @@ async fn execute_single_action(
 
             let db_result = {
                 let db_conn = database.conn.lock();
-                crate::database::queries::delete_note_by_path(&db_conn, relative_path)
+                crate::database::queries::delete_note_by_path(&db_conn, relative_path, false)
             };
             db_result?;
 
@@ -1053,6 +1153,17 @@ async fn execute_single_action(
 
                     client.put(relative_path, markdown.as_bytes().to_vec()).await?;
 
+                    // Post-sync post-flush OS metadata read:
+                    let full_path = vault_path.join(relative_path);
+                    let meta = tokio::fs::metadata(&full_path).await.ok();
+                    let modified = meta.as_ref()
+                        .and_then(|m| m.modified().ok())
+                        .map(|t| chrono::DateTime::<chrono::Utc>::from(t))
+                        .unwrap_or(local_note.updated_at);
+
+                    let note_hash = xxhash_rust::xxh3::xxh3_64(markdown.as_bytes());
+                    let note_hash_hex = format!("{:016x}", note_hash);
+
                     let updated_entry = match client.propfind(relative_path, 0).await {
                         Ok(mut entries) => entries.pop(),
                         Err(_) => None,
@@ -1067,14 +1178,18 @@ async fn execute_single_action(
                                 etag: entry.etag,
                                 last_modified: lm,
                                 size: entry.size.unwrap_or(markdown.len() as u64),
-                                local_updated_at: Some(local_note.updated_at),
+                                local_updated_at: Some(modified),
+                                hash: note_hash_hex,
+                                is_dirty: false,
                             });
                         } else {
                             state_guard.files.insert(relative_path.clone(), RemoteFileMetadata {
                                 etag: None,
-                                last_modified: Some(local_note.updated_at),
+                                last_modified: Some(modified),
                                 size: markdown.len() as u64,
-                                local_updated_at: Some(local_note.updated_at),
+                                local_updated_at: Some(modified),
+                                hash: note_hash_hex,
+                                is_dirty: false,
                             });
                         }
                     }
@@ -1097,6 +1212,17 @@ async fn execute_single_action(
 
                     client.put(relative_path, markdown.as_bytes().to_vec()).await?;
 
+                    // Post-sync post-flush OS metadata read:
+                    let full_path = vault_path.join(relative_path);
+                    let meta = tokio::fs::metadata(&full_path).await.ok();
+                    let modified = meta.as_ref()
+                        .and_then(|m| m.modified().ok())
+                        .map(|t| chrono::DateTime::<chrono::Utc>::from(t))
+                        .unwrap_or(local_note.updated_at);
+
+                    let note_hash = xxhash_rust::xxh3::xxh3_64(markdown.as_bytes());
+                    let note_hash_hex = format!("{:016x}", note_hash);
+
                     let updated_entry = match client.propfind(relative_path, 0).await {
                         Ok(mut entries) => entries.pop(),
                         Err(_) => None,
@@ -1111,14 +1237,18 @@ async fn execute_single_action(
                                 etag: entry.etag,
                                 last_modified: lm,
                                 size: entry.size.unwrap_or(markdown.len() as u64),
-                                local_updated_at: Some(local_note.updated_at),
+                                local_updated_at: Some(modified),
+                                hash: note_hash_hex,
+                                is_dirty: false,
                             });
                         } else {
                             state_guard.files.insert(relative_path.clone(), RemoteFileMetadata {
                                 etag: None,
-                                last_modified: Some(local_note.updated_at),
+                                last_modified: Some(modified),
                                 size: markdown.len() as u64,
-                                local_updated_at: Some(local_note.updated_at),
+                                local_updated_at: Some(modified),
+                                hash: note_hash_hex,
+                                is_dirty: false,
                             });
                         }
                     }

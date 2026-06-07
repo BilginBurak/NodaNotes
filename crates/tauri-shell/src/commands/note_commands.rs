@@ -67,7 +67,7 @@ pub async fn create_note(
     let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
+        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
             .map_err(AppError::from)?;
     }
 
@@ -194,7 +194,7 @@ pub async fn update_note(
     let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
+        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
             .map_err(AppError::from)?;
     }
 
@@ -248,7 +248,7 @@ pub async fn rename_note(
     let relative_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
+        queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
             .map_err(AppError::from)?;
     }
 
@@ -287,7 +287,7 @@ pub async fn delete_note(
     // 2. Delete from DB
     {
         let conn = db.conn.lock();
-        queries::delete_note(&conn, note_id).map_err(AppError::from)?;
+        queries::delete_note(&conn, note_id, true).map_err(AppError::from)?;
     }
 
     Ok(())
@@ -399,7 +399,7 @@ pub async fn import_note(
     let rel_path = final_note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &final_note, &rel_path, "dummy_hash")
+        queries::upsert_note(&conn, &final_note, &rel_path, "dummy_hash", true)
             .map_err(AppError::from)?;
     }
 
@@ -445,7 +445,7 @@ pub async fn import_note_from_content(
     let rel_path = note.file_path.clone();
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &note, &rel_path, "dummy_hash")
+        queries::upsert_note(&conn, &note, &rel_path, "dummy_hash", true)
             .map_err(AppError::from)?;
     }
 
@@ -478,14 +478,16 @@ pub async fn get_note_metadata(
         message: format!("Invalid NoteId: {}", e),
     })?);
 
-    let note = {
+    let (note, remote_state) = {
         let conn = db.conn.lock();
-        queries::get_note(&conn, note_id)
+        let n = queries::get_note(&conn, note_id)
             .map_err(AppError::from)?
             .ok_or_else(|| AppError {
                 code: "NOT_FOUND".to_string(),
                 message: format!("Note not found in DB: {}", id),
-            })?
+            })?;
+        let rs = noda_core::sync::load_remote_state(&conn).unwrap_or_default();
+        (n, rs)
     };
 
     let vault_path = service.base_path().clone();
@@ -495,7 +497,6 @@ pub async fn get_note_metadata(
     let history_count = snapshots.len();
 
     // 2. Get sync (upload) metadata
-    let remote_state = noda_core::sync::load_remote_state(&vault_path).await.unwrap_or_default();
     let last_upload_time = remote_state.files.get(&note.file_path)
         .and_then(|meta| meta.last_modified)
         .map(|dt| dt.to_rfc3339());
@@ -597,7 +598,7 @@ pub async fn trigger_daily_note(
         
         {
             let conn = db.conn.lock();
-            queries::upsert_note(&conn, &note, &note.file_path, "dummy_hash")
+            queries::upsert_note(&conn, &note, &note.file_path, "dummy_hash", true)
                 .map_err(AppError::from)?;
         }
             
@@ -645,7 +646,7 @@ pub async fn trigger_daily_note(
         
         {
             let conn = db.conn.lock();
-            queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
+            queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
                 .map_err(AppError::from)?;
         }
             
@@ -749,7 +750,7 @@ pub async fn toggle_task_status(
         let relative_path = note.file_path.clone();
         {
             let conn = db.conn.lock();
-            queries::upsert_note(&conn, &note, &relative_path, "dummy_hash")
+            queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true)
                 .map_err(AppError::from)?;
         }
     }

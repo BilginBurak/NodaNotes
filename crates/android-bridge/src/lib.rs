@@ -529,7 +529,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_deleteFolder(
                 return format!("{{\"error\":\"Soft delete failed for {}: {}\"}}", note.file_path, e);
             }
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::delete_note(&conn, note.id) {
+            if let Err(e) = noda_core::database::queries::delete_note(&conn, note.id, true) {
                 return format!("{{\"error\":\"Database delete failed for {}: {}\"}}", note.id.0, e);
             }
         }
@@ -873,7 +873,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_createNote(
         let relative_path = note.file_path.clone();
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash") {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
                 return format!("{{\"error\":\"Database write failed: {}\"}}", e);
             }
         }
@@ -970,7 +970,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
         let relative_path = note.file_path.clone();
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash") {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
                 return format!("{{\"error\":\"Database write failed: {}\"}}", e);
             }
         }
@@ -1039,7 +1039,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_renameNote(
         let relative_path = note.file_path.clone();
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash") {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
                 return format!("{{\"error\":\"Database write failed: {}\"}}", e);
             }
         }
@@ -1107,7 +1107,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_deleteNote(
         // 2. Remove from DB
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::delete_note(&conn, note_id) {
+            if let Err(e) = noda_core::database::queries::delete_note(&conn, note_id, true) {
                 return format!("{{\"error\":\"Database delete failed: {}\"}}", e);
             }
         }
@@ -1250,7 +1250,10 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getNoteMetadata(
         let snapshots = noda_core::history::list_snapshots(&path, note_id).await.unwrap_or_default();
         let history_count = snapshots.len();
 
-        let remote_state = noda_core::sync::load_remote_state(&path).await.unwrap_or_default();
+        let remote_state = {
+            let conn = db.conn.lock();
+            noda_core::sync::load_remote_state(&conn).unwrap_or_default()
+        };
         let last_upload_time = remote_state.files.get(&note.file_path)
             .and_then(|meta| meta.last_modified)
             .map(|dt| dt.to_rfc3339());
@@ -1657,7 +1660,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreSnapshot(
         // 2. Update DB
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &merged_note, &relative_path, "dummy_hash") {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &merged_note, &relative_path, "dummy_hash", true) {
                 return format!("{{\"error\":\"Database update failed: {}\"}}", e);
             }
         }
@@ -1830,7 +1833,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreFromTrash(
 
         {
             let conn = db.conn.lock();
-            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &restored_note, &target_entry.original_path, "dummy_hash") {
+            if let Err(e) = noda_core::database::queries::upsert_note(&conn, &restored_note, &target_entry.original_path, "dummy_hash", true) {
                 return format!("{{\"error\":\"Database sync failed: {}\"}}", e);
             }
         }
@@ -1954,12 +1957,14 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_addAttachment(
         Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
     };
 
-    let path = {
+    let (path, db) = {
         let state = BRIDGE_STATE.read().unwrap();
-        match &state.vault_path {
+        let path = match &state.vault_path {
             Some(v) => v.clone(),
             None => return error_string(&mut env, "Vault path not initialized"),
-        }
+        };
+        let db = state.database.clone();
+        (path, db)
     };
 
     let result = get_runtime().block_on(async {
@@ -1972,6 +1977,13 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_addAttachment(
             Ok(uri) => {
                 let attachment_name = uri.trim_start_matches("noda://attachments/").to_string();
                 let markdown_link = format!("![{}]({})", original_name, uri);
+
+                if let Some(ref db) = db {
+                    let conn = db.conn.lock();
+                    let rel_path = format!(".noda/attachments/{}", attachment_name);
+                    let _ = noda_core::database::queries::set_file_dirty(&conn, &rel_path, true);
+                }
+
                 serde_json::json!({
                     "attachment_name": attachment_name,
                     "markdown_link": markdown_link
@@ -2005,17 +2017,26 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_deleteAttachment(
         Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
     };
 
-    let path = {
+    let (path, db) = {
         let state = BRIDGE_STATE.read().unwrap();
-        match &state.vault_path {
+        let path = match &state.vault_path {
             Some(v) => v.clone(),
             None => return error_string(&mut env, "Vault path not initialized"),
-        }
+        };
+        let db = state.database.clone();
+        (path, db)
     };
 
     let result = get_runtime().block_on(async {
         match noda_core::attachments::delete_attachment(&path, &params.attachment_name).await {
-            Ok(_) => "{\"success\":true}".to_string(),
+            Ok(_) => {
+                if let Some(ref db) = db {
+                    let conn = db.conn.lock();
+                    let rel_path = format!(".noda/attachments/{}", params.attachment_name);
+                    let _ = noda_core::database::queries::set_file_dirty(&conn, &rel_path, true);
+                }
+                "{\"success\":true}".to_string()
+            }
             Err(e) => format!("{{\"error\":\"Delete attachment failed: {}\"}}", e),
         }
     });
@@ -2413,7 +2434,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getSyncStatus(
         Err(e) => return e,
     };
 
-    let (sync_engine, path) = {
+    let (sync_engine, path, db) = {
         let state = BRIDGE_STATE.read().unwrap();
         let engine = match &state.sync_engine {
             Some(e) => e.clone(),
@@ -2423,24 +2444,24 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getSyncStatus(
             Some(v) => v.clone(),
             None => return error_string(&mut env, "Vault path not initialized"),
         };
-        (engine, p)
+        let d = match &state.database {
+            Some(db_ref) => db_ref.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        };
+        (engine, p, d)
     };
 
     let status = sync_engine.get_status();
     let is_syncing = status == noda_core::sync::SyncStatus::Syncing;
 
     let result = get_runtime().block_on(async {
-        let remote_state_path = path.join(".noda/sync/remote_state.json");
-        let last_sync_at = if let Ok(meta) = tokio::fs::metadata(&remote_state_path).await {
-            if let Ok(modified) = meta.modified() {
-                let datetime: chrono::DateTime<chrono::Utc> = modified.into();
-                datetime.to_rfc3339()
-            } else {
-                "Never".to_string()
-            }
-        } else {
-            "Never".to_string()
+        let remote_state = {
+            let conn = db.conn.lock();
+            noda_core::sync::load_remote_state(&conn).unwrap_or_default()
         };
+        let last_sync_at = remote_state.last_sync_time
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "Never".to_string());
 
         let pending_count = match noda_core::sync::queue::SyncQueue::load(&path).await {
             Ok(q) => q.len(),
@@ -2642,7 +2663,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_resolveConflict(
 
             {
                 let conn = db.conn.lock();
-                if let Err(e) = noda_core::database::queries::upsert_note(&conn, &restored_note, &relative_path, "dummy_hash") {
+                if let Err(e) = noda_core::database::queries::upsert_note(&conn, &restored_note, &relative_path, "dummy_hash", true) {
                     return format!("{{\"error\":\"Failed to update DB: {}\"}}", e);
                 }
             }
@@ -2999,20 +3020,26 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_clearRemoteTrackingCache
         Err(e) => return e,
     };
 
-    let path = {
+    let (path, db) = {
         let state = BRIDGE_STATE.read().unwrap();
-        match &state.vault_path {
+        let p = match &state.vault_path {
             Some(v) => v.clone(),
             None => return error_string(&mut env, "Vault path not initialized"),
-        }
+        };
+        let d = match &state.database {
+            Some(db_ref) => db_ref.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        };
+        (p, d)
     };
 
-    let result = get_runtime().block_on(async {
-        match noda_core::diagnostics::clear_sync_cache(&path).await {
+    let result = {
+        let conn = db.conn.lock();
+        match noda_core::diagnostics::clear_sync_cache(&conn, &path) {
             Ok(_) => "{\"success\":true}".to_string(),
             Err(e) => format!("{{\"error\":\"Failed to clear cache: {}\"}}", e),
         }
-    });
+    };
 
     env.new_string(result).unwrap().into_raw()
 }
@@ -3282,7 +3309,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_triggerDailyNote(
 
             {
                 let conn = db.conn.lock();
-                if let Err(e) = queries::upsert_note(&conn, &note, &note.file_path, "dummy_hash") {
+                if let Err(e) = queries::upsert_note(&conn, &note, &note.file_path, "dummy_hash", true) {
                     return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
                 }
             }
@@ -3333,7 +3360,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_triggerDailyNote(
 
             {
                 let conn = db.conn.lock();
-                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, "dummy_hash") {
+                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
                     return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
                 }
             }
@@ -3461,7 +3488,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_toggleTaskStatus(
             let relative_path = note.file_path.clone();
             {
                 let conn = db.conn.lock();
-                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, "dummy_hash") {
+                if let Err(e) = queries::upsert_note(&conn, &note, &relative_path, "dummy_hash", true) {
                     return format!("{{\"error\":\"upsert_note failed: {}\"}}", e);
                 }
             }

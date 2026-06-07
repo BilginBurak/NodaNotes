@@ -71,4 +71,24 @@ CREATE TABLE IF NOT EXISTS note_tags (
     FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
     FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
+
+-- Sync file states (relational tracking)
+CREATE TABLE IF NOT EXISTS sync_file_states (
+    path TEXT PRIMARY KEY,
+    etag TEXT,
+    last_modified TEXT,
+    size INTEGER NOT NULL,
+    local_updated_at TEXT,
+    hash TEXT NOT NULL,
+    is_dirty INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sync_file_states_hash ON sync_file_states(hash);
+
+-- Sync device states
+CREATE TABLE IF NOT EXISTS sync_device_states (
+    device_name TEXT PRIMARY KEY,
+    last_known_etag TEXT,
+    last_known_modified TEXT
+);
 "#;
+

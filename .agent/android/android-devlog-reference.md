@@ -892,3 +892,34 @@ Updated `saveActiveNote` inside [notes.ts](file:///Users/burakbilgin/Documents/K
     }
 ```
 This ensures that once a snapshot is taken (whether for auto-save, manual save, exit, or sync pre-saves), the session state is cleanly finalized, preventing redundant file modifications and resolving the infinite identical upload loop.
+
+---
+
+## 40. Relational SQLite Migration for Sync State & Double-Locked Fast-Check (June 2026)
+
+### 40.1 Architectural Migration (v5 Schema)
+* **Goal:** Completely eliminate the maintenance overhead, parsed I/O latency, and corruption vulnerabilities associated with the legacy file-based `.noda/sync/remote_state.json` cache.
+* **Database Tables:** Promoted the schema version to `5` (implemented migration v5 in `migrations.rs`). Introduced two new indexes and tables:
+  - `sync_file_states`: Relational mapping of `path` (TEXT PRIMARY KEY), `etag` (TEXT), `last_modified` (TEXT), `size` (INTEGER), `local_updated_at` (TEXT), and `hash` (TEXT NOT NULL).
+  - `sync_device_states`: Mapping of `device_name` (TEXT PRIMARY KEY), `last_known_etag` (TEXT), and `last_known_modified` (TEXT). The global timestamp is mapped to a special row key `"__last_sync_time__"`.
+* **Database Refactoring:** Refactored Tauri commands (`get_sync_status`, `get_note_metadata`), JNI bridges (`getSyncStatus`, `getNoteMetadata`, `clearRemoteTrackingCache`), and core diagnostics (`clear_sync_cache`) to acquire the database lock, pass the SQLite connection, and read/write the state safely.
+
+### 40.2 Double-Locked Content Hash Fast-Check
+* **Content Hashing:** Replaced fragile file modification time calculations (which are prone to operating system clock drift and sub-second precision loss) with absolute content hashing using the **XXH3 (64-bit hex encoded)** algorithm from the `xxhash-rust` library.
+* **Early Exit Tree:**
+  1. The sync engine checks `has_local_changes` by scanning all local notes and raw files, computing content hashes, and performing a strict comparison against the SQLite cache. If any local changes or untracked local files are found, it immediately bypasses fast-check and executes Delta Sync.
+  2. If local files are clean, it performs a single `PROPFIND` Depth 1 request on `.noda/sync/` to query remote `.sync` signatures.
+  3. Other devices' signatures are evaluated using **Strict String Equality (`==`)** of ETag and Last-Modified string tokens. No threshold window or tolerance limits are applied.
+  4. If all signatures match, the sync terminates successfully in **0.1 seconds** without scanning the remote directory tree (`list_remote_tree`) or creating delta plans.
+
+### 40.3 Strict Read/Write Separation (0-Byte Protocol)
+* **Zero-Byte Marker PUT:** Control files on WebDAV Sun-facing directories under `.noda/sync/` are written as empty (0-byte) files.
+* **No Unnecessary Signatures:** Only devices that have successfully pushed at least one file to the server during the current run (`report.uploads > 0`) are allowed to write/PUT their `.sync` file. Devices that perform pure downloads or idle passes must not touch their own sun-facing signature files, preventing infinite synchronization loops ("ping-ponging").
+
+### 40.4 Post-Sync OS Metadata Alignment & Attachment Registration
+* **Immediate OS Verification:** To mitigate race conditions stemming from I/O flushing latency, the sync engine executes `fs::metadata` immediately after writing local files. The exact timestamp returned by the operating system is locked into the SQLite `sync_file_states` table's `local_updated_at` field.
+* **Attachment Registration Fix:** After sync completion, all local files inside `.noda/attachments/*` that were not modified during sync (but exist on the WebDAV server) are registered in the local SQLite table with their sizes, actual OS timestamps, and computed hashes. This prevents subsequent fast-check cycles from falsely triggering bypasses with the error `"new raw file found locally"`.
+* **State Pruning:** Reconciles active devices on WebDAV during sync startup and cleanups. Orphaned/deleted device signatures are pruned from the local database.
+
+### 40.5 Time-Corrected Pre-Sync Snapshot Execution
+* **Pre-Sync Snapshots:** Moved the history snapshot block to execute strictly before any network requests or remote directory scans are performed, and only if `local_changed == true`. Writing to the vault or the history folder after WebDAV operations begin is strictly forbidden, ensuring full database consistency and clean logs.

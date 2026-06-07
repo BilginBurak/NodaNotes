@@ -108,9 +108,17 @@ pub async fn clear_sync_cache(state: State<'_, AppState>) -> Result<(), AppError
             message: "No active vault is currently open".to_string(),
         })?
     };
+
+    let db = {
+        let guard = state.database.read();
+        guard.clone().ok_or_else(|| AppError {
+            code: "DATABASE_NOT_INITIALIZED".to_string(),
+            message: "Database cache is not initialized".to_string(),
+        })?
+    };
     
-    noda_core::diagnostics::clear_sync_cache(&vault_path)
-        .await
+    let conn = db.conn.lock();
+    noda_core::diagnostics::clear_sync_cache(&conn, &vault_path)
         .map_err(AppError::from)
 }
 
@@ -159,7 +167,7 @@ pub async fn delete_duplicate_note_file(
     };
     
     let conn = db.conn.lock();
-    noda_core::database::queries::delete_note_by_path(&conn, &relative_path)
+    noda_core::database::queries::delete_note_by_path(&conn, &relative_path, true)
         .map_err(AppError::from)?;
         
     Ok(())

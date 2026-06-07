@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::schema::INIT_SCHEMA;
 use tracing::info;
 
-const CURRENT_SCHEMA_VERSION: i32 = 4;
+const CURRENT_SCHEMA_VERSION: i32 = 6;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     // Check if schema_version table exists
@@ -24,7 +24,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         .unwrap_or(0)
     } else {
         // First run, apply initial schema
-        info!("Applying initial database schema (v3)");
+        info!("Applying initial database schema (v5)");
         conn.execute_batch(INIT_SCHEMA)
             .map_err(|e| NodaError::Database(format!("Failed to apply initial schema: {}", e)))?;
         
@@ -36,6 +36,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         
         CURRENT_SCHEMA_VERSION
     };
+
 
     // Future migrations would go here
     if current_version < 2 {
@@ -97,7 +98,50 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         current_version = 4;
     }
 
+    if current_version < 5 {
+        info!("Applying database migration v5: adding sync_file_states and sync_device_states");
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS sync_file_states (
+                path TEXT PRIMARY KEY,
+                etag TEXT,
+                last_modified TEXT,
+                size INTEGER NOT NULL,
+                local_updated_at TEXT,
+                hash TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_sync_file_states_hash ON sync_file_states(hash);
+
+            CREATE TABLE IF NOT EXISTS sync_device_states (
+                device_name TEXT PRIMARY KEY,
+                last_known_etag TEXT,
+                last_known_modified TEXT
+            );
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v5: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (5)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 5;
+    }
+
+    if current_version < 6 {
+        info!("Applying database migration v6: adding is_dirty to sync_file_states");
+        conn.execute_batch(r#"
+            ALTER TABLE sync_file_states ADD COLUMN is_dirty INTEGER NOT NULL DEFAULT 0;
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v6: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (6)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 6;
+    }
+
     info!("Database is up to date (version {})", current_version);
     Ok(())
 }
+
 

@@ -102,13 +102,13 @@ pub async fn clear_sync_queue<P: AsRef<Path>>(vault_path: P) -> Result<(), NodaE
     Ok(())
 }
 
-/// Reset/delete the local remote state tracking cache `.noda/sync/remote_state.json`
-pub async fn clear_sync_cache<P: AsRef<Path>>(vault_path: P) -> Result<(), NodaError> {
-    let cache_path = vault_path.as_ref().join(".noda").join("sync").join("remote_state.json");
+/// Reset/delete the local remote state tracking cache in SQLite database, and remove remote_state.json if it exists
+pub fn clear_sync_cache(conn: &rusqlite::Connection, vault_path: &Path) -> Result<(), NodaError> {
+    let cache_path = vault_path.join(".noda").join("sync").join("remote_state.json");
     if cache_path.exists() {
-        tokio::fs::remove_file(cache_path).await.map_err(NodaError::Io)?;
+        let _ = std::fs::remove_file(cache_path);
     }
-    Ok(())
+    crate::database::queries::clear_sync_tables(conn)
 }
 
 /// Run SQLite VACUUM command to defragment, compress, and optimize database file
@@ -427,16 +427,17 @@ mod tests {
         tokio::fs::write(&queue_file, b"[]").await.unwrap();
         tokio::fs::write(&cache_file, b"{}").await.unwrap();
 
+        let db_path = dir.path().join("index.db");
+        let db = Database::open(&db_path).unwrap();
+        let conn = db.conn.lock();
+
         clear_sync_queue(dir.path()).await.unwrap();
-        clear_sync_cache(dir.path()).await.unwrap();
+        clear_sync_cache(&conn, dir.path()).unwrap();
 
         assert!(!queue_file.exists());
         assert!(!cache_file.exists());
 
         // 6. Test SQLite Vacuum
-        let db_path = dir.path().join("index.db");
-        let db = Database::open(&db_path).unwrap();
-        let conn = db.conn.lock();
         vacuum_database(&conn).unwrap();
     }
 

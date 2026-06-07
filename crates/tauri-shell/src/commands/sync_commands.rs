@@ -114,8 +114,14 @@ pub async fn get_sync_status(
         })?
     };
 
-    let last_sync_time = if let Some(path) = &vault_path {
-        match noda_core::sync::load_remote_state(path).await {
+    let db = {
+        let guard = state.database.read();
+        guard.clone()
+    };
+
+    let last_sync_time = if let (Some(_path), Some(db)) = (&vault_path, db) {
+        let conn = db.conn.lock();
+        match noda_core::sync::load_remote_state(&conn) {
             Ok(state) => state.last_sync_time.map(|t| t.to_rfc3339()),
             Err(_) => None,
         }
@@ -369,7 +375,7 @@ pub async fn resolve_conflict_keep_remote(
 
     {
         let conn = db.conn.lock();
-        noda_core::database::queries::upsert_note(&conn, &updated_note, &local_relative_path, "dummy_hash")
+        noda_core::database::queries::upsert_note(&conn, &updated_note, &local_relative_path, "dummy_hash", true)
             .map_err(AppError::from)?;
     }
 

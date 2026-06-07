@@ -111,30 +111,16 @@ pub fn is_remote_changed(remote: &RemoteEntry, previous: &RemoteFileMetadata) ->
 
 /// Returns true if local note is different from previous metadata
 pub fn is_local_changed(local: &Note, previous: &RemoteFileMetadata) -> bool {
-    // 1. Compare local.updated_at with previous.local_updated_at if available
-    if let Some(prev_local_up) = previous.local_updated_at {
-        if (local.updated_at - prev_local_up).num_seconds().abs() >= 1 {
-            return true;
-        }
-    } else {
-        // Fallback: if no local_updated_at is recorded (older vault state), use previous.last_modified
-        if let Some(prev_lm) = previous.last_modified {
-            if (local.updated_at - prev_lm).num_seconds().abs() >= 1 {
-                return true;
-            }
-        } else {
-            return true;
-        }
+    if !previous.is_dirty {
+        return false;
     }
+    let local_content = local.to_markdown().unwrap_or_default();
+    let local_hash = xxhash_rust::xxh3::xxh3_64(local_content.as_bytes());
+    let local_hash_hex = format!("{:016x}", local_hash);
 
-    // 2. size (local size vs previous size)
-    let local_size = local.to_markdown().map(|s| s.len() as u64).unwrap_or(0);
-    if local_size != previous.size {
-        return true;
-    }
-
-    false
+    local_hash_hex != previous.hash
 }
+
 
 /// Checks if local note content/metadata is identical to remote entry
 pub fn is_local_remote_identical(local: &Note, remote: &RemoteEntry) -> bool {
@@ -516,7 +502,10 @@ mod tests {
             last_modified: Some(now),
             size: 100,
             local_updated_at: Some(now),
+            hash: "dummyhash".to_string(),
+            is_dirty: false,
         });
+
 
         let plan = calculate_raw_delta(&local_raw, &remote_entries, &previous_state, "/vault");
         
@@ -597,7 +586,10 @@ mod tests {
                 last_modified: Some(prev_time),
                 size: 150,
                 local_updated_at: Some(prev_time),
+                hash: "oldhash".to_string(),
+                is_dirty: true,
             },
+
         );
 
         let plan = calculate_delta(&[local_note], &[remote], &previous, "/vault");

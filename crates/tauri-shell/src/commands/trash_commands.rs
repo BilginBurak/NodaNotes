@@ -68,7 +68,7 @@ pub async fn trash_note(
     // 2. Remove from database
     {
         let conn = db.conn.lock();
-        queries::delete_note(&conn, note_id).map_err(AppError::from)?;
+        queries::delete_note(&conn, note_id, true).map_err(AppError::from)?;
     }
 
     Ok(entry)
@@ -129,7 +129,7 @@ pub async fn restore_from_trash(
     // 4. Upsert back to SQLite database
     {
         let conn = db.conn.lock();
-        queries::upsert_note(&conn, &restored_note, &target_entry.original_path, "dummy_hash")
+        queries::upsert_note(&conn, &restored_note, &target_entry.original_path, "dummy_hash", true)
             .map_err(AppError::from)?;
     }
 

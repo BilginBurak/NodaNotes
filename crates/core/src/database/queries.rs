@@ -1,6 +1,8 @@
 //! Database queries for Note CRUD operations
 
 use crate::errors::NodaError;
+use std::path::Path;
+use tracing::info;
 use crate::models::note::{Note, NoteId, NoteMeta};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use ulid::Ulid;
@@ -183,7 +185,7 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
     Ok(())
 }
 
-pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &str) -> Result<(), NodaError> {
+pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &str, mark_dirty: bool) -> Result<(), NodaError> {
     let tags_json = serde_json::to_string(&note.tags).unwrap_or_else(|_| "[]".to_string());
     let parent_id_str = note.parent_id.map(|id| id.0.to_string());
     
@@ -223,10 +225,20 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, file_hash: &
     
     sync_note_tags(conn, note)?;
     
+    if mark_dirty {
+        set_file_dirty(conn, file_path, true)?;
+    }
+    
     Ok(())
 }
 
-pub fn delete_note(conn: &Connection, id: NoteId) -> Result<(), NodaError> {
+pub fn delete_note(conn: &Connection, id: NoteId, mark_dirty: bool) -> Result<(), NodaError> {
+    let file_path: Option<String> = conn.query_row(
+        "SELECT file_path FROM notes WHERE id = ?1",
+        params![id.0.to_string()],
+        |row| row.get(0)
+    ).optional().map_err(|e| NodaError::Database(format!("Failed to retrieve file_path for deletion: {}", e)))?;
+
     conn.execute("DELETE FROM notes WHERE id = ?1", params![id.0.to_string()])
         .map_err(|e| NodaError::Database(format!("Failed to delete note: {}", e)))?;
 
@@ -235,6 +247,12 @@ pub fn delete_note(conn: &Connection, id: NoteId) -> Result<(), NodaError> {
         "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)",
         [],
     ).ok();
+
+    if mark_dirty {
+        if let Some(path) = file_path {
+            set_file_dirty(conn, &path, true)?;
+        }
+    }
 
     Ok(())
 }
@@ -296,7 +314,7 @@ pub fn list_notes(conn: &Connection) -> Result<Vec<NoteMeta>, NodaError> {
     Ok(notes)
 }
 
-pub fn delete_note_by_path(conn: &Connection, file_path: &str) -> Result<(), NodaError> {
+pub fn delete_note_by_path(conn: &Connection, file_path: &str, mark_dirty: bool) -> Result<(), NodaError> {
     conn.execute("DELETE FROM notes WHERE file_path = ?1", params![file_path])
         .map_err(|e| NodaError::Database(format!("Failed to delete note by path: {}", e)))?;
 
@@ -305,6 +323,10 @@ pub fn delete_note_by_path(conn: &Connection, file_path: &str) -> Result<(), Nod
         "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)",
         [],
     ).ok();
+
+    if mark_dirty {
+        set_file_dirty(conn, file_path, true)?;
+    }
 
     Ok(())
 }
@@ -436,7 +458,325 @@ pub fn find_daily_note_id(conn: &Connection, date_str: &str) -> Result<Option<No
     }
 }
 
+pub fn load_remote_state(conn: &Connection) -> Result<crate::sync::remote_state::RemoteState, NodaError> {
+    use crate::sync::remote_state::{RemoteState, RemoteFileMetadata, DeviceMetadata};
+
+    let mut state = RemoteState::default();
+
+    // 1. Load last_sync_time and devices
+    let mut stmt = conn.prepare("SELECT device_name, last_known_etag, last_known_modified FROM sync_device_states")
+        .map_err(|e| NodaError::Database(format!("Prepare load_remote_state devices failed: {}", e)))?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+        ))
+    }).map_err(|e| NodaError::Database(format!("Query load_remote_state devices failed: {}", e)))?;
+
+    for row in rows {
+        let (device_name, etag, modified_str) = row.map_err(|e| NodaError::Database(format!("Row parsing failed in load_remote_state: {}", e)))?;
+        
+        let modified = modified_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
+
+        if device_name == "__last_sync_time__" {
+            state.last_sync_time = modified;
+        } else {
+            state.devices.insert(device_name, DeviceMetadata {
+                last_known_etag: etag,
+                last_known_modified: modified,
+            });
+        }
+    }
+
+    // 2. Load files
+    let mut stmt = conn.prepare("SELECT path, etag, last_modified, size, local_updated_at, hash, is_dirty FROM sync_file_states")
+        .map_err(|e| NodaError::Database(format!("Prepare load_remote_state files failed: {}", e)))?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, String>(5)?,
+            row.get::<_, i32>(6)?,
+        ))
+    }).map_err(|e| NodaError::Database(format!("Query load_remote_state files failed: {}", e)))?;
+
+    for row in rows {
+        let (path, etag, last_mod_str, size, local_up_str, hash, is_dirty_int) = row.map_err(|e| NodaError::Database(format!("Row parsing failed in load_remote_state files: {}", e)))?;
+
+        let last_modified = last_mod_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
+        let local_updated_at = local_up_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
+
+        state.files.insert(path, RemoteFileMetadata {
+            etag,
+            last_modified,
+            size: size as u64,
+            local_updated_at,
+            hash,
+            is_dirty: is_dirty_int != 0,
+        });
+    }
+
+    Ok(state)
+}
+
+pub fn save_remote_state(conn: &Connection, state: &crate::sync::remote_state::RemoteState) -> Result<(), NodaError> {
+    // Delete existing
+    conn.execute("DELETE FROM sync_device_states", [])
+        .map_err(|e| NodaError::Database(format!("Failed to delete sync_device_states: {}", e)))?;
+    conn.execute("DELETE FROM sync_file_states", [])
+        .map_err(|e| NodaError::Database(format!("Failed to delete sync_file_states: {}", e)))?;
+
+    // Insert last_sync_time
+    if let Some(ref lst) = state.last_sync_time {
+        conn.execute(
+            "INSERT INTO sync_device_states (device_name, last_known_etag, last_known_modified) VALUES (?1, ?2, ?3)",
+            params![
+                "__last_sync_time__",
+                None::<String>,
+                lst.to_rfc3339(),
+            ],
+        ).map_err(|e| NodaError::Database(format!("Failed to insert last_sync_time: {}", e)))?;
+    }
+
+    // Insert devices
+    let mut stmt = conn.prepare("INSERT INTO sync_device_states (device_name, last_known_etag, last_known_modified) VALUES (?1, ?2, ?3)")
+        .map_err(|e| NodaError::Database(format!("Prepare insert device failed: {}", e)))?;
+    for (name, meta) in &state.devices {
+        let lm_str = meta.last_known_modified.map(|dt| dt.to_rfc3339());
+        stmt.execute(params![
+            name,
+            meta.last_known_etag,
+            lm_str,
+        ]).map_err(|e| NodaError::Database(format!("Failed to insert device state for {}: {}", name, e)))?;
+    }
+    drop(stmt);
+
+    // Insert files
+    let mut stmt = conn.prepare("INSERT INTO sync_file_states (path, etag, last_modified, size, local_updated_at, hash, is_dirty) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+        .map_err(|e| NodaError::Database(format!("Prepare insert file state failed: {}", e)))?;
+    for (path, meta) in &state.files {
+        let lm_str = meta.last_modified.map(|dt| dt.to_rfc3339());
+        let lu_str = meta.local_updated_at.map(|dt| dt.to_rfc3339());
+        let is_dirty_int = if meta.is_dirty { 1 } else { 0 };
+        stmt.execute(params![
+            path,
+            meta.etag,
+            lm_str,
+            meta.size as i64,
+            lu_str,
+            meta.hash,
+            is_dirty_int,
+        ]).map_err(|e| NodaError::Database(format!("Failed to insert file state for {}: {}", path, e)))?;
+    }
+    drop(stmt);
+
+    Ok(())
+}
+
+pub fn set_file_dirty(conn: &Connection, path: &str, is_dirty: bool) -> Result<(), NodaError> {
+    conn.execute(
+        "INSERT INTO sync_file_states (path, size, hash, is_dirty) \
+         VALUES (?1, 0, '', ?2) \
+         ON CONFLICT(path) DO UPDATE SET is_dirty = excluded.is_dirty",
+        params![path, if is_dirty { 1 } else { 0 }],
+    ).map_err(|e| NodaError::Database(format!("Failed to set_file_dirty for {}: {}", path, e)))?;
+    Ok(())
+}
+
+pub fn check_file_mismatch(conn: &Connection, relative_path: &str, file_size: u64, file_mtime: DateTime<Utc>) -> Result<bool, NodaError> {
+    let mut stmt = conn.prepare("SELECT size, local_updated_at FROM sync_file_states WHERE path = ?1")
+        .map_err(|e| NodaError::Database(format!("Prepare check_file_mismatch failed: {}", e)))?;
+    let res = stmt.query_row(params![relative_path], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, Option<String>>(1)?,
+        ))
+    }).optional().map_err(|e| NodaError::Database(format!("Query check_file_mismatch failed: {}", e)))?;
+
+    if let Some((stored_size, stored_mtime_str)) = res {
+        if file_size != stored_size as u64 {
+            return Ok(true);
+        }
+        if let Some(stored_mtime_str) = stored_mtime_str {
+            if let Ok(stored_mtime) = DateTime::parse_from_rfc3339(&stored_mtime_str) {
+                let diff = (file_mtime - stored_mtime.with_timezone(&Utc)).num_seconds().abs();
+                if diff > 1 {
+                    return Ok(true);
+                }
+            } else {
+                return Ok(true);
+            }
+        } else {
+            return Ok(true);
+        }
+        Ok(false)
+    } else {
+        Ok(true)
+    }
+}
+
+pub fn run_cold_boot_scan(conn: &Connection, vault_path: &Path) -> Result<(), NodaError> {
+    info!("Running Cold Boot Light Scan on vault: {:?}", vault_path);
+    let mut scanned_paths = std::collections::HashSet::new();
+
+    let mut check_and_update_file = |rel_path: String, full_path: &Path| -> Result<(), NodaError> {
+        scanned_paths.insert(rel_path.clone());
+        if let Ok(meta) = std::fs::metadata(full_path) {
+            let size = meta.len();
+            let mtime = meta.modified()
+                .map(|t| chrono::DateTime::<chrono::Utc>::from(t))
+                .unwrap_or_else(|_| chrono::Utc::now());
+            
+            let is_mismatch = check_file_mismatch(conn, &rel_path, size, mtime)?;
+            if is_mismatch {
+                tracing::info!("Cold Boot Scan: Mismatch detected for {}, marking as dirty", rel_path);
+                set_file_dirty(conn, &rel_path, true)?;
+            }
+        }
+        Ok(())
+    };
+
+    // 1. Scan notes recursively
+    let mut stack = vec![vault_path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let ftype = match entry.file_type() {
+                    Ok(t) => t,
+                    _ => continue,
+                };
+                let path = entry.path();
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                
+                if name_str.starts_with('.') && name_str != ".templates" {
+                    continue;
+                }
+                
+                if ftype.is_dir() {
+                    stack.push(path);
+                } else if ftype.is_file() {
+                    if let Some(ext) = path.extension() {
+                        if ext == "md" || ext == "markdown" {
+                            if let Ok(rel) = path.strip_prefix(vault_path) {
+                                let rel_str = rel.to_string_lossy().to_string();
+                                check_and_update_file(rel_str, &path)?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Scan attachments
+    let attachments_dir = vault_path.join(".noda").join("attachments");
+    if attachments_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&attachments_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                    let path = entry.path();
+                    if let Ok(rel) = path.strip_prefix(vault_path) {
+                        let rel_str = rel.to_string_lossy().to_string();
+                        check_and_update_file(rel_str, &path)?;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Scan history
+    let history_dir = vault_path.join(".noda").join("history");
+    if history_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&history_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                    let path = entry.path();
+                    if let Ok(rel) = path.strip_prefix(vault_path) {
+                        let rel_str = rel.to_string_lossy().to_string();
+                        check_and_update_file(rel_str, &path)?;
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Identify files in state that no longer exist (deleted locally)
+    let mut stmt = conn.prepare("SELECT path FROM sync_file_states")
+        .map_err(|e| NodaError::Database(format!("Prepare check deleted files failed: {}", e)))?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| NodaError::Database(format!("Query check deleted files failed: {}", e)))?;
+
+    for path_res in rows {
+        if let Ok(path) = path_res {
+            if path.starts_with(".noda/sync/") {
+                continue;
+            }
+            if !scanned_paths.contains(&path) {
+                tracing::info!("Cold Boot Scan: File {} no longer exists on disk, marking as dirty", path);
+                set_file_dirty(conn, &path, true)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn list_full_notes(conn: &Connection) -> Result<Vec<Note>, NodaError> {
+    let mut stmt = conn.prepare(r#"
+        SELECT 
+            id, 
+            parent_id, 
+            title, 
+            body, 
+            color, 
+            pinned, 
+            (
+                SELECT COALESCE(json_group_array(t.name), '[]')
+                FROM note_tags nt
+                JOIN tags t ON nt.tag_id = t.id
+                WHERE nt.note_id = notes.id AND nt.source = 'yaml'
+            ) as yaml_tags, 
+            (
+                SELECT COALESCE(json_group_array(t.name), '[]')
+                FROM note_tags nt
+                JOIN tags t ON nt.tag_id = t.id
+                WHERE nt.note_id = notes.id AND nt.source = 'inline'
+            ) as inline_tags, 
+            status, 
+            created, 
+            updated, 
+            file_path 
+        FROM notes
+    "#).map_err(|e| NodaError::Database(format!("Prepare list_full_notes failed: {}", e)))?;
+
+    let rows = stmt.query_map([], row_to_note)
+        .map_err(|e| NodaError::Database(format!("Query map list_full_notes failed: {}", e)))?;
+
+    let mut notes = Vec::new();
+    for row in rows {
+        match row {
+            Ok(n) => notes.push(n),
+            Err(e) => return Err(NodaError::Database(format!("Row parsing failed in list_full_notes: {}", e))),
+        }
+    }
+    Ok(notes)
+}
+
+pub fn clear_sync_tables(conn: &Connection) -> Result<(), NodaError> {
+    conn.execute("DELETE FROM sync_device_states", [])
+        .map_err(|e| NodaError::Database(format!("Failed to clear sync_device_states: {}", e)))?;
+    conn.execute("DELETE FROM sync_file_states", [])
+        .map_err(|e| NodaError::Database(format!("Failed to clear sync_file_states: {}", e)))?;
+    Ok(())
+}
+
 #[cfg(test)]
+
 
 mod tests {
     use super::*;
@@ -476,7 +816,7 @@ mod tests {
         assert_eq!(fetched2.title, "Updated Note");
 
         // Delete
-        delete_note(&conn, note.id).unwrap();
+        delete_note(&conn, note.id, false).unwrap();
         let list2 = list_notes(&conn).unwrap();
         assert_eq!(list2.len(), 0);
     }

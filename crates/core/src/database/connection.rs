@@ -65,6 +65,11 @@ impl Database {
             let notes = crate::vault::scan::scan_vault(vault_path).await?;
             let mut conn = db.conn.lock();
             crate::database::rebuild::rebuild_database_sync(&notes, &mut conn)?;
+        } else {
+            let mut conn = db.conn.lock();
+            if let Err(e) = crate::database::queries::run_cold_boot_scan(&mut conn, vault_path) {
+                tracing::error!("Cold Boot Light Scan failed: {:?}", e);
+            }
         }
 
         Ok(db)
@@ -86,7 +91,7 @@ mod tests {
         
         // Verify schema version
         let version: i32 = conn.query_row("SELECT MAX(version) FROM schema_version", [], |row| row.get(0)).unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 6);
         
         // Verify notes table exists
         let table_count: i32 = conn.query_row(

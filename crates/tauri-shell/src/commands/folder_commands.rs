@@ -92,7 +92,7 @@ pub async fn delete_folder(
         // Remove from SQLite
         {
             let conn = db.conn.lock();
-            queries::delete_note(&conn, note.id).map_err(AppError::from)?;
+            queries::delete_note(&conn, note.id, true).map_err(AppError::from)?;
         }
     }
 
