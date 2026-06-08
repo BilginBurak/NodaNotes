@@ -966,3 +966,33 @@ This ensures that once a snapshot is taken (whether for auto-save, manual save, 
 ### 43.2 SQLite WAL/SHM File Cleanup on Rebuild
 * **Problem:** When `Database::open` failed due to the aborted migration/corruption, the fallback logic inside `Database::open_or_rebuild` deleted `index.db` but left the Write-Ahead Log (`index.db-wal`) and Shared Memory (`index.db-shm`) sidecar files intact. When the app retried `open`, SQLite attempted WAL recovery by matching the stale WAL/SHM files with the newly created, empty 0-byte `index.db` file. This caused recovery to fail, resulting in a persistent `Database error: Failed to check schema version: disk I/O error` error popup.
 * **Solution:** Updated `Database::open_or_rebuild` in [connection.rs](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/crates/core/src/database/connection.rs) to explicitly delete `index.db-wal` and `index.db-shm` if they exist whenever deleting the corrupt `index.db`. This guarantees a completely fresh SQLite state on database rebuilds.
+
+---
+
+## 44. Git-style Manifest Tree & Multi-Device Sequential Memory-Diff (June 2026)
+
+### 44.1 Git-style Manifest Tree Architecture
+* **Goal:** Eliminate recursive directory scans and optimize WebDAV traffic to resolve the "Sleeping Device Paradox."
+* **Structure:** Introduced `VaultManifest` representing a snapshot of the vault's file states, mapped as a flat JSON file containing a dictionary of relative file paths to their XXH3 content hashes:
+  ```json
+  {
+    "files": {
+      "01KSBN3M3TCRS9344JMA1THR75.md": "f62b76acde3014a",
+      ".noda/attachments/xxh3_265b76ac.jpg": "2138acbd99104fa"
+    }
+  }
+  ```
+* **Storage location:**
+  - Local cached copy: `.noda/sync/manifests/manifest_[device_name].json`
+  - WebDAV remote location: `.noda/sync/manifests/manifest_[device_name].json`
+
+### 44.2 Multi-Device Sequential Memory-Diff Engine
+* **Execution flow:**
+  1. The sync engine checks for local changes using the O(1) dirty flag in `sync_file_states`. If local changes exist, it uploads them to the server.
+  2. It generates a new local manifest (`manifest_[my_device].json`) and uploads it to `.noda/sync/manifests/` along with updating its `my_device.sync` zero-byte marker.
+  3. Next, the engine scans the `.noda/sync/` directory. For each other active device whose `.sync` signature does not match the cached `sync_device_states` entry, it downloads the remote device's manifest (`manifest_[other_device].json`).
+  4. The engine compares the downloaded remote manifest in-memory with the previous local manifest cached for that device (`manifest_[other_device].json`) and the current local SQLite states:
+     - **Remote Delete:** If a file exists in the previous manifest but is missing in the new remote manifest, and has not been modified locally, the file is deleted locally.
+     - **Remote Add/Update:** If a file has a new/changed hash in the remote manifest compared to the previous manifest or local SQLite state, the engine downloads the file.
+     - **Conflict Detection:** If the same file is modified locally and has a changed hash remote, or if a deleted remote file has local changes, a sync conflict is triggered. The conflict is handled by archiving the local note with the device name appended and updating the local copy with the remote state.
+  5. After applying all changes, the engine updates local SQLite states and `fs::metadata` timestamps (Post-Sync Verification).

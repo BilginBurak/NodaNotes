@@ -12,8 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::errors::NodaError;
 use crate::database::connection::Database;
 use crate::sync::client::{WebDavClient, RemoteEntry};
-use crate::sync::traversal::list_remote_tree;
-use crate::sync::delta::{calculate_delta, calculate_raw_delta, LocalRawFile, SyncAction};
+use crate::sync::delta::SyncAction;
 use crate::sync::remote_state::{load_remote_state, save_remote_state, RemoteState, RemoteFileMetadata};
 use crate::sync::queue::SyncQueue;
 use crate::sync::conflict::{handle_conflict, ConflictEntry};
@@ -264,7 +263,7 @@ impl SyncEngine {
             load_remote_state(&conn).unwrap_or_default()
         };
 
-        // Step 2: Fast-Check — O(1) query for local changes
+        // Step 2: Check for local changes (O(1))
         let local_changed = {
             let conn = database.conn.lock();
             let has_tracking = conn.query_row(
@@ -284,246 +283,115 @@ impl SyncEngine {
             }
         };
 
-        let mut local_notes = Vec::new();
-        let mut local_raw = Vec::new();
+        let mut report = SyncReport::default();
 
+        // If local is dirty, perform local mutations (Upload / DeleteRemote)
         if local_changed {
-            // Load local notes from the SQLite database cache instead of scan_vault to save IO
-            let notes_res = {
+            tracing::info!("Local changes detected. Performing local mutations.");
+            let dirty_files = {
                 let conn = database.conn.lock();
-                crate::database::queries::list_full_notes(&conn)
-            };
-            local_notes = match notes_res {
-                Ok(notes) => notes,
-                Err(e) => {
-                    self.update_status(SyncStatus::Error(format!("Local database notes load failed: {}", e)));
-                    return Err(e);
-                }
-            };
-
-            // Pre-Sync Snapshot timing alignment
-            for note in &local_notes {
-                let is_dirty = {
-                    let conn = database.conn.lock();
-                    conn.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM sync_file_states WHERE path = ?1 AND is_dirty = 1)",
-                        rusqlite::params![note.file_path],
-                        |row| row.get::<_, i32>(0)
-                    ).unwrap_or(0) != 0
-                };
-
-                if is_dirty {
-                    if let Ok(snaps) = crate::history::list_snapshots(vault_path, note.id).await {
-                        let needs_snapshot = if let Some(latest_snap) = snaps.first() {
-                            if let Ok(restored_note) = crate::history::restore(vault_path, latest_snap).await {
-                                note.body != restored_note.body || note.title != restored_note.title || note.tags != restored_note.tags
-                            } else {
-                                true
-                            }
-                        } else {
-                            true
-                        };
-
-                        if needs_snapshot {
-                            let _ = crate::history::snapshot(vault_path, note, "Pre-Sync").await;
-                        }
+                let mut stmt = conn.prepare("SELECT path, hash FROM sync_file_states WHERE is_dirty = 1").unwrap();
+                let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))).unwrap();
+                let mut list = Vec::new();
+                for r in rows {
+                    if let Ok(item) = r {
+                        list.push(item);
                     }
+                }
+                list
+            };
+
+            let vault_service = VaultService::new(vault_path).map_err(|e| NodaError::Vault(e.to_string()))?;
+            let mut actions = Vec::new();
+
+            for (rel_path, _hash) in dirty_files {
+                let full_path = vault_path.join(&rel_path);
+                if full_path.exists() {
+                    actions.push(SyncAction::Upload { relative_path: rel_path });
+                } else {
+                    actions.push(SyncAction::DeleteRemote { relative_path: rel_path });
                 }
             }
 
-            local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
-        }
+            if !actions.is_empty() {
+                let mut sync_queue = SyncQueue::load(vault_path).await?;
+                sync_queue.enqueue_batch(actions).await?;
+                let entries = sync_queue.take_entries();
 
-        // Step 4: Fast-Check remote validation (if local is clean)
-        let mut fast_check_ok = false;
+                if !entries.is_empty() {
+                    let client_arc = Arc::new(WebDavClient::new(
+                        &config.webdav_url,
+                        &config.webdav_username,
+                        config.webdav_password.as_deref().unwrap_or(""),
+                    )?);
 
-        if !local_changed {
-            tracing::info!("No local changes detected. Initiating Fast-Check remote validation.");
-            let sync_dir_path = ".noda/sync";
-            let res = client.propfind(sync_dir_path, 1).await;
-            
-            if let Ok(ref remote_sync_entries) = res {
-                let mut active_remote_devices = std::collections::HashSet::new();
-                let mut pruning_happened = false;
+                    let vault_path_arc = Arc::new(vault_path.to_path_buf());
+                    let database_clone = database.clone();
+                    let remote_entries_arc = Arc::new(Vec::new());
+                    let remote_state_arc = Arc::new(parking_lot::Mutex::new(remote_state.clone()));
+                    let report_arc = Arc::new(parking_lot::Mutex::new(report.clone()));
+                    let vault_service_arc = Arc::new(vault_service.clone());
+                    let conflict_callback_clone = self.conflict_callback.read().clone();
 
-                // 1. Reconcile / prune ghost devices first
-                for entry in remote_sync_entries {
-                    if entry.is_collection {
-                        continue;
-                    }
-                    let rel_path = crate::sync::delta::get_relative_path(&entry.href, "");
-                    let filename = std::path::Path::new(&rel_path)
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("");
+                    let mut join_set = tokio::task::JoinSet::new();
+                    let concurrency_limit = 10;
+                    let mut active_tasks = 0;
+                    let mut failed_entries = Vec::new();
+                    let mut sync_error: Option<NodaError> = None;
 
-                    if filename.ends_with(".sync") {
-                        let device_name = filename.strip_suffix(".sync").unwrap_or(filename).to_string();
-                        active_remote_devices.insert(device_name);
-                    }
-                }
+                    for entry in entries {
+                        if active_tasks >= concurrency_limit {
+                            if let Some(res) = join_set.join_next().await {
+                                active_tasks -= 1;
+                                match res {
+                                    Ok(Ok(())) => {}
+                                    Ok(Err((failed_entry, path, err))) => {
+                                        tracing::error!("Action failed for {}: {}", path, err);
+                                        failed_entries.push(failed_entry);
+                                        if sync_error.is_none() {
+                                            sync_error = Some(err);
+                                        }
+                                    }
+                                    Err(join_err) => {
+                                        tracing::error!("Tokio join error: {}", join_err);
+                                    }
+                                }
+                            }
+                        }
 
-                // Prune local cached devices that are no longer active on the WebDAV server
-                let local_device_keys: Vec<String> = remote_state.devices.keys().cloned().collect();
-                for cached_device in local_device_keys {
-                    if cached_device != config.device_name && !active_remote_devices.contains(&cached_device) {
-                        tracing::info!("Pruning ghost device {} from local state", cached_device);
-                        remote_state.devices.remove(&cached_device);
-                        pruning_happened = true;
-                    }
-                }
-
-                if pruning_happened {
-                    let conn = database.conn.lock();
-                    let _ = save_remote_state(&conn, &remote_state);
-                }
-
-                // 2. Perform validation against other devices
-                let mut check_passed = true;
-                let mut remote_other_sync_paths = std::collections::HashSet::new();
-
-                for entry in remote_sync_entries {
-                    if entry.is_collection {
-                        continue;
-                    }
-                    let rel_path = crate::sync::delta::get_relative_path(&entry.href, "");
-                    let filename = std::path::Path::new(&rel_path)
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("");
-
-                    if filename.ends_with(".sync") {
-                        let device_name = filename.strip_suffix(".sync").unwrap_or(filename).to_string();
-                        // Skip our own device
-                        if device_name == config.device_name {
+                        if sync_error.is_some() {
+                            failed_entries.push(entry);
                             continue;
                         }
-                        remote_other_sync_paths.insert(device_name.clone());
 
-                        if let Some(cached_device) = remote_state.devices.get(&device_name) {
-                            // Strict String Equality (==) for ETag and Last-Modified
-                            let etag_matches = match (&entry.etag, &cached_device.last_known_etag) {
-                                (Some(e1), Some(e2)) => e1 == e2,
-                                _ => false,
+                        let client_c = client_arc.clone();
+                        let vp_c = vault_path_arc.clone();
+                        let db_c = database_clone.clone();
+                        let re_c = remote_entries_arc.clone();
+                        let rs_c = remote_state_arc.clone();
+                        let rep_c = report_arc.clone();
+                        let vs_c = vault_service_arc.clone();
+                        let cc_c = conflict_callback_clone.clone();
+
+                        let action = entry.action.clone();
+                        active_tasks += 1;
+                        join_set.spawn(async move {
+                            let path = match &action {
+                                SyncAction::Upload { relative_path } => relative_path.clone(),
+                                SyncAction::Download { relative_path, .. } => relative_path.clone(),
+                                SyncAction::DeleteRemote { relative_path } => relative_path.clone(),
+                                SyncAction::DeleteLocal { relative_path } => relative_path.clone(),
+                                SyncAction::Conflict { relative_path, .. } => relative_path.clone(),
                             };
-
-                            let lm_matches = match (&entry.last_modified, &cached_device.last_known_modified) {
-                                (Some(lm1), Some(lm2)) => lm1 == &lm2.to_rfc3339() || {
-                                    if let Some(dt1) = crate::sync::delta::parse_last_modified(lm1) {
-                                        dt1 == *lm2
-                                    } else {
-                                        false
-                                    }
-                                },
-                                _ => false,
-                            };
-
-                            if !etag_matches && !lm_matches {
-                                tracing::info!(
-                                    "fast-check: remote device {} signature mismatch (etag matches: {}, lm matches: {}), bypassing",
-                                    device_name, etag_matches, lm_matches
-                                );
-                                check_passed = false;
-                                break;
+                            if let Err(e) = execute_single_action(&action, &client_c, &vp_c, &db_c, &re_c, &rs_c, &rep_c, &vs_c, &cc_c).await {
+                                Err((entry, path, e))
+                            } else {
+                                Ok(())
                             }
-                        } else {
-                            tracing::info!("fast-check: new remote device found: {}, bypassing", device_name);
-                            check_passed = false;
-                            break;
-                        }
+                        });
                     }
-                }
 
-                if check_passed {
-                    for (device_name, _) in &remote_state.devices {
-                        if device_name != &config.device_name && !remote_other_sync_paths.contains(device_name) {
-                            tracing::info!("Cached remote device {} sync file no longer exists, bypassing fast-check", device_name);
-                            check_passed = false;
-                            break;
-                        }
-                    }
-                }
-
-                if check_passed {
-                    fast_check_ok = true;
-                }
-            }
-        }
-
-        if fast_check_ok {
-            tracing::info!("Fast-check succeeded. No local or remote changes. Early exit.");
-            self.update_status(SyncStatus::Idle);
-            if let Some(cb) = &*self.sync_finished_callback.read() {
-                cb(SyncReport::default());
-            }
-            return Ok(SyncReport::default());
-        }
-
-        if !local_changed {
-            let notes_res = {
-                let conn = database.conn.lock();
-                crate::database::queries::list_full_notes(&conn)
-            };
-            local_notes = match notes_res {
-                Ok(notes) => notes,
-                Err(e) => {
-                    self.update_status(SyncStatus::Error(format!("Local database notes load failed: {}", e)));
-                    return Err(e);
-                }
-            };
-            local_raw = scan_local_raw_files(vault_path).await.unwrap_or_default();
-        }
-
-        let mut sync_queue = SyncQueue::load(vault_path).await?;
-        let vault_service = VaultService::new(vault_path).map_err(|e| NodaError::Vault(e.to_string()))?;
-
-        // Step 5: Full scan & traversal
-        let remote_entries = match list_remote_tree(&client, "").await {
-            Ok(entries) => entries,
-            Err(e) => {
-                self.update_status(SyncStatus::Error(format!("Remote traversal failed: {}", e)));
-                return Err(e);
-            }
-        };
-
-        // Calculate delta plans
-        let note_plan = calculate_delta(&local_notes, &remote_entries, &remote_state, "");
-        let raw_plan = calculate_raw_delta(&local_raw, &remote_entries, &remote_state, "");
-
-        // Queue all actions in a single batch
-        let all_actions: Vec<SyncAction> = note_plan.actions.into_iter().chain(raw_plan.actions.into_iter()).collect();
-        if !all_actions.is_empty() {
-            sync_queue.enqueue_batch(all_actions).await?;
-        }
-
-        let mut report = SyncReport::default();
-        let entries = sync_queue.take_entries();
-
-        if !entries.is_empty() {
-            let client_arc = Arc::new(WebDavClient::new(
-                &config.webdav_url,
-                &config.webdav_username,
-                config.webdav_password.as_deref().unwrap_or(""),
-            )?);
-
-            let vault_path_arc = Arc::new(vault_path.to_path_buf());
-            let database_clone = database.clone();
-            let remote_entries_arc = Arc::new(remote_entries.clone());
-            let remote_state_arc = Arc::new(parking_lot::Mutex::new(remote_state.clone()));
-            let report_arc = Arc::new(parking_lot::Mutex::new(SyncReport::default()));
-            let vault_service_arc = Arc::new(vault_service);
-            let conflict_callback_clone = self.conflict_callback.read().clone();
-
-            let mut join_set = tokio::task::JoinSet::new();
-            let concurrency_limit = 10;
-            let mut active_tasks = 0;
-            let mut failed_entries = Vec::new();
-            let mut sync_error: Option<NodaError> = None;
-
-            for entry in entries {
-                if active_tasks >= concurrency_limit {
-                    if let Some(res) = join_set.join_next().await {
-                        active_tasks -= 1;
+                    while let Some(res) = join_set.join_next().await {
                         match res {
                             Ok(Ok(())) => {}
                             Ok(Err((failed_entry, path, err))) => {
@@ -538,158 +406,85 @@ impl SyncEngine {
                             }
                         }
                     }
-                }
 
-                if sync_error.is_some() {
-                    failed_entries.push(entry);
-                    continue;
-                }
+                    remote_state = Arc::try_unwrap(remote_state_arc).unwrap().into_inner();
+                    report = Arc::try_unwrap(report_arc).unwrap().into_inner();
 
-                let client_c = client_arc.clone();
-                let vp_c = vault_path_arc.clone();
-                let db_c = database_clone.clone();
-                let re_c = remote_entries_arc.clone();
-                let rs_c = remote_state_arc.clone();
-                let rep_c = report_arc.clone();
-                let vs_c = vault_service_arc.clone();
-                let cc_c = conflict_callback_clone.clone();
-
-                let action = entry.action.clone();
-                active_tasks += 1;
-                join_set.spawn(async move {
-                    let path = match &action {
-                        SyncAction::Upload { relative_path } => relative_path.clone(),
-                        SyncAction::Download { relative_path, .. } => relative_path.clone(),
-                        SyncAction::DeleteRemote { relative_path } => relative_path.clone(),
-                        SyncAction::DeleteLocal { relative_path } => relative_path.clone(),
-                        SyncAction::Conflict { relative_path, .. } => relative_path.clone(),
-                    };
-                    if let Err(e) = execute_single_action(&action, &client_c, &vp_c, &db_c, &re_c, &rs_c, &rep_c, &vs_c, &cc_c).await {
-                        Err((entry, path, e))
+                    if !failed_entries.is_empty() {
+                        if let Err(eq_err) = sync_queue.set_entries(failed_entries).await {
+                            tracing::error!("Failed to re-enqueue failed actions: {}", eq_err);
+                        }
+                        if let Some(err) = sync_error {
+                            self.update_status(SyncStatus::Error(format!("Sync failed: {}", err)));
+                            return Err(err);
+                        }
                     } else {
-                        Ok(())
-                    }
-                });
-            }
-
-            while let Some(res) = join_set.join_next().await {
-                match res {
-                    Ok(Ok(())) => {}
-                    Ok(Err((failed_entry, path, err))) => {
-                        tracing::error!("Action failed for {}: {}", path, err);
-                        failed_entries.push(failed_entry);
-                        if sync_error.is_none() {
-                            sync_error = Some(err);
+                        if let Err(clear_err) = sync_queue.set_entries(Vec::new()).await {
+                            tracing::error!("Failed to clear sync queue on completion: {}", clear_err);
                         }
                     }
-                    Err(join_err) => {
-                        tracing::error!("Tokio join error: {}", join_err);
-                    }
                 }
             }
 
-            remote_state = Arc::try_unwrap(remote_state_arc).unwrap().into_inner();
-            report = Arc::try_unwrap(report_arc).unwrap().into_inner();
-
-            if !failed_entries.is_empty() {
-                if let Err(eq_err) = sync_queue.set_entries(failed_entries).await {
-                    tracing::error!("Failed to re-enqueue failed actions: {}", eq_err);
-                }
-                if let Some(err) = sync_error {
-                    self.update_status(SyncStatus::Error(format!("Sync failed: {}", err)));
-                    return Err(err);
-                }
-            } else {
-                if let Err(clear_err) = sync_queue.set_entries(Vec::new()).await {
-                    tracing::error!("Failed to clear sync queue on completion: {}", clear_err);
-                }
-            }
-        }
-
-        // For any files that were already identical and had no action, ensure they are in remote_state
-        let local_map: std::collections::HashMap<String, &Note> = local_notes
-            .iter()
-            .map(|n| (n.file_path.clone(), n))
-            .collect();
-
-        let remote_map: std::collections::HashMap<String, &RemoteEntry> = remote_entries
-            .iter()
-            .filter(|e| !e.is_collection)
-            .map(|e| (crate::sync::delta::get_relative_path(&e.href, ""), e))
-            .collect();
-
-        for (path, local_note) in &local_map {
-            if !remote_state.files.contains_key(path) {
-                if let Some(remote_entry) = remote_map.get(path) {
-                    if crate::sync::delta::is_local_remote_identical(local_note, remote_entry) {
-                        let lm = remote_entry.last_modified.as_ref()
-                            .and_then(|s| crate::sync::delta::parse_last_modified(s));
-                        let local_content = local_note.to_markdown().unwrap_or_default();
-                        let local_hash = xxhash_rust::xxh3::xxh3_64(local_content.as_bytes());
-                        let hash_hex = format!("{:016x}", local_hash);
-                        remote_state.files.insert(path.clone(), RemoteFileMetadata {
-                            etag: remote_entry.etag.clone(),
-                            last_modified: lm,
-                            size: remote_entry.size.unwrap_or(0),
-                            local_updated_at: Some(local_note.updated_at),
-                            hash: hash_hex,
-                                is_dirty: false,
-                        });
-                    }
+            // Sync updated remote_state to local database
+            {
+                let conn = database.conn.lock();
+                for (path, meta) in &remote_state.files {
+                    let is_dirty_int = if meta.is_dirty { 1 } else { 0 };
+                    let lm_str = meta.last_modified.map(|dt| dt.to_rfc3339());
+                    let lu_str = meta.local_updated_at.map(|dt| dt.to_rfc3339());
+                    conn.execute(
+                        "INSERT INTO sync_file_states (path, etag, last_modified, size, local_updated_at, hash, is_dirty) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+                         ON CONFLICT(path) DO UPDATE SET etag=excluded.etag, last_modified=excluded.last_modified, size=excluded.size, local_updated_at=excluded.local_updated_at, hash=excluded.hash, is_dirty=excluded.is_dirty",
+                        rusqlite::params![path, meta.etag, lm_str, meta.size as i64, lu_str, meta.hash, is_dirty_int],
+                    ).ok();
                 }
             }
-        }
 
-        // For any raw/attachment files that were already identical and had no action, ensure they are in remote_state
-        for local_raw_file in &local_raw {
-            let path = &local_raw_file.relative_path;
-            if !remote_state.files.contains_key(path) {
-                if let Some(remote_entry) = remote_map.get(path) {
-                    let remote_size = remote_entry.size.unwrap_or(local_raw_file.size);
-                    let lm = remote_entry.last_modified.as_ref()
+            // Generate and upload local manifest tree
+            let local_manifest = {
+                let conn = database.conn.lock();
+                crate::sync::manifest::generate_manifest(&conn, vault_path)?
+            };
+            let manifest_json = serde_json::to_string_pretty(&local_manifest)
+                .map_err(|e| NodaError::Sync(format!("Failed to serialize manifest: {}", e)))?;
+            
+            let manifest_rel_path = format!(".noda/sync/manifests/manifest_{}.json", config.device_name);
+            let _ = client.mkcol(".noda/sync/manifests").await;
+            client.put(&manifest_rel_path, manifest_json.as_bytes().to_vec()).await?;
+
+            // Save locally
+            let local_manifest_path = vault_path.join(".noda/sync/manifests").join(format!("manifest_{}.json", config.device_name));
+            if let Some(parent) = local_manifest_path.parent() {
+                let _ = tokio::fs::create_dir_all(parent).await;
+            }
+            let _ = tokio::fs::write(&local_manifest_path, manifest_json.as_bytes()).await;
+
+            // Upload 0-byte .sync signature
+            let our_sync_file_name = format!("{}.sync", config.device_name);
+            let our_sync_rel_path = format!(".noda/sync/{}", our_sync_file_name);
+            client.put(&our_sync_rel_path, Vec::new()).await?;
+
+            // Capture the server's ETag for our sync file
+            if let Ok(mut entries) = client.propfind(&our_sync_rel_path, 0).await {
+                if let Some(entry) = entries.pop() {
+                    let lm = entry.last_modified.as_ref()
                         .and_then(|s| crate::sync::delta::parse_last_modified(s));
-                    let raw_bytes = std::fs::read(vault_path.join(path)).unwrap_or_default();
-                    let raw_hash = xxhash_rust::xxh3::xxh3_64(&raw_bytes);
-                    let hash_hex = format!("{:016x}", raw_hash);
-                    remote_state.files.insert(path.clone(), RemoteFileMetadata {
-                        etag: remote_entry.etag.clone(),
-                        last_modified: lm,
-                        size: remote_size,
-                        local_updated_at: Some(local_raw_file.modified),
-                        hash: hash_hex,
-                                is_dirty: false,
+                    remote_state.devices.insert(config.device_name.clone(), crate::sync::remote_state::DeviceMetadata {
+                        last_known_etag: entry.etag,
+                        last_known_modified: lm,
                     });
                 }
             }
         }
 
-
-        // Upload our own empty (0-byte) .sync file only if local changes were made/uploaded
-        if report.uploads > 0 {
-            let our_sync_file_name = format!("{}.sync", config.device_name);
-            let our_sync_rel_path = format!(".noda/sync/{}", our_sync_file_name);
-
-            if let Err(e) = client.put(&our_sync_rel_path, Vec::new()).await {
-                tracing::error!("Failed to upload our sync file: {}", e);
-            } else {
-                // Fetch our newly uploaded .sync file ETag using propfind depth 0
-                if let Ok(mut entries) = client.propfind(&our_sync_rel_path, 0).await {
-                    if let Some(entry) = entries.pop() {
-                        let lm = entry.last_modified.as_ref()
-                            .and_then(|s| crate::sync::delta::parse_last_modified(s));
-                        remote_state.devices.insert(config.device_name.clone(), crate::sync::remote_state::DeviceMetadata {
-                            last_known_etag: entry.etag,
-                            last_known_modified: lm,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Fetch all remote .sync signatures and update remote_state.devices
-        // Fetch all remote .sync signatures, update remote_state.devices, and prune missing ones
-        if let Ok(remote_sync_entries) = client.propfind(".noda/sync", 1).await {
+        // Step 6: Sequential Fetch & Process other devices' changes
+        let sync_dir_path = ".noda/sync";
+        let res = client.propfind(sync_dir_path, 1).await;
+        if let Ok(ref remote_sync_entries) = res {
             let mut active_remote_devices = std::collections::HashSet::new();
+            let mut changed_devices = Vec::new();
 
             for entry in remote_sync_entries {
                 if entry.is_collection {
@@ -703,29 +498,436 @@ impl SyncEngine {
 
                 if filename.ends_with(".sync") {
                     let device_name = filename.strip_suffix(".sync").unwrap_or(filename).to_string();
+                    if device_name == config.device_name {
+                        continue;
+                    }
                     active_remote_devices.insert(device_name.clone());
 
-                    let lm = entry.last_modified.as_ref()
-                        .and_then(|s| crate::sync::delta::parse_last_modified(s));
+                    let mut signature_changed = true;
+                    if let Some(cached_device) = remote_state.devices.get(&device_name) {
+                        let etag_matches = match (&entry.etag, &cached_device.last_known_etag) {
+                            (Some(e1), Some(e2)) => e1 == e2,
+                            _ => false,
+                        };
+                        let lm_matches = match (&entry.last_modified, &cached_device.last_known_modified) {
+                            (Some(lm1), Some(lm2)) => lm1 == &lm2.to_rfc3339() || {
+                                if let Some(dt1) = crate::sync::delta::parse_last_modified(lm1) {
+                                    dt1 == *lm2
+                                } else {
+                                    false
+                                }
+                            },
+                            _ => false,
+                        };
+                        if etag_matches || lm_matches {
+                            signature_changed = false;
+                        }
+                    }
 
-                    remote_state.devices.insert(device_name, crate::sync::remote_state::DeviceMetadata {
-                        last_known_etag: entry.etag,
-                        last_known_modified: lm,
-                    });
+                    if signature_changed {
+                        changed_devices.push((device_name, entry.clone()));
+                    }
                 }
             }
 
             // Prune local cached devices not found on WebDAV
             let local_device_keys: Vec<String> = remote_state.devices.keys().cloned().collect();
+            let mut pruning_happened = false;
             for cached_device in local_device_keys {
                 if cached_device != config.device_name && !active_remote_devices.contains(&cached_device) {
-                    tracing::info!("Post-sync: pruning ghost device {} from local state", cached_device);
+                    tracing::info!("Pruning ghost device {} from local state", cached_device);
                     remote_state.devices.remove(&cached_device);
+                    pruning_happened = true;
+                }
+            }
+            if pruning_happened {
+                let conn = database.conn.lock();
+                let _ = save_remote_state(&conn, &remote_state);
+            }
+
+            // Loop through changed devices sequentially
+            for (other_device, remote_sync_entry) in changed_devices {
+                tracing::info!("Processing remote device: {}", other_device);
+                
+                let remote_manifest_path = format!(".noda/sync/manifests/manifest_{}.json", other_device);
+                let manifest_bytes = match client.get(&remote_manifest_path).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        tracing::warn!("Failed to download manifest for {}: {:?}", other_device, e);
+                        continue;
+                    }
+                };
+
+                let new_manifest: crate::sync::manifest::VaultManifest = match serde_json::from_slice(&manifest_bytes) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        tracing::warn!("Failed to parse manifest for {}: {:?}", other_device, e);
+                        continue;
+                    }
+                };
+
+                let local_prev_manifest_path = vault_path.join(".noda/sync/manifests").join(format!("manifest_{}.json", other_device));
+                let prev_manifest: Option<crate::sync::manifest::VaultManifest> = if local_prev_manifest_path.exists() {
+                    if let Ok(content) = tokio::fs::read_to_string(&local_prev_manifest_path).await {
+                        serde_json::from_str(&content).ok()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let local_files = {
+                    let conn = database.conn.lock();
+                    load_remote_state(&conn).unwrap_or_default().files
+                };
+
+                let vault_service = VaultService::new(vault_path).map_err(|e| NodaError::Vault(e.to_string()))?;
+                let mut remote_actions = Vec::new();
+
+                let mut union_paths = std::collections::HashSet::new();
+                for path in new_manifest.files.keys() {
+                    union_paths.insert(path.clone());
+                }
+                if let Some(ref prev) = prev_manifest {
+                    for path in prev.files.keys() {
+                        union_paths.insert(path.clone());
+                    }
+                }
+
+                for path in union_paths {
+                    let prev_hash = prev_manifest.as_ref().and_then(|m| m.files.get(&path).cloned());
+                    let new_hash = new_manifest.files.get(&path).cloned();
+                    let local_file = local_files.get(&path);
+
+                    match (prev_hash, new_hash) {
+                        (Some(_ph), None) => {
+                            let full_path = vault_path.join(&path);
+                            if full_path.exists() {
+                                let is_local_dirty = local_file.map(|f| f.is_dirty).unwrap_or(false);
+                                if is_local_dirty {
+                                    if !path.starts_with(".noda/") {
+                                        let path_buf = std::path::Path::new(&path);
+                                        let note_id_str = path_buf.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                                        if let Ok(ulid) = ulid::Ulid::from_string(note_id_str) {
+                                            let note_id = crate::models::note::NoteId(ulid);
+                                            if let Ok(note) = vault_service.read_note(note_id).await {
+                                                remote_actions.push(SyncAction::Conflict {
+                                                    relative_path: path.clone(),
+                                                    local_note: note,
+                                                    remote_entry: RemoteEntry {
+                                                        href: path.clone(),
+                                                        is_collection: false,
+                                                        size: Some(0),
+                                                        last_modified: None,
+                                                        etag: None,
+                                                    },
+                                                });
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    remote_actions.push(SyncAction::DeleteLocal { relative_path: path.clone() });
+                                }
+                            }
+                        }
+
+                        (None, Some(nh)) => {
+                            let full_path = vault_path.join(&path);
+                            if !full_path.exists() {
+                                remote_actions.push(SyncAction::Download {
+                                    relative_path: path.clone(),
+                                    remote_entry: RemoteEntry {
+                                        href: path.clone(),
+                                        is_collection: false,
+                                        size: None,
+                                        last_modified: None,
+                                        etag: Some(nh),
+                                    },
+                                });
+                            } else {
+                                let local_hash = local_file.map(|f| f.hash.clone()).unwrap_or_default();
+                                if local_hash != nh {
+                                    let is_local_dirty = local_file.map(|f| f.is_dirty).unwrap_or(false);
+                                    if is_local_dirty {
+                                        if !path.starts_with(".noda/") {
+                                            let path_buf = std::path::Path::new(&path);
+                                            let note_id_str = path_buf.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                                            if let Ok(ulid) = ulid::Ulid::from_string(note_id_str) {
+                                                let note_id = crate::models::note::NoteId(ulid);
+                                                if let Ok(note) = vault_service.read_note(note_id).await {
+                                                    remote_actions.push(SyncAction::Conflict {
+                                                        relative_path: path.clone(),
+                                                        local_note: note,
+                                                        remote_entry: RemoteEntry {
+                                                            href: path.clone(),
+                                                            is_collection: false,
+                                                            size: None,
+                                                            last_modified: None,
+                                                            etag: Some(nh),
+                                                        },
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        remote_actions.push(SyncAction::Download {
+                                            relative_path: path.clone(),
+                                            remote_entry: RemoteEntry {
+                                                href: path.clone(),
+                                                is_collection: false,
+                                                size: None,
+                                                last_modified: None,
+                                                etag: Some(nh),
+                                            },
+                                        });
+                                    }
+                                }
+                            }
+                        }
+
+                        (Some(ph), Some(nh)) => {
+                            if ph != nh {
+                                let full_path = vault_path.join(&path);
+                                if !full_path.exists() {
+                                    if !path.starts_with(".noda/") {
+                                        let path_buf = std::path::Path::new(&path);
+                                        let note_id_str = path_buf.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                                        if let Ok(ulid) = ulid::Ulid::from_string(note_id_str) {
+                                            let note_id = crate::models::note::NoteId(ulid);
+                                            let dummy_note = Note {
+                                                id: note_id,
+                                                title: "Deleted Note".to_string(),
+                                                body: "".to_string(),
+                                                tags: Vec::new(),
+                                                inline_tags: Vec::new(),
+                                                file_path: path.clone(),
+                                                created_at: chrono::Utc::now(),
+                                                updated_at: chrono::Utc::now(),
+                                                parent_id: None,
+                                                color: None,
+                                                pinned: false,
+                                                status: "active".to_string(),
+                                            };
+                                            remote_actions.push(SyncAction::Conflict {
+                                                relative_path: path.clone(),
+                                                local_note: dummy_note,
+                                                remote_entry: RemoteEntry {
+                                                    href: path.clone(),
+                                                    is_collection: false,
+                                                    size: None,
+                                                    last_modified: None,
+                                                    etag: Some(nh),
+                                                },
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    let local_hash = local_file.map(|f| f.hash.clone()).unwrap_or_default();
+                                    if local_hash != nh {
+                                        let is_local_dirty = local_file.map(|f| f.is_dirty).unwrap_or(false);
+                                        if is_local_dirty || local_hash != ph {
+                                            if !path.starts_with(".noda/") {
+                                                let path_buf = std::path::Path::new(&path);
+                                                let note_id_str = path_buf.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                                                if let Ok(ulid) = ulid::Ulid::from_string(note_id_str) {
+                                                    let note_id = crate::models::note::NoteId(ulid);
+                                                    if let Ok(note) = vault_service.read_note(note_id).await {
+                                                        remote_actions.push(SyncAction::Conflict {
+                                                            relative_path: path.clone(),
+                                                            local_note: note,
+                                                            remote_entry: RemoteEntry {
+                                                                href: path.clone(),
+                                                                is_collection: false,
+                                                                size: None,
+                                                                last_modified: None,
+                                                                etag: Some(nh),
+                                                            },
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            remote_actions.push(SyncAction::Download {
+                                                relative_path: path.clone(),
+                                                remote_entry: RemoteEntry {
+                                                    href: path.clone(),
+                                                    is_collection: false,
+                                                    size: None,
+                                                    last_modified: None,
+                                                    etag: Some(nh),
+                                                },
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        (None, None) => {}
+                    }
+                }
+
+                if !remote_actions.is_empty() {
+                    let mut sync_queue = SyncQueue::load(vault_path).await?;
+                    sync_queue.enqueue_batch(remote_actions).await?;
+                    let entries = sync_queue.take_entries();
+
+                    if !entries.is_empty() {
+                        let client_arc = Arc::new(WebDavClient::new(
+                            &config.webdav_url,
+                            &config.webdav_username,
+                            config.webdav_password.as_deref().unwrap_or(""),
+                        )?);
+
+                        let vault_path_arc = Arc::new(vault_path.to_path_buf());
+                        let database_clone = database.clone();
+                        let remote_entries_arc = Arc::new(Vec::new());
+                        let remote_state_arc = Arc::new(parking_lot::Mutex::new(remote_state.clone()));
+                        let report_arc = Arc::new(parking_lot::Mutex::new(report.clone()));
+                        let vault_service_arc = Arc::new(vault_service.clone());
+                        let conflict_callback_clone = self.conflict_callback.read().clone();
+
+                        let mut join_set = tokio::task::JoinSet::new();
+                        let concurrency_limit = 10;
+                        let mut active_tasks = 0;
+                        let mut failed_entries = Vec::new();
+                        let mut sync_error: Option<NodaError> = None;
+
+                        for entry in entries {
+                            if active_tasks >= concurrency_limit {
+                                if let Some(res) = join_set.join_next().await {
+                                    active_tasks -= 1;
+                                    match res {
+                                        Ok(Ok(())) => {}
+                                        Ok(Err((failed_entry, path, err))) => {
+                                            tracing::error!("Action failed for {}: {}", path, err);
+                                            failed_entries.push(failed_entry);
+                                            if sync_error.is_none() {
+                                                sync_error = Some(err);
+                                            }
+                                        }
+                                        Err(join_err) => {
+                                            tracing::error!("Tokio join error: {}", join_err);
+                                        }
+                                    }
+                                }
+                            }
+
+                            if sync_error.is_some() {
+                                failed_entries.push(entry);
+                                continue;
+                            }
+
+                            let client_c = client_arc.clone();
+                            let vp_c = vault_path_arc.clone();
+                            let db_c = database_clone.clone();
+                            let re_c = remote_entries_arc.clone();
+                            let rs_c = remote_state_arc.clone();
+                            let rep_c = report_arc.clone();
+                            let vs_c = vault_service_arc.clone();
+                            let cc_c = conflict_callback_clone.clone();
+
+                            let action = entry.action.clone();
+                            active_tasks += 1;
+                            join_set.spawn(async move {
+                                let path = match &action {
+                                    SyncAction::Upload { relative_path } => relative_path.clone(),
+                                    SyncAction::Download { relative_path, .. } => relative_path.clone(),
+                                    SyncAction::DeleteRemote { relative_path } => relative_path.clone(),
+                                    SyncAction::DeleteLocal { relative_path } => relative_path.clone(),
+                                    SyncAction::Conflict { relative_path, .. } => relative_path.clone(),
+                                };
+                                if let Err(e) = execute_single_action(&action, &client_c, &vp_c, &db_c, &re_c, &rs_c, &rep_c, &vs_c, &cc_c).await {
+                                    Err((entry, path, e))
+                                } else {
+                                    Ok(())
+                                }
+                            });
+                        }
+
+                        while let Some(res) = join_set.join_next().await {
+                            match res {
+                                Ok(Ok(())) => {}
+                                Ok(Err((failed_entry, path, err))) => {
+                                    tracing::error!("Action failed for {}: {}", path, err);
+                                    failed_entries.push(failed_entry);
+                                    if sync_error.is_none() {
+                                        sync_error = Some(err);
+                                    }
+                                }
+                                Err(join_err) => {
+                                    tracing::error!("Tokio join error: {}", join_err);
+                                }
+                            }
+                        }
+
+                        remote_state = Arc::try_unwrap(remote_state_arc).unwrap().into_inner();
+                        report = Arc::try_unwrap(report_arc).unwrap().into_inner();
+
+                        if !failed_entries.is_empty() {
+                            if let Err(eq_err) = sync_queue.set_entries(failed_entries).await {
+                                tracing::error!("Failed to re-enqueue failed actions: {}", eq_err);
+                            }
+                            if let Some(err) = sync_error {
+                                self.update_status(SyncStatus::Error(format!("Sync failed: {}", err)));
+                                return Err(err);
+                            }
+                        } else {
+                            if let Err(clear_err) = sync_queue.set_entries(Vec::new()).await {
+                                tracing::error!("Failed to clear sync queue on completion: {}", clear_err);
+                            }
+                        }
+                    }
+                }
+
+                let manifest_json = serde_json::to_string_pretty(&new_manifest).unwrap_or_default();
+                if let Some(parent) = local_prev_manifest_path.parent() {
+                    let _ = tokio::fs::create_dir_all(parent).await;
+                }
+                let _ = tokio::fs::write(&local_prev_manifest_path, manifest_json.as_bytes()).await;
+
+                let lm = remote_sync_entry.last_modified.as_ref()
+                    .and_then(|s| crate::sync::delta::parse_last_modified(s));
+                remote_state.devices.insert(other_device.clone(), crate::sync::remote_state::DeviceMetadata {
+                    last_known_etag: remote_sync_entry.etag.clone(),
+                    last_known_modified: lm,
+                });
+            }
+        }
+
+        // Post-sync post-flush OS metadata alignment check to prevent double-upload loop
+        {
+            let conn = database.conn.lock();
+            let mut list = Vec::new();
+            if let Ok(mut stmt) = conn.prepare("SELECT path FROM sync_file_states") {
+                if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
+                    for r in rows {
+                        if let Ok(path) = r {
+                            list.push(path);
+                        }
+                    }
+                }
+            }
+
+            for path in list {
+                let full_path = vault_path.join(&path);
+                if full_path.exists() {
+                    if let Ok(meta) = std::fs::metadata(&full_path) {
+                        let modified = meta.modified()
+                            .map(|t| chrono::DateTime::<chrono::Utc>::from(t))
+                            .unwrap_or_else(|_| chrono::Utc::now());
+                        
+                        let lm_str = modified.to_rfc3339();
+                        conn.execute(
+                            "UPDATE sync_file_states SET local_updated_at = ?2 WHERE path = ?1",
+                            rusqlite::params![path, lm_str],
+                        ).ok();
+                    }
                 }
             }
         }
 
-        // Save updated remote state to survive crash
         remote_state.last_sync_time = Some(chrono::Utc::now());
         {
             let conn = database.conn.lock();
@@ -1217,50 +1419,7 @@ async fn ensure_remote_parent_dirs_exist(
     Ok(())
 }
 
-async fn scan_local_raw_files<P: AsRef<Path>>(vault_path: P) -> Result<Vec<LocalRawFile>, NodaError> {
-    let mut files = Vec::new();
-    let vault_ref = vault_path.as_ref();
 
-    // Scan directories for raw files to sync.
-    // NOTE: .noda/history/ is intentionally EXCLUDED from this list.
-    // History snapshot files are created on every note save and including them here
-    // would cause has_local_changes() to always return true, permanently bypassing
-    // fast-check. History files are still included in the raw_plan via delta.rs when
-    // a full sync is triggered for other legitimate reasons (note content changes).
-    let dirs_to_scan = [
-        vault_ref.join(".noda").join("attachments"),
-        vault_ref.join(".noda").join("history"),  // Kept for full-sync raw_plan calculation
-    ];
-
-    for dir in &dirs_to_scan {
-        if dir.exists() {
-            for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
-                if entry.file_type().is_file() {
-                    if let Some(file_name) = entry.file_name().to_str() {
-                        if file_name.starts_with('.') {
-                            continue;
-                        }
-                    }
-                    if let Ok(rel_path) = entry.path().strip_prefix(vault_ref) {
-                        let path_str = rel_path.to_string_lossy().to_string();
-                        if let Ok(meta) = entry.metadata() {
-                            let size = meta.len();
-                            let modified = meta.modified()
-                                .map(|t| chrono::DateTime::<chrono::Utc>::from(t))
-                                .unwrap_or_else(|_| chrono::Utc::now());
-                            files.push(LocalRawFile {
-                                relative_path: path_str,
-                                size,
-                                modified,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Ok(files)
-}
 
 #[cfg(test)]
 mod tests {
@@ -1325,31 +1484,47 @@ mod tests {
                     let req_str = String::from_utf8_lossy(&buf);
                         
                         if req_str.starts_with("PROPFIND") {
-                            // Remote has a new note to download: "01H7V18105M5MWRB28Z1220000.md"
-                            let body = concat!(
-                                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n",
-                                "<d:multistatus xmlns:d=\"DAV:\">\n",
-                                "  <d:response>\n",
-                                "    <d:href>/</d:href>\n",
-                                "    <d:propstat>\n",
-                                "      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>\n",
-                                "      <d:status>HTTP/1.1 200 OK</d:status>\n",
-                                "    </d:propstat>\n",
-                                "  </d:response>\n",
-                                "  <d:response>\n",
-                                "    <d:href>/01H7V18105M5MWRB28Z1220000.md</d:href>\n",
-                                "    <d:propstat>\n",
-                                "      <d:prop>\n",
-                                "        <d:resourcetype/>\n",
-                                "        <d:getcontentlength>150</d:getcontentlength>\n",
-                                "        <d:getlastmodified>Wed, 20 May 2026 03:00:00 GMT</d:getlastmodified>\n",
-                                "        <d:getetag>\"etag-note\"</d:getetag>\n",
-                                "      </d:prop>\n",
-                                "      <d:status>HTTP/1.1 200 OK</d:status>\n",
-                                "    </d:propstat>\n",
-                                "  </d:response>\n",
-                                "</d:multistatus>"
-                            );
+                            let body = if req_str.contains(".noda/sync") {
+                                // Request for device signatures under .noda/sync
+                                concat!(
+                                    "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n",
+                                    "<d:multistatus xmlns:d=\"DAV:\">\n",
+                                    "  <d:response>\n",
+                                    "    <d:href>/.noda/sync/</d:href>\n",
+                                    "    <d:propstat>\n",
+                                    "      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>\n",
+                                    "      <d:status>HTTP/1.1 200 OK</d:status>\n",
+                                    "    </d:propstat>\n",
+                                    "  </d:response>\n",
+                                    "  <d:response>\n",
+                                    "    <d:href>/.noda/sync/device2.sync</d:href>\n",
+                                    "    <d:propstat>\n",
+                                    "      <d:prop>\n",
+                                    "        <d:resourcetype/>\n",
+                                    "        <d:getcontentlength>0</d:getcontentlength>\n",
+                                    "        <d:getlastmodified>Wed, 20 May 2026 03:00:00 GMT</d:getlastmodified>\n",
+                                    "        <d:getetag>\"etag-device2-sync\"</d:getetag>\n",
+                                    "      </d:prop>\n",
+                                    "      <d:status>HTTP/1.1 200 OK</d:status>\n",
+                                    "    </d:propstat>\n",
+                                    "  </d:response>\n",
+                                    "</d:multistatus>"
+                                )
+                            } else {
+                                // Fallback
+                                concat!(
+                                    "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n",
+                                    "<d:multistatus xmlns:d=\"DAV:\">\n",
+                                    "  <d:response>\n",
+                                    "    <d:href>/</d:href>\n",
+                                    "    <d:propstat>\n",
+                                    "      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>\n",
+                                    "      <d:status>HTTP/1.1 200 OK</d:status>\n",
+                                    "    </d:propstat>\n",
+                                    "  </d:response>\n",
+                                    "</d:multistatus>"
+                                )
+                            };
                             let response = format!(
                                 "HTTP/1.1 207 Multi-Status\r\nContent-Type: text/xml; charset=\"utf-8\"\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                                 body.len(),
@@ -1357,21 +1532,38 @@ mod tests {
                             );
                             let _ = socket.write_all(response.as_bytes()).await;
                         } else if req_str.starts_with("GET") {
-                            // Return the note content for the new download
-                            let body = concat!(
-                                "---\n",
-                                "id: 01H7V18105M5MWRB28Z1220000\n",
-                                "title: \"Remote Note\"\n",
-                                "pinned: false\n",
-                                "tags: []\n",
-                                "status: \"active\"\n",
-                                "created_at: \"2026-05-20T03:00:00Z\"\n",
-                                "updated_at: \"2026-05-20T03:00:00Z\"\n",
-                                "---\n",
-                                "Body of remote note"
-                            );
+                            let (body, content_type) = if req_str.contains("manifest_device2.json") {
+                                (
+                                    concat!(
+                                        "{\n",
+                                        "  \"generated_at\": \"2026-05-20T03:00:00Z\",\n",
+                                        "  \"files\": {\n",
+                                        "    \"01H7V18105M5MWRB28Z1220000.md\": \"some_xxh3_hash\"\n",
+                                        "  }\n",
+                                        "}"
+                                    ),
+                                    "application/json"
+                                )
+                            } else {
+                                (
+                                    concat!(
+                                        "---\n",
+                                        "id: 01H7V18105M5MWRB28Z1220000\n",
+                                        "title: \"Remote Note\"\n",
+                                        "pinned: false\n",
+                                        "tags: []\n",
+                                        "status: \"active\"\n",
+                                        "created_at: \"2026-05-20T03:00:00Z\"\n",
+                                        "updated_at: \"2026-05-20T03:00:00Z\"\n",
+                                        "---\n",
+                                        "Body of remote note"
+                                    ),
+                                    "text/markdown"
+                                )
+                            };
                             let response = format!(
-                                "HTTP/1.1 200 OK\r\nContent-Type: text/markdown\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                content_type,
                                 body.len(),
                                 body
                             );

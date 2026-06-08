@@ -7,6 +7,7 @@ pub mod delta;
 pub mod conflict;
 pub mod queue;
 pub mod engine;
+pub mod manifest;
 
 pub use client::{WebDavClient, RemoteEntry};
 pub use traversal::list_remote_tree;
@@ -15,3 +16,4 @@ pub use delta::{SyncAction, SyncPlan, calculate_delta};
 pub use conflict::{ConflictEntry, handle_conflict, list_conflicts};
 pub use queue::{SyncQueueEntry, SyncQueue};
 pub use engine::{SyncEngine, SyncConfig, SyncStatus, SyncReport};
+pub use manifest::{VaultManifest, generate_manifest};
