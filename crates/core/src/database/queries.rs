@@ -547,15 +547,25 @@ pub fn save_remote_state(conn: &Connection, state: &crate::sync::remote_state::R
     // Insert files
     let mut stmt = conn.prepare("INSERT INTO sync_file_states (path, etag, last_modified, size, local_updated_at, hash, is_dirty) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
         .map_err(|e| NodaError::Database(format!("Prepare insert file state failed: {}", e)))?;
+    let vault_path = get_vault_path_from_conn(conn);
     for (path, meta) in &state.files {
         let lm_str = meta.last_modified.map(|dt| dt.to_rfc3339());
         let lu_str = meta.local_updated_at.map(|dt| dt.to_rfc3339());
         let is_dirty_int = if meta.is_dirty { 1 } else { 0 };
+        
+        let mut actual_size = meta.size;
+        if let Some(ref vp) = vault_path {
+            let full_path = vp.join(path);
+            if let Ok(fs_meta) = std::fs::metadata(&full_path) {
+                actual_size = fs_meta.len();
+            }
+        }
+
         stmt.execute(params![
             path,
             meta.etag,
             lm_str,
-            meta.size as i64,
+            actual_size as i64,
             lu_str,
             meta.hash,
             is_dirty_int,
@@ -566,12 +576,31 @@ pub fn save_remote_state(conn: &Connection, state: &crate::sync::remote_state::R
     Ok(())
 }
 
+pub fn get_vault_path_from_conn(conn: &Connection) -> Option<std::path::PathBuf> {
+    if let Some(db_path_str) = conn.path() {
+        let db_path = std::path::Path::new(db_path_str);
+        if let Some(noda_dir) = db_path.parent() {
+            if let Some(vault_path) = noda_dir.parent() {
+                return Some(vault_path.to_path_buf());
+            }
+        }
+    }
+    None
+}
+
 pub fn set_file_dirty(conn: &Connection, path: &str, is_dirty: bool) -> Result<(), NodaError> {
+    let mut size = 0u64;
+    if let Some(vault_path) = get_vault_path_from_conn(conn) {
+        let full_path = vault_path.join(path);
+        if let Ok(meta) = std::fs::metadata(&full_path) {
+            size = meta.len();
+        }
+    }
     conn.execute(
         "INSERT INTO sync_file_states (path, size, hash, is_dirty, retry_count, sync_error) \
-         VALUES (?1, 0, '', ?2, 0, NULL) \
-         ON CONFLICT(path) DO UPDATE SET is_dirty = excluded.is_dirty, retry_count = 0, sync_error = NULL",
-        params![path, if is_dirty { 1 } else { 0 }],
+         VALUES (?1, ?2, '', ?3, 0, NULL) \
+         ON CONFLICT(path) DO UPDATE SET is_dirty = excluded.is_dirty, size = excluded.size, retry_count = 0, sync_error = NULL",
+        params![path, size as i64, if is_dirty { 1 } else { 0 }],
     ).map_err(|e| NodaError::Database(format!("Failed to set_file_dirty for {}: {}", path, e)))?;
     Ok(())
 }

@@ -185,6 +185,10 @@ pub async fn update_note(
     // Check if content actually changed
     let _content_changed = existing_note_full.title != note.title || existing_note_full.body != note.body || existing_note_full.color != note.color || existing_note_full.pinned != note.pinned || existing_note_full.tags != note.tags;
 
+    if !_content_changed {
+        return Ok(NoteDto::from(existing_note_full));
+    }
+
     if trigger_snapshot {
         // Take a snapshot of the PREVIOUS state before we overwrite it
         let reason = snapshot_reason.as_deref().unwrap_or("Unknown");

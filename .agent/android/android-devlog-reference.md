@@ -1017,3 +1017,26 @@ This ensures that once a snapshot is taken (whether for auto-save, manual save, 
 - Injected visibility tracing logs around network execution blocks for clear debugging.
 
 These changes collectively achieve the architectural goals of zero‑runtime filesystem scanning, robust fault isolation, and Git‑style manifest synchronization.
+
+---
+
+## 46. Module 7: Restricted App-Exit Sequence & Memory Payload Guardrails (June 2026)
+
+- **Goal:** Protect database state consistency during workspace teardowns. Ensure that when a user exits the application or closes a workspace, unmodified editor memory payloads do not trigger redundant write operations or overwrite database attributes.
+- **Implementation:**
+  - Designed a strict app-exit flow where all auto-save flushes verify whether the current note payload in memory actually differs from the canonical local disk file.
+  - Avoids rewriting identical content during teardowns, safeguarding the `is_dirty = 0` status and preventing race conditions or disk metadata corruption.
+
+---
+
+## 47. Module 8: Strict Physical Size Ingestion / The 1-Byte Alignment Fix (June 2026)
+
+- **Goal:** Eliminate frontend-driven or memory-buffer-based size metrics. Ensure the database `sync_file_states` size column is strictly backed by physical disk metadata.
+- **Eradication of Frontend Metrics:** Frontend TypeScript/JavaScript string lengths, character counts, and in-memory WebDAV buffer sizes are completely prohibited from updating or overwriting file sizes in database tables.
+- **Physical Disk Source of Truth:**
+  - Whenever file attributes are updated or synchronized in the database (e.g. `set_file_dirty`, `save_remote_state`, or inside `commit_micro_state` in the sync engine), the size is fetched directly from the OS filesystem handle using:
+    `std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)`
+  - Added the helper `get_vault_path_from_conn` in `queries.rs` to extract the vault root directory directly from the SQLite connection file path (`vault_path/.noda/index.db`), enabling absolute path resolution for relative files.
+- **Content Change Early-Exit Guardrail:**
+  - Added an early-exit check in the `update_note` command. If the note content (title, body, color, pinned, tags) has not changed, the command exits early and returns the existing note without calling the database `upsert_note` or marking the file as dirty.
+  - This ensures that legacy or unmodified editor memory payloads sent during autosave or exit sequences cannot touch or overwrite verified, disk-backed size and `is_dirty = 0` database attributes.

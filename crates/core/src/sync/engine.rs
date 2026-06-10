@@ -950,6 +950,14 @@ fn commit_micro_state(
     let lm_str = meta.last_modified.map(|dt| dt.to_rfc3339());
     let lu_str = meta.local_updated_at.map(|dt| dt.to_rfc3339());
     
+    let mut actual_size = meta.size;
+    if let Some(vault_path) = crate::database::queries::get_vault_path_from_conn(&conn) {
+        let full_path = vault_path.join(path);
+        if let Ok(fs_meta) = std::fs::metadata(&full_path) {
+            actual_size = fs_meta.len();
+        }
+    }
+
     let res = conn.execute(
         "INSERT INTO sync_file_states (path, etag, last_modified, size, local_updated_at, hash, is_dirty, retry_count, sync_error) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL) \
@@ -962,7 +970,7 @@ fn commit_micro_state(
             is_dirty=excluded.is_dirty, \
             retry_count=0, \
             sync_error=NULL",
-        rusqlite::params![path, meta.etag, lm_str, meta.size as i64, lu_str, meta.hash, is_dirty_int],
+        rusqlite::params![path, meta.etag, lm_str, actual_size as i64, lu_str, meta.hash, is_dirty_int],
     );
 
     if let Err(ref e) = res {
@@ -1055,6 +1063,7 @@ async fn execute_single_action_sequential(
                         .unwrap_or_else(|_| chrono::Utc::now());
                     if let Some(fm) = remote_state.files.get_mut(relative_path) {
                         fm.local_updated_at = Some(modified);
+                        fm.size = meta.len();
                         let _ = commit_micro_state(database, relative_path, fm);
                     }
                 }
@@ -1131,6 +1140,7 @@ async fn execute_single_action_sequential(
                         .unwrap_or_else(|_| chrono::Utc::now());
                     if let Some(fm) = remote_state.files.get_mut(relative_path) {
                         fm.local_updated_at = Some(modified);
+                        fm.size = meta.len();
                         let _ = commit_micro_state(database, relative_path, fm);
                     }
                 }
@@ -1181,6 +1191,7 @@ async fn execute_single_action_sequential(
                                 .unwrap_or_else(|_| chrono::Utc::now());
                             if let Some(fm) = remote_state.files.get_mut(relative_path) {
                                 fm.local_updated_at = Some(modified);
+                                fm.size = meta.len();
                                 let _ = commit_micro_state(database, relative_path, fm);
                             }
                         }
@@ -1262,6 +1273,7 @@ async fn execute_single_action_sequential(
                                     .unwrap_or_else(|_| chrono::Utc::now());
                                 if let Some(fm) = remote_state.files.get_mut(relative_path) {
                                     fm.local_updated_at = Some(modified);
+                                    fm.size = meta.len();
                                     let _ = commit_micro_state(database, relative_path, fm);
                                 }
                             }
@@ -1371,6 +1383,7 @@ async fn execute_single_action_sequential(
                                 .unwrap_or_else(|_| chrono::Utc::now());
                             if let Some(fm) = remote_state.files.get_mut(relative_path) {
                                 fm.local_updated_at = Some(modified);
+                                fm.size = meta.len();
                                 let _ = commit_micro_state(database, relative_path, fm);
                             }
                         }
