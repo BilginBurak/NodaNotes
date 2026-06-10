@@ -1,7 +1,7 @@
 // Event emission for Noda frontend integration
 
 use tauri::{AppHandle, Emitter};
-use noda_core::sync::{SyncStatus, SyncReport};
+use noda_core::sync::{SyncStatus, SyncReport, SyncProgress};
 use std::collections::HashMap;
 
 /// Emits an event indicating that files in the vault have changed.
@@ -29,4 +29,9 @@ pub fn emit_sync_conflict(app_handle: &AppHandle, conflict: noda_core::sync::Con
 /// Emits a completed sync report to the frontend.
 pub fn emit_sync_finished(app_handle: &AppHandle, report: SyncReport) {
     let _ = app_handle.emit("sync_finished", report);
+}
+
+/// Emits real-time sync progress.
+pub fn emit_sync_progress(app_handle: &AppHandle, progress: SyncProgress) {
+    let _ = app_handle.emit("sync_progress", progress);
 }

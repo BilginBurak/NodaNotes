@@ -91,4 +91,36 @@ object RustCore {
     external fun triggerDailyNote(inputJson: String): String
     external fun toggleTaskStatus(inputJson: String): String
     external fun listTagsWithCounts(inputJson: String): String
+
+    interface SyncProgressListener {
+        fun onProgress(json: String)
+    }
+
+    private val progressListeners = mutableListOf<SyncProgressListener>()
+
+    fun addProgressListener(listener: SyncProgressListener) {
+        synchronized(progressListeners) {
+            progressListeners.add(listener)
+        }
+    }
+
+    fun removeProgressListener(listener: SyncProgressListener) {
+        synchronized(progressListeners) {
+            progressListeners.remove(listener)
+        }
+    }
+
+    @JvmStatic
+    fun onSyncProgress(json: String) {
+        Log.d(TAG, "onSyncProgress: $json")
+        synchronized(progressListeners) {
+            for (listener in progressListeners) {
+                try {
+                    listener.onProgress(json)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in progress listener", e)
+                }
+            }
+        }
+    }
 }

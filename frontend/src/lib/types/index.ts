@@ -181,4 +181,12 @@ export interface AttachmentInfoDto {
   size: number; // Bytes
 }
 
+export interface SyncProgress {
+  status: string;
+  action: string;
+  file_path: string;
+  current_index: number;
+  total_count: number;
+}
+
 

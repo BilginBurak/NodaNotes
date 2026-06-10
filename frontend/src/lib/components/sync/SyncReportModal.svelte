@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { lastSyncReport, showSyncReport, dismissSyncReport, triggerSyncNow, syncStatus } from '../../stores/sync';
+  import { lastSyncReport, showSyncReport, dismissSyncReport, triggerSyncNow, syncStatus, syncProgress } from '../../stores/sync';
   import { notesList } from '../../stores/notes';
 
   $: report = $lastSyncReport;
@@ -74,7 +74,32 @@
 </script>
 
 {#if visible}
-  {#if status.status === 'Error'}
+  {#if status.status === 'Syncing'}
+    <!-- Sağ alt toast bildirimi (Syncing) -->
+    <div
+      class="sync-toast has-activity"
+      role="status"
+      aria-live="polite"
+      aria-label="Syncing in progress"
+    >
+      <div class="toast-icon loading-spin" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="6" stroke-dasharray="24" stroke-dashoffset="8" />
+        </svg>
+      </div>
+
+      <div class="toast-content">
+        <div class="toast-title">Syncing...</div>
+        <div class="toast-summary">
+          {#if $syncProgress}
+            ({$syncProgress.current_index}/{$syncProgress.total_count}) {$syncProgress.action}: {getDisplayName($syncProgress.file_path)}
+          {:else}
+            Initializing...
+          {/if}
+        </div>
+      </div>
+    </div>
+  {:else if status.status === 'Error'}
     <!-- Sağ alt toast bildirimi (Hata) -->
     <div
       class="sync-toast has-errors"
@@ -847,5 +872,11 @@
     font-size: 11px;
     color: var(--text-tertiary);
     line-height: 1.4;
+  }
+  .loading-spin svg {
+    animation: spin 1.2s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>

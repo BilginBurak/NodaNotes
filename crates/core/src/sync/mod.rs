@@ -15,5 +15,5 @@ pub use remote_state::{RemoteFileMetadata, RemoteState, load_remote_state, save_
 pub use delta::{SyncAction, SyncPlan, calculate_delta};
 pub use conflict::{ConflictEntry, handle_conflict, list_conflicts};
 pub use queue::{SyncQueueEntry, SyncQueue};
-pub use engine::{SyncEngine, SyncConfig, SyncStatus, SyncReport};
+pub use engine::{SyncEngine, SyncConfig, SyncStatus, SyncReport, SyncProgress};
 pub use manifest::{VaultManifest, generate_manifest};

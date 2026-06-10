@@ -5,9 +5,37 @@ import com.bubi.nodanotes.data.model.SyncReportDto
 import com.bubi.nodanotes.data.model.SyncStatusDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.serialization.Serializable
 
+@Serializable
+data class SyncProgressDto(
+    val status: String,
+    val action: String,
+    val file_path: String,
+    val current_index: Int,
+    val total_count: Int
+)
+
 class SyncRepository : BaseRepository() {
+    val syncProgressFlow: Flow<SyncProgressDto> = callbackFlow {
+        val listener = object : RustCore.SyncProgressListener {
+            override fun onProgress(json: String) {
+                try {
+                    val progress = this@SyncRepository.json.decodeFromString(SyncProgressDto.serializer(), json)
+                    trySend(progress)
+                } catch (e: Exception) {
+                    android.util.Log.e("SyncRepository", "Error decoding sync progress", e)
+                }
+            }
+        }
+        RustCore.addProgressListener(listener)
+        awaitClose {
+            RustCore.removeProgressListener(listener)
+        }
+    }
 
     @Serializable
     private data class SaveSyncConfigParams(

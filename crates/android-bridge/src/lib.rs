@@ -14,6 +14,7 @@ use noda_core::models::note::{Note, NoteId};
 use shared::dtos::{VaultInfoDto, NoteDto, NoteListItemDto, NoteMetadataDto, SearchResultDto, SnapshotDto, SnapshotDiffDto, DiffChunk, TrashEntryDto};
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static JVM: OnceLock<jni::JavaVM> = OnceLock::new();
 
 struct BridgeState {
     vault_path: Option<PathBuf>,
@@ -59,6 +60,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_initVault(
     _class: JClass,
     path: JString,
 ) -> jstring {
+    if let Ok(vm) = env.get_java_vm() {
+        let _ = JVM.set(vm);
+    }
     let path_str: String = match env.get_string(&path) {
         Ok(s) => s.into(),
         Err(_) => return error_string(&mut env, "Invalid path string"),
@@ -118,6 +122,23 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_initVault(
                 device_name: "".to_string(),
             });
         let sync_engine = SyncEngine::new(sync_config);
+        sync_engine.set_progress_callback(move |progress| {
+            if let Some(vm) = JVM.get() {
+                if let Ok(mut env) = vm.attach_current_thread_as_daemon() {
+                    if let Ok(class) = env.find_class("com/bubi/nodanotes/RustCore") {
+                        let json_str = serde_json::to_string(&progress).unwrap_or_default();
+                        if let Ok(jstr) = env.new_string(&json_str) {
+                            let _ = env.call_static_method(
+                                class,
+                                "onSyncProgress",
+                                "(Ljava/lang/String;)V",
+                                &[jni::objects::JValue::from(&jstr)],
+                            );
+                        }
+                    }
+                }
+            }
+        });
 
         // 6. Update BRIDGE_STATE
         {

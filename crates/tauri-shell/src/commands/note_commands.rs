@@ -71,6 +71,8 @@ pub async fn create_note(
             .map_err(AppError::from)?;
     }
 
+    *state.active_note_id.write() = Some(id);
+
     Ok(NoteDto::from(note))
 }
 
@@ -101,6 +103,8 @@ pub async fn get_note(
                 message: format!("Note not found in DB: {}", id),
             })?
     };
+
+    *state.active_note_id.write() = Some(note_id);
 
     Ok(NoteDto::from(note))
 }
@@ -288,6 +292,13 @@ pub async fn delete_note(
     {
         let conn = db.conn.lock();
         queries::delete_note(&conn, note_id, true).map_err(AppError::from)?;
+    }
+
+    {
+        let mut active_guard = state.active_note_id.write();
+        if Some(note_id) == *active_guard {
+            *active_guard = None;
+        }
     }
 
     Ok(())

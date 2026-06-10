@@ -104,6 +104,16 @@ pub struct SyncReport {
     pub conflict_files: Vec<String>,
 }
 
+/// Progress event representing a single file being processed in the sync pipeline
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncProgress {
+    pub status: String,
+    pub action: String,
+    pub file_path: String,
+    pub current_index: usize,
+    pub total_count: usize,
+}
+
 /// The core SyncEngine managing synchronization tasks and periodic sync loops
 #[derive(Clone)]
 pub struct SyncEngine {
@@ -114,6 +124,7 @@ pub struct SyncEngine {
     status_callback: Arc<RwLock<Option<Arc<dyn Fn(SyncStatus) + Send + Sync + 'static>>>>,
     sync_finished_callback: Arc<RwLock<Option<Arc<dyn Fn(SyncReport) + Send + Sync + 'static>>>>,
     conflict_callback: Arc<RwLock<Option<Arc<dyn Fn(ConflictEntry) + Send + Sync + 'static>>>>,
+    progress_callback: Arc<RwLock<Option<Arc<dyn Fn(SyncProgress) + Send + Sync + 'static>>>>,
 }
 
 impl SyncEngine {
@@ -127,6 +138,7 @@ impl SyncEngine {
             status_callback: Arc::new(RwLock::new(None)),
             sync_finished_callback: Arc::new(RwLock::new(None)),
             conflict_callback: Arc::new(RwLock::new(None)),
+            progress_callback: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -174,11 +186,25 @@ impl SyncEngine {
         *self.conflict_callback.write() = Some(Arc::new(callback));
     }
 
+    /// Sets a progress callback to be notified of individual sync actions progress
+    pub fn set_progress_callback<F>(&self, callback: F)
+    where
+        F: Fn(SyncProgress) + Send + Sync + 'static,
+    {
+        *self.progress_callback.write() = Some(Arc::new(callback));
+    }
+
     /// Helper to update the internal status and invoke callbacks
     fn update_status(&self, new_status: SyncStatus) {
         *self.status.write() = new_status.clone();
         if let Some(cb) = &*self.status_callback.read() {
             cb(new_status);
+        }
+    }
+
+    fn emit_progress(&self, progress: SyncProgress) {
+        if let Some(cb) = &*self.progress_callback.read() {
+            cb(progress);
         }
     }
 
@@ -282,6 +308,8 @@ impl SyncEngine {
         let propfind_res = client.propfind(sync_dir_path, 1).await;
         
         let mut remote_entries_list = Vec::new();
+        let mut device_remote_actions = Vec::new();
+
         if let Ok(ref remote_sync_entries) = propfind_res {
             let mut active_remote_devices = std::collections::HashSet::new();
             let mut changed_devices = Vec::new();
@@ -529,104 +557,7 @@ impl SyncEngine {
                     }
                 }
 
-                // Execute the remote actions sequentially with absolute fault isolation
-                if !remote_actions.is_empty() {
-                    let mut failed_paths = Vec::new();
-                    
-                    // Fetch list of remote files to build dirs correctly
-                    if remote_entries_list.is_empty() {
-                        if let Ok(entries) = client.propfind("", 9).await {
-                            remote_entries_list = entries;
-                        }
-                    }
-
-                    for action in remote_actions {
-                        let path = match &action {
-                            SyncAction::Upload { relative_path } => relative_path.clone(),
-                            SyncAction::Download { relative_path, .. } => relative_path.clone(),
-                            SyncAction::DeleteRemote { relative_path } => relative_path.clone(),
-                            SyncAction::DeleteLocal { relative_path } => relative_path.clone(),
-                            SyncAction::Conflict { relative_path, .. } => relative_path.clone(),
-                        };
-
-                        println!("DEBUG_SYNC: Starting network action for path: {}", path);
-                        match execute_single_action_sequential(
-                            &action,
-                            &client,
-                            vault_path,
-                            database,
-                            &remote_entries_list,
-                            &mut remote_state,
-                            &mut report,
-                            &vault_service,
-                            &conflict_callback_clone,
-                        ).await {
-                            Ok(()) => {
-                                println!("DEBUG_SYNC: Network success for path: {}. Proceeding to DB write.", path);
-                            }
-                            Err(e) => {
-                                println!("DEBUG_SYNC: Network failed for path: {}. Error isolated. Proceeding to Quarantine write.", path);
-                                failed_paths.push((path, action, e));
-                            }
-                        }
-                    }
-
-                    // Retry circuit for failed downloads
-                    if !failed_paths.is_empty() {
-                        for (path, action, mut last_err) in failed_paths {
-                            let mut success = false;
-                            for attempt in 1..=3 {
-                                tokio::time::sleep(tokio::time::Duration::from_secs(attempt)).await;
-                                println!("DEBUG_SYNC: Retrying path: {} (attempt {})", path, attempt);
-                                match execute_single_action_sequential(
-                                    &action,
-                                    &client,
-                                    vault_path,
-                                    database,
-                                    &remote_entries_list,
-                                    &mut remote_state,
-                                    &mut report,
-                                    &vault_service,
-                                    &conflict_callback_clone,
-                                ).await {
-                                    Ok(()) => {
-                                        success = true;
-                                        break;
-                                    }
-                                    Err(e) => {
-                                        last_err = e;
-                                    }
-                                }
-                            }
-
-                            if !success {
-                                // Quarantine this entry
-                                let conn = database.conn.lock();
-                                let db_res = conn.execute(
-                                    "UPDATE sync_file_states SET retry_count = retry_count + 1, sync_error = ?2, is_dirty = 1 WHERE path = ?1",
-                                    rusqlite::params![path, last_err.to_string()],
-                                );
-                                if let Err(ref e) = db_res {
-                                    if e.to_string().contains("locked") || e.to_string().contains("busy") {
-                                        println!("CRITICAL: SQLite update failed during sync micro-commit: {:?}", e);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Update peer signature in local state
-                let lm = remote_sync_entry.last_modified.as_ref()
-                    .and_then(|s| crate::sync::delta::parse_last_modified(s));
-                remote_state.devices.insert(other_device.clone(), crate::sync::remote_state::DeviceMetadata {
-                    last_known_etag: remote_sync_entry.etag.clone(),
-                    last_known_modified: lm,
-                });
-                
-                // Save state to DB
-                let conn = database.conn.lock();
-                let _ = save_remote_state(&conn, &remote_state);
+                device_remote_actions.push((other_device, remote_sync_entry, remote_actions));
             }
         }
 
@@ -648,6 +579,7 @@ impl SyncEngine {
         };
 
         let bypass_authorized = total_dirty > 0 && total_dirty == quarantined_dirty;
+        let mut local_actions = Vec::new();
         
         if total_dirty > 0 && !bypass_authorized {
             let dirty_files = {
@@ -663,7 +595,6 @@ impl SyncEngine {
                 list
             };
 
-            let mut local_actions = Vec::new();
             for (rel_path, _hash) in dirty_files {
                 let full_path = vault_path.join(&rel_path);
                 if full_path.exists() {
@@ -672,8 +603,42 @@ impl SyncEngine {
                     local_actions.push(SyncAction::DeleteRemote { relative_path: rel_path });
                 }
             }
+        }
 
-            if !local_actions.is_empty() {
+        // Exclude paths from local actions if they are already present in remote actions
+        let mut remote_action_paths = std::collections::HashSet::new();
+        for (_, _, actions) in &device_remote_actions {
+            for action in actions {
+                let path = match action {
+                    SyncAction::Upload { relative_path } => relative_path.clone(),
+                    SyncAction::Download { relative_path, .. } => relative_path.clone(),
+                    SyncAction::DeleteRemote { relative_path } => relative_path.clone(),
+                    SyncAction::DeleteLocal { relative_path } => relative_path.clone(),
+                    SyncAction::Conflict { relative_path, .. } => relative_path.clone(),
+                };
+                remote_action_paths.insert(path);
+            }
+        }
+
+        local_actions.retain(|action| {
+            let path = match action {
+                SyncAction::Upload { relative_path } => relative_path,
+                SyncAction::Download { relative_path, .. } => relative_path,
+                SyncAction::DeleteRemote { relative_path } => relative_path,
+                SyncAction::DeleteLocal { relative_path } => relative_path,
+                SyncAction::Conflict { relative_path, .. } => relative_path,
+            };
+            !remote_action_paths.contains(path)
+        });
+
+        // Compute total counts
+        let total_remote_actions_count = device_remote_actions.iter().map(|(_, _, actions)| actions.len()).sum::<usize>();
+        let total_count = total_remote_actions_count + local_actions.len();
+        let mut current_index = 0;
+
+        // Execute remote actions
+        for (other_device, remote_sync_entry, remote_actions) in device_remote_actions {
+            if !remote_actions.is_empty() {
                 let mut failed_paths = Vec::new();
                 if remote_entries_list.is_empty() {
                     if let Ok(entries) = client.propfind("", 9).await {
@@ -681,7 +646,8 @@ impl SyncEngine {
                     }
                 }
 
-                for action in local_actions {
+                for action in remote_actions {
+                    current_index += 1;
                     let path = match &action {
                         SyncAction::Upload { relative_path } => relative_path.clone(),
                         SyncAction::Download { relative_path, .. } => relative_path.clone(),
@@ -689,6 +655,22 @@ impl SyncEngine {
                         SyncAction::DeleteLocal { relative_path } => relative_path.clone(),
                         SyncAction::Conflict { relative_path, .. } => relative_path.clone(),
                     };
+
+                    let action_str = match &action {
+                        SyncAction::Upload { .. } => "upload",
+                        SyncAction::Download { .. } => "download",
+                        SyncAction::DeleteRemote { .. } => "remote_delete",
+                        SyncAction::DeleteLocal { .. } => "local_delete",
+                        SyncAction::Conflict { .. } => "conflict",
+                    };
+
+                    self.emit_progress(SyncProgress {
+                        status: "Processing".to_string(),
+                        action: action_str.to_string(),
+                        file_path: path.clone(),
+                        current_index,
+                        total_count,
+                    });
 
                     println!("DEBUG_SYNC: Starting network action for path: {}", path);
                     match execute_single_action_sequential(
@@ -712,7 +694,7 @@ impl SyncEngine {
                     }
                 }
 
-                // Retry circuit for failed uploads
+                // Retry circuit for failed downloads
                 if !failed_paths.is_empty() {
                     for (path, action, mut last_err) in failed_paths {
                         let mut success = false;
@@ -751,6 +733,120 @@ impl SyncEngine {
                                 if e.to_string().contains("locked") || e.to_string().contains("busy") {
                                     println!("CRITICAL: SQLite update failed during sync micro-commit: {:?}", e);
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update peer signature in local state
+            let lm = remote_sync_entry.last_modified.as_ref()
+                .and_then(|s| crate::sync::delta::parse_last_modified(s));
+            remote_state.devices.insert(other_device.clone(), crate::sync::remote_state::DeviceMetadata {
+                last_known_etag: remote_sync_entry.etag.clone(),
+                last_known_modified: lm,
+            });
+            
+            // Save state to DB
+            let conn = database.conn.lock();
+            let _ = save_remote_state(&conn, &remote_state);
+        }
+
+        // Execute local actions
+        if !local_actions.is_empty() {
+            let mut failed_paths = Vec::new();
+            if remote_entries_list.is_empty() {
+                if let Ok(entries) = client.propfind("", 9).await {
+                    remote_entries_list = entries;
+                }
+            }
+
+            for action in local_actions {
+                current_index += 1;
+                let path = match &action {
+                    SyncAction::Upload { relative_path } => relative_path.clone(),
+                    SyncAction::Download { relative_path, .. } => relative_path.clone(),
+                    SyncAction::DeleteRemote { relative_path } => relative_path.clone(),
+                    SyncAction::DeleteLocal { relative_path } => relative_path.clone(),
+                    SyncAction::Conflict { relative_path, .. } => relative_path.clone(),
+                };
+
+                let action_str = match &action {
+                    SyncAction::Upload { .. } => "upload",
+                    SyncAction::Download { .. } => "download",
+                    SyncAction::DeleteRemote { .. } => "remote_delete",
+                    SyncAction::DeleteLocal { .. } => "local_delete",
+                    SyncAction::Conflict { .. } => "conflict",
+                };
+
+                self.emit_progress(SyncProgress {
+                    status: "Processing".to_string(),
+                    action: action_str.to_string(),
+                    file_path: path.clone(),
+                    current_index,
+                    total_count,
+                });
+
+                println!("DEBUG_SYNC: Starting network action for path: {}", path);
+                match execute_single_action_sequential(
+                    &action,
+                    &client,
+                    vault_path,
+                    database,
+                    &remote_entries_list,
+                    &mut remote_state,
+                    &mut report,
+                    &vault_service,
+                    &conflict_callback_clone,
+                ).await {
+                    Ok(()) => {
+                        println!("DEBUG_SYNC: Network success for path: {}. Proceeding to DB write.", path);
+                    }
+                    Err(e) => {
+                        println!("DEBUG_SYNC: Network failed for path: {}. Error isolated. Proceeding to Quarantine write.", path);
+                        failed_paths.push((path, action, e));
+                    }
+                }
+            }
+
+            // Retry circuit for failed uploads
+            if !failed_paths.is_empty() {
+                for (path, action, mut last_err) in failed_paths {
+                    let mut success = false;
+                    for attempt in 1..=3 {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(attempt)).await;
+                        println!("DEBUG_SYNC: Retrying path: {} (attempt {})", path, attempt);
+                        match execute_single_action_sequential(
+                            &action,
+                            &client,
+                            vault_path,
+                            database,
+                            &remote_entries_list,
+                            &mut remote_state,
+                            &mut report,
+                            &vault_service,
+                            &conflict_callback_clone,
+                        ).await {
+                            Ok(()) => {
+                                success = true;
+                                break;
+                            }
+                            Err(e) => {
+                                last_err = e;
+                            }
+                        }
+                    }
+
+                    if !success {
+                        // Quarantine this entry
+                        let conn = database.conn.lock();
+                        let db_res = conn.execute(
+                            "UPDATE sync_file_states SET retry_count = retry_count + 1, sync_error = ?2, is_dirty = 1 WHERE path = ?1",
+                            rusqlite::params![path, last_err.to_string()],
+                        );
+                        if let Err(ref e) = db_res {
+                            if e.to_string().contains("locked") || e.to_string().contains("busy") {
+                                println!("CRITICAL: SQLite update failed during sync micro-commit: {:?}", e);
                             }
                         }
                     }

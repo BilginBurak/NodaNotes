@@ -20,17 +20,17 @@ pub async fn snapshot<P: AsRef<Path>>(
     note: &Note,
     reason: &str,
 ) -> Result<Snapshot, NodaError> {
+    let current_markdown = note.to_markdown().map_err(|e| {
+        NodaError::Frontmatter(format!("Failed to serialize note to markdown for history: {}", e))
+    })?;
+    let current_hash = xxhash_rust::xxh3::xxh3_64(current_markdown.as_bytes());
+
     // Check if there is an existing snapshot that has identical content
     if let Ok(snaps) = list_snapshots(&vault_path, note.id).await {
         if let Some(latest_snap) = snaps.first() {
-            if let Ok(restored_note) = restore(&vault_path, latest_snap).await {
-                let is_dirty = note.body != restored_note.body
-                    || note.title != restored_note.title
-                    || note.tags != restored_note.tags
-                    || note.color != restored_note.color
-                    || note.pinned != restored_note.pinned;
-                
-                if !is_dirty {
+            if let Ok(last_content) = tokio::fs::read_to_string(&latest_snap.absolute_path).await {
+                let last_hash = xxhash_rust::xxh3::xxh3_64(last_content.as_bytes());
+                if current_hash == last_hash {
                     // Note is identical to the latest snapshot on disk. Do not write a new one, return the latest.
                     return Ok(latest_snap.clone());
                 }

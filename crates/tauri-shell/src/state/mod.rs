@@ -16,6 +16,7 @@ pub struct AppState {
     pub vault_service: Arc<RwLock<Option<VaultService>>>,
     pub watcher: Arc<RwLock<Option<VaultWatcher>>>,
     pub sync_engine: Arc<RwLock<Option<SyncEngine>>>,
+    pub active_note_id: Arc<RwLock<Option<noda_core::models::note::NoteId>>>,
 }
 
 impl Default for AppState {
@@ -26,6 +27,7 @@ impl Default for AppState {
             vault_service: Arc::new(RwLock::new(None)),
             watcher: Arc::new(RwLock::new(None)),
             sync_engine: Arc::new(RwLock::new(None)),
+            active_note_id: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -124,12 +126,19 @@ impl AppState {
             crate::events::emit_sync_conflict(&app_handle_clone4, conflict);
         });
 
+        // Hook progress callback to emit sync progress to frontend
+        let app_handle_clone5 = app_handle.clone();
+        sync_engine.set_progress_callback(move |progress| {
+            crate::events::emit_sync_progress(&app_handle_clone5, progress);
+        });
+
         // 6. Update AppState fields
         *self.vault_path.write() = Some(canonical_path);
         *self.database.write() = Some(db);
         *self.vault_service.write() = Some(service);
         *self.watcher.write() = Some(watcher);
         *self.sync_engine.write() = Some(sync_engine);
+        *self.active_note_id.write() = None;
 
         Ok(())
     }
@@ -137,10 +146,10 @@ impl AppState {
     /// Cleanly shuts down all active services (sync engine, watcher)
     pub async fn shutdown(&self) {
         if let Some(vault_path) = &*self.vault_path.read() {
-            let db_opt = self.database.read().clone();
-            if let Some(_db) = db_opt {
-                if let Ok(local_notes) = noda_core::vault::scan::scan_vault(vault_path).await {
-                    for note in local_notes {
+            let active_note_id_opt = *self.active_note_id.read();
+            if let Some(note_id) = active_note_id_opt {
+                if let Some(service) = &*self.vault_service.read() {
+                    if let Ok(note) = service.read_note(note_id).await {
                         if let Ok(snaps) = noda_core::history::list_snapshots(vault_path, note.id).await {
                             let needs_snapshot = if let Some(latest_snap) = snaps.first() {
                                 if let Ok(restored_note) = noda_core::history::restore(vault_path, latest_snap).await {

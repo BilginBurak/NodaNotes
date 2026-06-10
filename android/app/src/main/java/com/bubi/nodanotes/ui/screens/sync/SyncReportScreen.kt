@@ -27,11 +27,37 @@ fun SyncReportScreen(
     onNavigateToConflicts: () -> Unit,
     vaultPreferences: VaultPreferences
 ) {
-    val reportJson = vaultPreferences.getLastSyncReport()
-    val report = remember(reportJson) {
-        if (reportJson != null) {
+    val syncRepository = remember { com.bubi.nodanotes.data.repository.SyncRepository() }
+    var isSyncing by remember { mutableStateOf(false) }
+    var currentProgress by remember { mutableStateOf<com.bubi.nodanotes.data.repository.SyncProgressDto?>(null) }
+    var localReportJson by remember { mutableStateOf(vaultPreferences.getLastSyncReport()) }
+
+    LaunchedEffect(Unit) {
+        isSyncing = syncRepository.getSyncStatus().map { it.is_syncing }.getOrDefault(false)
+        syncRepository.syncProgressFlow.collect { progress ->
+            isSyncing = true
+            currentProgress = progress
+        }
+    }
+
+    LaunchedEffect(isSyncing) {
+        if (isSyncing) {
+            while (isSyncing) {
+                kotlinx.coroutines.delay(1000)
+                val status = syncRepository.getSyncStatus().getOrNull()
+                if (status != null && !status.is_syncing) {
+                    isSyncing = false
+                    localReportJson = vaultPreferences.getLastSyncReport()
+                }
+            }
+        }
+    }
+
+    val currentReportJson = localReportJson
+    val report = remember(currentReportJson) {
+        if (currentReportJson != null) {
             try {
-                Json.decodeFromString<SyncReportDto>(reportJson)
+                Json.decodeFromString<SyncReportDto>(currentReportJson)
             } catch (e: Exception) {
                 null
             }
@@ -39,10 +65,10 @@ fun SyncReportScreen(
             null
         }
     }
-    val syncTime = remember(reportJson) {
-        if (reportJson != null) {
+    val syncTime = remember(currentReportJson) {
+        if (currentReportJson != null) {
             try {
-                val element = Json.parseToJsonElement(reportJson)
+                val element = Json.parseToJsonElement(currentReportJson)
                 val timeStr = element.jsonObject["sync_time"]?.jsonPrimitive?.content
                 if (timeStr != null) {
                     val dt = java.time.ZonedDateTime.parse(timeStr)
@@ -71,7 +97,77 @@ fun SyncReportScreen(
             )
         }
     ) { innerPadding ->
-        if (report == null) {
+        if (isSyncing) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(64.dp),
+                        strokeWidth = 6.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = "Syncing in progress...",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    val progress = currentProgress
+                    if (progress != null) {
+                        val percentage = if (progress.total_count > 0) {
+                            progress.current_index.toFloat() / progress.total_count.toFloat()
+                        } else {
+                            0f
+                        }
+                        LinearProgressIndicator(
+                            progress = { percentage },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp),
+                            color = MaterialTheme.colorScheme.secondary,
+                            trackColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Processing ${progress.current_index} of ${progress.total_count}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Action: ${progress.action.uppercase()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = progress.file_path,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    } else {
+                        Text(
+                            text = "Initializing connection...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        } else if (report == null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -111,43 +207,43 @@ fun SyncReportScreen(
                         ) {
                             Text("Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             if (syncTime != null) {
-                                Text(
-                                    text = syncTime,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            SummaryItem(label = "Uploads", count = report.uploads, icon = Icons.Default.Upload)
-                            SummaryItem(label = "Downloads", count = report.downloads, icon = Icons.Default.Download)
-                            SummaryItem(label = "Local Del", count = report.deletes_local, icon = Icons.Default.Delete)
-                            SummaryItem(label = "Remote Del", count = report.deletes_remote, icon = Icons.Default.DeleteForever)
-                            SummaryItem(label = "Conflicts", count = report.conflicts, icon = Icons.Default.Warning, isWarning = report.conflicts > 0)
-                        }
-                    }
-                }
-
-                if (report.conflicts > 0) {
-                    Button(
-                        onClick = onNavigateToConflicts,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Icon(Icons.Default.Warning, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Resolve Conflicts (${report.conflicts})")
-                    }
-                }
-
-                // Detailed Files Lists
-                ReportListSection(title = "Uploaded Notes", files = report.uploaded_files, icon = Icons.Default.Upload)
-                ReportListSection(title = "Downloaded Notes", files = report.downloaded_files, icon = Icons.Default.Download)
-                ReportListSection(title = "Deleted Local", files = report.deleted_local_files, icon = Icons.Default.Delete)
+                                  Text(
+                                      text = syncTime,
+                                      style = MaterialTheme.typography.bodySmall,
+                                      color = MaterialTheme.colorScheme.onSurfaceVariant
+                                  )
+                              }
+                          }
+                          Spacer(modifier = Modifier.height(12.dp))
+                          Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.SpaceBetween
+                          ) {
+                              SummaryItem(label = "Uploads", count = report.uploads, icon = Icons.Default.Upload)
+                              SummaryItem(label = "Downloads", count = report.downloads, icon = Icons.Default.Download)
+                              SummaryItem(label = "Local Del", count = report.deletes_local, icon = Icons.Default.Delete)
+                              SummaryItem(label = "Remote Del", count = report.deletes_remote, icon = Icons.Default.DeleteForever)
+                              SummaryItem(label = "Conflicts", count = report.conflicts, icon = Icons.Default.Warning, isWarning = report.conflicts > 0)
+                          }
+                      }
+                  }
+  
+                  if (report.conflicts > 0) {
+                      Button(
+                          onClick = onNavigateToConflicts,
+                          modifier = Modifier.fillMaxWidth(),
+                          colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                      ) {
+                          Icon(Icons.Default.Warning, contentDescription = null)
+                          Spacer(modifier = Modifier.width(8.dp))
+                          Text("Resolve Conflicts (${report.conflicts})")
+                      }
+                  }
+  
+                  // Detailed Files Lists
+                  ReportListSection(title = "Uploaded Notes", files = report.uploaded_files, icon = Icons.Default.Upload)
+                  ReportListSection(title = "Downloaded Notes", files = report.downloaded_files, icon = Icons.Default.Download)
+                  ReportListSection(title = "Deleted Local", files = report.deleted_local_files, icon = Icons.Default.Delete)
                 ReportListSection(title = "Deleted Remote", files = report.deleted_remote_files, icon = Icons.Default.DeleteForever)
                 ReportListSection(title = "Conflicts", files = report.conflict_files, icon = Icons.Default.Warning, isWarning = true)
             }

@@ -1,5 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
-import type { SyncStatus, ConflictEntry, SyncReport } from '../types';
+import type { SyncStatus, ConflictEntry, SyncReport, SyncProgress } from '../types';
 
 export type VaultUpdatedPayload = Record<string, 'Created' | 'Modified' | 'Deleted' | 'Renamed'>;
 
@@ -26,6 +26,12 @@ export async function listenToSyncConflict(callback: (conflict: ConflictEntry) =
 
 export async function listenToSyncFinished(callback: (report: SyncReport) => void) {
   return await listen<SyncReport>('sync_finished', (event) => {
+    callback(event.payload);
+  });
+}
+
+export async function listenToSyncProgress(callback: (progress: SyncProgress) => void) {
+  return await listen<SyncProgress>('sync_progress', (event) => {
     callback(event.payload);
   });
 }

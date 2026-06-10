@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { SyncStatus, SyncReport, ConflictEntry, SyncConfig } from '../types';
+import type { SyncStatus, SyncReport, ConflictEntry, SyncConfig, SyncProgress } from '../types';
 import * as ipc from '../services/ipc';
 import { saveActiveNote } from './notes';
 
@@ -13,6 +13,7 @@ export const syncConfig    = writable<SyncConfig>({
 export const syncConflicts  = writable<ConflictEntry[]>([]);
 export const loadingSync    = writable<boolean>(false);
 export const syncError      = writable<string | null>(null);
+export const syncProgress   = writable<SyncProgress | null>(null);
 
 /** Tamamlanan son sync raporunu tutar — bildirim ve detay modal için */
 export const lastSyncReport = writable<SyncReport | null>(null);
@@ -70,7 +71,9 @@ export async function triggerSyncNow(): Promise<SyncReport | null> {
     console.error('Failed to save active note before sync:', e);
   }
   syncError.set(null);
+  syncProgress.set(null);
   syncStatus.set({ status: 'Syncing' });
+  showSyncReport.set(true);
   try {
     const report = await ipc.syncNow();
     // Toplam işlem sayısını ekle
