@@ -996,3 +996,24 @@ This ensures that once a snapshot is taken (whether for auto-save, manual save, 
      - **Remote Add/Update:** If a file has a new/changed hash in the remote manifest compared to the previous manifest or local SQLite state, the engine downloads the file.
      - **Conflict Detection:** If the same file is modified locally and has a changed hash remote, or if a deleted remote file has local changes, a sync conflict is triggered. The conflict is handled by archiving the local note with the device name appended and updating the local copy with the remote state.
   5. After applying all changes, the engine updates local SQLite states and `fs::metadata` timestamps (Post-Sync Verification).
+
+## 45. Sync Engine Rewrite Updates (Completed)
+
+- Added `retry_count` and `sync_error` columns to `sync_file_states` for fault isolation and retry circuit.
+- Introduced `peer_file_states` table for per-device manifest tracking (device_name, path, hash) with primary key `(device_name, path)`.
+- Updated schema version to **8** and implemented migration v8 in `crates/core/src/database/migrations.rs` to alter tables and create new indexes.
+- Adjusted `Database::open` test expectation to schema version **8** (previous test failure due to version mismatch).
+- Enforced hard HTTP timeouts (connect 10 s, overall 30 s) in the WebDAV client builder.
+- Replaced `?` error propagation inside the main sync loop with explicit `match` handling; added diagnostic `println!` statements:
+  - `DEBUG_SYNC: Starting network upload for path: {}`
+  - `DEBUG_SYNC: Network success for path: {}. Proceeding to DB write.`
+  - `DEBUG_SYNC: Network failed for path: {}. Error isolated. Proceeding to Quarantine write.`
+- Added SQLITE_BUSY error logging with critical trace `println!("CRITICAL: SQLite update failed during sync micro-commit: {:?}", e);`.
+- Implemented per‑file micro‑commit: after each successful upload, update `is_dirty = 0`, `hash`, `size`, `local_updated_at`, `etag`, and `last_modified`.
+- Added post‑sync OS metadata verification via `fs::metadata` to store exact timestamps.
+- Implemented retry circuit with `failed_paths: Vec<String>`; on failure retries up to **3** times with linear backoff, then increments `retry_count` and records `sync_error` while keeping `is_dirty = 1`.
+- JNI layer adjustments: ensured all JNI calls execute on `Dispatchers.IO`; added panic‑catching wrapper for safe error handling; removed any business logic from Kotlin side.
+- Added cleanup of stale WAL/SHM files during database rebuild to avoid SQLite I/O errors.
+- Injected visibility tracing logs around network execution blocks for clear debugging.
+
+These changes collectively achieve the architectural goals of zero‑runtime filesystem scanning, robust fault isolation, and Git‑style manifest synchronization.

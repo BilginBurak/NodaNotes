@@ -171,6 +171,14 @@ data class SyncStatusDto(
     val is_syncing: Boolean,
     val last_sync_at: String,
     val pending_count: Int,
+    val quarantined_files: List<QuarantinedFileDto> = emptyList(),
+)
+
+@Serializable
+data class QuarantinedFileDto(
+    val path: String,
+    val retry_count: Int,
+    val sync_error: String?,
 )
 
 @Serializable

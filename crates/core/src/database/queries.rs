@@ -568,9 +568,9 @@ pub fn save_remote_state(conn: &Connection, state: &crate::sync::remote_state::R
 
 pub fn set_file_dirty(conn: &Connection, path: &str, is_dirty: bool) -> Result<(), NodaError> {
     conn.execute(
-        "INSERT INTO sync_file_states (path, size, hash, is_dirty) \
-         VALUES (?1, 0, '', ?2) \
-         ON CONFLICT(path) DO UPDATE SET is_dirty = excluded.is_dirty",
+        "INSERT INTO sync_file_states (path, size, hash, is_dirty, retry_count, sync_error) \
+         VALUES (?1, 0, '', ?2, 0, NULL) \
+         ON CONFLICT(path) DO UPDATE SET is_dirty = excluded.is_dirty, retry_count = 0, sync_error = NULL",
         params![path, if is_dirty { 1 } else { 0 }],
     ).map_err(|e| NodaError::Database(format!("Failed to set_file_dirty for {}: {}", path, e)))?;
     Ok(())

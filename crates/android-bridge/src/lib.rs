@@ -2468,10 +2468,32 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getSyncStatus(
             Err(_) => 0,
         };
 
+        let quarantined_files = {
+            let conn = db.conn.lock();
+            let mut list = Vec::new();
+            if let Ok(mut stmt) = conn.prepare("SELECT path, retry_count, sync_error FROM sync_file_states WHERE retry_count > 0") {
+                if let Ok(rows) = stmt.query_map([], |row| {
+                    Ok(serde_json::json!({
+                        "path": row.get::<_, String>(0)?,
+                        "retry_count": row.get::<_, i32>(1)?,
+                        "sync_error": row.get::<_, Option<String>>(2)?,
+                    }))
+                }) {
+                    for r in rows {
+                        if let Ok(val) = r {
+                            list.push(val);
+                        }
+                    }
+                }
+            }
+            list
+        };
+
         serde_json::json!({
             "is_syncing": is_syncing,
             "last_sync_at": last_sync_at,
-            "pending_count": pending_count
+            "pending_count": pending_count,
+            "quarantined_files": quarantined_files
         }).to_string()
     });
 

@@ -29,7 +29,8 @@ impl WebDavClient {
     pub fn new(url: &str, username: &str, password: &str) -> Result<Self, NodaError> {
         let client = HTTP_CLIENT.get_or_init(|| {
             Client::builder()
-                .timeout(Duration::from_secs(10))
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
                 .tcp_nodelay(true)
                 .pool_max_idle_per_host(10)
                 .pool_idle_timeout(Duration::from_secs(90))

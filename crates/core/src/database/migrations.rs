@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::schema::INIT_SCHEMA;
 use tracing::info;
 
-const CURRENT_SCHEMA_VERSION: i32 = 7;
+const CURRENT_SCHEMA_VERSION: i32 = 8;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     // Check if schema_version table exists
@@ -24,7 +24,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         .unwrap_or(0)
     } else {
         // First run, apply initial schema
-        info!("Applying initial database schema (v7)");
+        info!("Applying initial database schema (v8)");
         conn.execute_batch(INIT_SCHEMA)
             .map_err(|e| NodaError::Database(format!("Failed to apply initial schema: {}", e)))?;
         
@@ -36,6 +36,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         
         CURRENT_SCHEMA_VERSION
     };
+
 
 
     // Future migrations would go here
@@ -191,6 +192,29 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
 
         current_version = 7;
+    }
+
+    if current_version < 8 {
+        info!("Applying database migration v8: adding peer_file_states and updating sync_file_states");
+        conn.execute_batch(r#"
+            ALTER TABLE sync_file_states ADD COLUMN retry_count INTEGER DEFAULT 0;
+            ALTER TABLE sync_file_states ADD COLUMN sync_error TEXT;
+
+            CREATE TABLE IF NOT EXISTS peer_file_states (
+                device_name TEXT,
+                path TEXT,
+                hash TEXT,
+                PRIMARY KEY (device_name, path)
+            );
+            CREATE INDEX IF NOT EXISTS idx_peer_file_states_device ON peer_file_states(device_name);
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v8: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (8)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 8;
     }
 
     info!("Database is up to date (version {})", current_version);

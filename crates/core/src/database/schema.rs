@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS note_tags (
     FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
 
--- Sync file states (relational tracking)
+--// Sync file states (relational tracking)
 CREATE TABLE IF NOT EXISTS sync_file_states (
     path TEXT PRIMARY KEY,
     etag TEXT,
@@ -77,9 +77,20 @@ CREATE TABLE IF NOT EXISTS sync_file_states (
     size INTEGER NOT NULL,
     local_updated_at TEXT,
     hash TEXT NOT NULL,
-    is_dirty INTEGER NOT NULL DEFAULT 0
+    is_dirty INTEGER NOT NULL DEFAULT 0,
+    retry_count INTEGER DEFAULT 0,
+    sync_error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sync_file_states_hash ON sync_file_states(hash);
+
+-- Peer file states (Git-like snapshot manifests)
+CREATE TABLE IF NOT EXISTS peer_file_states (
+    device_name TEXT,
+    path TEXT,
+    hash TEXT,
+    PRIMARY KEY (device_name, path)
+);
+CREATE INDEX IF NOT EXISTS idx_peer_file_states_device ON peer_file_states(device_name);
 
 -- Sync device states
 CREATE TABLE IF NOT EXISTS sync_device_states (
