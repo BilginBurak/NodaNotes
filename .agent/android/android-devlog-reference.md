@@ -1039,4 +1039,22 @@ These changes collectively achieve the architectural goals of zero‑runtime fil
   - Added the helper `get_vault_path_from_conn` in `queries.rs` to extract the vault root directory directly from the SQLite connection file path (`vault_path/.noda/index.db`), enabling absolute path resolution for relative files.
 - **Content Change Early-Exit Guardrail:**
   - Added an early-exit check in the `update_note` command. If the note content (title, body, color, pinned, tags) has not changed, the command exits early and returns the existing note without calling the database `upsert_note` or marking the file as dirty.
-  - This ensures that legacy or unmodified editor memory payloads sent during autosave or exit sequences cannot touch or overwrite verified, disk-backed size and `is_dirty = 0` database attributes.
+  - This ensures that legacy or unmodified editor memory payloads sent during autosave or exit sequences cannot touch or overwrite verified, disk-backed size and is_dirty = 0 database attributes.
+
+---
+
+## 48. The Silent Sanctuary Redesign (Japandi / Zen Minimalizm) (June 2026)
+
+### 48.1 Visual & Thematic Architecture
+To move NodaNotes Android away from standard Material 3 boilerplate, we executed a full visual overhaul focusing on minimalism, whitespace breathing room, and typographical contrast.
+- **Dynamic Colors (Monet) Disabled:** The Monet wallpaper-based theming was disabled. A custom color engine was built into `Theme.kt` to force-apply the "Silent Sanctuary" Japandi palettes.
+  - **Light Mode (Mat Keten):** Background `#F4F1EA`, Surface `#FAF9F5`, Text `#2A2A28`, Moss Accent `#5E6F65`, Secondary/Muted Text `#5A5A55`, and primary container `#E7E3D4`.
+  - **Dark Mode (Sıcak Gece):** Background `#181816`, Surface `#1F1F1C`, Text `#E2E2DF`, Sage Accent `#7D8F82`, Secondary/Muted Text `#8E8E8A`, and primary container `#2E302C`.
+- **Zero Divider & Elevation Policy:** Removed all horizontal and vertical divider lines (including `HorizontalDivider` in folders lists, settings, metadata panels, and `BorderStroke` borders/shadows around cards). Containers are separated purely via tonal color contrasts and negative spacing heights.
+- **Zero Alpha Opacity Policy:** Replaced all runtime `.copy(alpha = ...)` modifiers on colors/texts with solid hex-defined colors from the palette to enforce flat, solid tones.
+
+### 48.2 Component Customization & Layouts
+- **Flat Note Card Layout:** Customized `NoteCard.kt` to use uniform container paddings (16.dp horizontal, 6.dp vertical) for a balanced minimalist layout. The custom flat `Box` container uses Zen corners (`8.dp`).
+- **Focus-Driven Blank Paper Editor:** Simplified `NoteEditorScreen.kt` by blending the TopAppBar container and TextField title backgrounds into the `Surface` background. This creates a unified "blank sheet of paper" writing canvas.
+- **Divider and Spacing Replacements:** Replaced all structural dividers in `NodaAppShell.kt` and `NoteInfoSheet.kt` with vertical spacers (`Spacer(modifier = Modifier.height(8.dp))` or `24.dp`) to maintain a clean layout hierarchy.
+- **Tags Input Autocomplete Alignment:** Updated `TagInputBar.kt` to use solid borders and background colors, ensuring visual readability without using transparency.

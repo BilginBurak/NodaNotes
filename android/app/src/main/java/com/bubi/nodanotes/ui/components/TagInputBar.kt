@@ -73,7 +73,7 @@ fun TagInputBar(
             Icon(
                 imageVector = Icons.Default.LocalOffer,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                tint = MaterialTheme.colorScheme.primary, // Solid color
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -93,11 +93,11 @@ fun TagInputBar(
                         border = InputChipDefaults.inputChipBorder(
                             enabled = true,
                             selected = false,
-                            borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            borderColor = MaterialTheme.colorScheme.primary, // Solid color
                             borderWidth = 1.dp
                         ),
                         colors = InputChipDefaults.inputChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                            containerColor = MaterialTheme.colorScheme.primaryContainer // Solid color
                         ),
                         trailingIcon = {
                             Icon(
@@ -109,7 +109,7 @@ fun TagInputBar(
                     )
                 }
 
-                // Inline tags, soft/dashed border styling, no X button, clicking highlights tag in editor
+                // Inline tags, soft border styling, no X button, clicking highlights tag in editor
                 items(inlineTags) { tag ->
                     InputChip(
                         selected = false,
@@ -118,11 +118,11 @@ fun TagInputBar(
                         border = InputChipDefaults.inputChipBorder(
                             enabled = true,
                             selected = false,
-                            borderColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f),
+                            borderColor = MaterialTheme.colorScheme.primary, // Solid color
                             borderWidth = 1.dp
                         ),
                         colors = InputChipDefaults.inputChipColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.1f)
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant // Solid color
                         )
                     )
                 }
@@ -183,7 +183,7 @@ private fun BasicTextFieldWithPlaceholder(
         if (value.isEmpty()) {
             Text(
                 text = placeholder,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant, // Solid color
                 fontSize = 14.sp
             )
         }

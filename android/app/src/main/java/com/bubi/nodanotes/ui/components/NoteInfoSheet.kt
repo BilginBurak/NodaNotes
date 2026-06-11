@@ -46,8 +46,7 @@ fun NoteInfoSheet(
                 )
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             InfoRow(label = "Title", value = metadata.title.ifEmpty { "Untitled" })
             InfoRow(label = "Filename", value = metadata.file_name)

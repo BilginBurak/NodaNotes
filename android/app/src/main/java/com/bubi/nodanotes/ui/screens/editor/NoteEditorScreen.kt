@@ -109,6 +109,12 @@ fun NoteEditorScreen(
         topBar = {
             val successState = uiState as? NoteEditorUiState.Success
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
+                ),
                 title = {
                     if (successState != null) {
                         TextField(
@@ -121,8 +127,11 @@ fun NoteEditorScreen(
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                                 unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                                disabledContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                                errorContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                                 focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
+                                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                                disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
                             ),
                             placeholder = { Text("Title...", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 18.sp)) },
                             modifier = Modifier.fillMaxWidth()
@@ -625,7 +634,7 @@ fun NoteEditorScreen(
                                                     viewModel.onContentChanged(note.body + "\n" + link)
                                                     showRecentAttachmentsSheet = false
                                                 },
-                                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Row(
@@ -687,7 +696,7 @@ fun NoteEditorScreen(
                                                         Text(
                                                             text = "${attachment.size_bytes / 1024} KB",
                                                             style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
                                                     }
                                                 }
@@ -744,7 +753,7 @@ fun SaveStatusBar(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        color = MaterialTheme.colorScheme.surface,
         modifier = modifier
             .fillMaxWidth()
             .height(28.dp)
@@ -772,7 +781,7 @@ fun SaveStatusBar(
                 }
                 val color = when (saveState) {
                     is SaveState.Saved -> MaterialTheme.colorScheme.primary
-                    is SaveState.Unsaved -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    is SaveState.Unsaved -> MaterialTheme.colorScheme.onSurfaceVariant
                     is SaveState.Saving -> MaterialTheme.colorScheme.secondary
                     is SaveState.Error -> MaterialTheme.colorScheme.error
                 }
@@ -796,7 +805,7 @@ fun SaveStatusBar(
             Text(
                 text = "$wordCount words",
                 fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

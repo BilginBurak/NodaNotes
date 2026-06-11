@@ -108,7 +108,8 @@ fun NodaAppShell(
 
         ModalDrawerSheet(
             modifier = Modifier.width(280.dp),
-            drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
+            drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
+            drawerContainerColor = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // --- WORKSPACE (Fixed Top) ---
@@ -155,7 +156,7 @@ fun NodaAppShell(
                         }
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // WORKSPACE accordion header
                     SidebarSectionHeader(
@@ -189,7 +190,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(38.dp)
+                                    .height(30.dp)
                             )
 
                             // Daily Notes
@@ -207,13 +208,13 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(38.dp)
+                                    .height(30.dp)
                             )
                         }
                     }
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // --- MIDDLE RESIZABLE SECTION: FOLDERS & TAGS ---
                 Column(
@@ -322,7 +323,7 @@ fun NodaAppShell(
                             contentAlignment = Alignment.Center
                         ) {
                             Surface(
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.primary,
                                 shape = RoundedCornerShape(2.dp),
                                 modifier = Modifier
                                     .width(40.dp)
@@ -404,7 +405,7 @@ fun NodaAppShell(
                                             },
                                             modifier = Modifier
                                                 .padding(vertical = 1.dp)
-                                                .height(38.dp)
+                                                .height(30.dp)
                                         )
                                     }
                                 }
@@ -413,7 +414,7 @@ fun NodaAppShell(
                     }
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // --- MANAGEMENT & SETTINGS (Fixed Bottom) ---
                 val trashCount by drawerViewModel.trashCount.collectAsState()
@@ -465,7 +466,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(38.dp)
+                                    .height(30.dp)
                             )
 
                             // Conflicts
@@ -495,7 +496,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(38.dp)
+                                    .height(30.dp)
                             )
 
                             // Attachments
@@ -525,7 +526,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(38.dp)
+                                    .height(30.dp)
                             )
 
                             // Settings
@@ -539,7 +540,7 @@ fun NodaAppShell(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp, vertical = 1.dp)
-                                    .height(38.dp)
+                                    .height(30.dp)
                             )
                         }
                     }
@@ -779,6 +780,7 @@ fun FolderTreeItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(30.dp)
                 .padding(horizontal = 8.dp, vertical = 2.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .combinedClickable(
@@ -871,7 +873,9 @@ private fun SidebarSectionHeader(
     Surface(
         onClick = onHeaderClick,
         color = androidx.compose.ui.graphics.Color.Transparent,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp)
     ) {
         Row(
             modifier = Modifier

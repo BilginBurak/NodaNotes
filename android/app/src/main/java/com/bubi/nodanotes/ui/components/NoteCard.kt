@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bubi.nodanotes.data.model.NoteListItemDto
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NoteCard(
     note: NoteListItemDto,
@@ -37,24 +37,21 @@ fun NoteCard(
         parseHexColor(note.color, themeColor)
     }
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f)
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-        ),
-        border = if (isSelected) {
-            androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        } else {
-            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-        },
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.dp),
+    val cardPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+
+    // Custom Flat Box Container replacing boilerplate M3 Card
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp)
+            .padding(cardPadding)
+            .background(
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+                shape = RoundedCornerShape(8.dp) // Zen corners
+            )
             .combinedClickable(
                 onClick = {
                     if (isSelectionMode) {
@@ -79,10 +76,10 @@ fun NoteCard(
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .width(5.dp)
+                        .width(4.dp)
                         .background(
                             color = accentColor,
-                            shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+                            shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)
                         )
                 )
             }
@@ -104,7 +101,7 @@ fun NoteCard(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .background(
-                                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                                    color = MaterialTheme.colorScheme.surfaceVariant, // Solid color
                                     shape = RoundedCornerShape(4.dp)
                                 )
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -112,7 +109,7 @@ fun NoteCard(
                             Icon(
                                 imageVector = Icons.Default.Folder,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.secondary,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(10.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -122,13 +119,12 @@ fun NoteCard(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = MaterialTheme.colorScheme.secondary,
+                                color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
                     } else {
-                        // Spacer to keep layout balanced
                         Spacer(modifier = Modifier.size(1.dp))
                     }
 
@@ -144,13 +140,10 @@ fun NoteCard(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Title
+                // Title - utilizes editorial titleMedium scale
                 Text(
                     text = note.title.ifEmpty { "Untitled" },
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.15).sp
-                    ),
+                    style = MaterialTheme.typography.titleMedium,
                     color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -167,11 +160,8 @@ fun NoteCard(
                 ) {
                     Text(
                         text = formatDate(note.updated_at),
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant // Solid color
                     )
 
                     // Tags
@@ -183,7 +173,7 @@ fun NoteCard(
                             note.tags.take(2).forEach { tag ->
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                    color = MaterialTheme.colorScheme.primaryContainer, // Solid color
                                     modifier = Modifier.height(18.dp)
                                 ) {
                                     Box(
@@ -204,7 +194,7 @@ fun NoteCard(
                             if (note.tags.size > 2) {
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    color = MaterialTheme.colorScheme.surfaceVariant, // Solid color
                                     modifier = Modifier.height(18.dp)
                                 ) {
                                     Box(
