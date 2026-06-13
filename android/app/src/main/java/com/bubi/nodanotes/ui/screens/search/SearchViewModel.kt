@@ -39,12 +39,17 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     @OptIn(FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<SearchUiState> = _query
-        .debounce(300)
+        .debounce(500)
         .distinctUntilChanged()
         .flatMapLatest { q ->
             flow {
-                if (q.trim().isEmpty()) {
+                val trimmed = q.trim()
+                if (trimmed.isEmpty()) {
                     emit(SearchUiState.Idle)
+                    return@flow
+                }
+                if (trimmed.length < 2) {
+                    emit(SearchUiState.Success(emptyList()))
                     return@flow
                 }
                 emit(SearchUiState.Loading)

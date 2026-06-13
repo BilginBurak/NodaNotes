@@ -14,7 +14,7 @@
 
   const debouncedSearch = debounce((q: string) => {
     executeSearch(q);
-  }, 250);
+  }, 300);
 
   function handleInput(e: Event) {
     const value = (e.target as HTMLInputElement).value;

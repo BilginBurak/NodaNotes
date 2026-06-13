@@ -2,7 +2,7 @@
 
 use crate::errors::NodaError;
 use crate::models::note::{NoteId, SearchResult};
-use rusqlite::{params, Connection, Row};
+use rusqlite::{params, Connection};
 use ulid::Ulid;
 
 fn parse_ulid(s: &str) -> Result<NoteId, rusqlite::Error> {
@@ -11,29 +11,36 @@ fn parse_ulid(s: &str) -> Result<NoteId, rusqlite::Error> {
         .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))
 }
 
-fn row_to_search_result(row: &Row) -> Result<SearchResult, rusqlite::Error> {
-    let id_str: String = row.get("id")?;
-    
-    Ok(SearchResult {
-        id: parse_ulid(&id_str)?,
-        title: row.get("title")?,
-        snippet: row.get("snippet")?,
-        score: row.get("score")?,
-    })
-}
 
-fn escape_like(s: &str) -> String {
-    s.replace('\\', "\\\\")
-     .replace('%', "\\%")
-     .replace('_', "\\_")
+
+fn deaccent(s: &str) -> String {
+    let mut normalized = String::new();
+    for c in s.chars() {
+        let dc = match c {
+            'ç' | 'Ç' => 'c',
+            'ğ' | 'Ğ' => 'g',
+            'ı' | 'İ' | 'i' | 'I' => 'i',
+            'ö' | 'Ö' => 'o',
+            'ş' | 'Ş' => 's',
+            'ü' | 'Ü' => 'u',
+            'â' | 'Â' => 'a',
+            'î' | 'Î' => 'i',
+            'û' | 'Û' => 'u',
+            _ => c.to_ascii_lowercase() as char,
+        };
+        normalized.push(dc.to_lowercase().next().unwrap_or(dc));
+    }
+    normalized
 }
 
 fn highlight_match(text: &str, query: &str) -> Option<String> {
     if query.is_empty() {
         return None;
     }
-    let query_chars: Vec<char> = query.chars().collect();
-    let text_chars: Vec<char> = text.chars().collect();
+    let query_norm = deaccent(query);
+    let text_norm = deaccent(text);
+    let query_chars: Vec<char> = query_norm.chars().collect();
+    let text_chars: Vec<char> = text_norm.chars().collect();
     
     if query_chars.len() > text_chars.len() {
         return None;
@@ -43,9 +50,7 @@ fn highlight_match(text: &str, query: &str) -> Option<String> {
     for i in 0..=text_chars.len().saturating_sub(query_chars.len()) {
         let mut matched = true;
         for j in 0..query_chars.len() {
-            let tc = text_chars[i + j];
-            let qc = query_chars[j];
-            if !tc.to_lowercase().eq(qc.to_lowercase()) {
+            if text_chars[i + j] != query_chars[j] {
                 matched = false;
                 break;
             }
@@ -57,9 +62,10 @@ fn highlight_match(text: &str, query: &str) -> Option<String> {
     }
     
     if let Some(idx) = match_idx {
-        let before_chars = &text_chars[..idx];
-        let matched_chars = &text_chars[idx..idx + query_chars.len()];
-        let after_chars = &text_chars[idx + query_chars.len()..];
+        let original_chars: Vec<char> = text.chars().collect();
+        let before_chars = &original_chars[..idx];
+        let matched_chars = &original_chars[idx..idx + query_chars.len()];
+        let after_chars = &original_chars[idx + query_chars.len()..];
         
         let before: String = before_chars.iter().collect();
         let matched: String = matched_chars.iter().collect();
@@ -84,159 +90,331 @@ fn highlight_match(text: &str, query: &str) -> Option<String> {
     }
 }
 
-/// Searches the vault using FTS5 MATCH query with BM25 ranking,
-/// combined with a direct search on note ID (ULID) and filename.
+/// Searches the vault using SQLite queries and assigns weights:
+/// Note Title (10), Tags (7), Filename (4), Note Body (1), Note ID (1).
 pub fn search_notes(conn: &Connection, query: &str) -> Result<Vec<SearchResult>, NodaError> {
     let clean_query = query.trim();
     if clean_query.is_empty() {
         return Ok(Vec::new());
     }
 
+    let norm_query = deaccent(clean_query);
+
     if clean_query.starts_with('#') {
         let tag_query = clean_query[1..].trim();
         if tag_query.is_empty() {
             return Ok(Vec::new());
         }
-        let escaped = escape_like(tag_query);
-        let tag_pattern = format!("%{}%", escaped);
+        let tag_query_norm = deaccent(tag_query);
         let sql = r#"
             SELECT 
                 n.id, 
                 n.title, 
-                'Tag: #' || t.name as snippet
+                t.name as tag_name
             FROM note_tags nt
             JOIN tags t ON nt.tag_id = t.id
             JOIN notes n ON nt.note_id = n.id
-            WHERE t.name LIKE ?1 ESCAPE '\'
-            LIMIT 50
+            LIMIT 200
         "#;
         let mut stmt = conn.prepare(sql)
             .map_err(|e| NodaError::Database(format!("Prepare tag search failed: {}", e)))?;
-        let rows = stmt.query_map(params![tag_pattern], |row| {
+        let rows = stmt.query_map([], |row| {
             let id_str: String = row.get("id")?;
             let title: String = row.get("title")?;
-            let snippet: String = row.get("snippet")?;
-            Ok(SearchResult {
-                id: parse_ulid(&id_str)?,
-                title,
-                snippet,
-                score: -1000.0,
-            })
+            let tag_name: String = row.get("tag_name")?;
+            Ok((id_str, title, tag_name))
         }).map_err(|e| NodaError::Database(format!("Query tag search failed: {}", e)))?;
 
         let mut results = Vec::new();
         for r in rows {
-            results.push(r.map_err(|e| NodaError::Database(e.to_string()))?);
+            if let Ok((id_str, title, tag_name)) = r {
+                let tag_norm = deaccent(&tag_name);
+                if tag_norm.contains(&tag_query_norm) {
+                    let note_id = parse_ulid(&id_str).map_err(|e| NodaError::Database(e.to_string()))?;
+                    results.push(SearchResult {
+                        id: note_id,
+                        title,
+                        snippet: format!("Tag: #{}", tag_name),
+                        score: 7.0, // Tag weight is 7
+                    });
+                }
+            }
         }
         return Ok(results);
     }
 
-    // 1. Direct search by ID (ULID) or file_path using LIKE
-    let escaped = escape_like(clean_query);
-    let direct_pattern = format!("%{}%", escaped);
-    let sql_direct = r#"
-        SELECT id, title, file_path, body
-        FROM notes
-        WHERE id LIKE ?1 ESCAPE '\' OR file_path LIKE ?1 ESCAPE '\'
+    let terms: Vec<String> = norm_query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // We keep track of intermediate results per note id.
+    struct ScoreAccumulator {
+        id: NoteId,
+        title: String,
+        body: String,
+        file_path: String,
+        title_match: bool,
+        body_match: bool,
+        tag_match: bool,
+        id_match: bool,
+        filename_match: bool,
+        fts_snippet: Option<String>,
+    }
+
+    let mut accumulators: std::collections::HashMap<String, ScoreAccumulator> = std::collections::HashMap::new();
+
+    // 1. FTS5 Search (Title & Body matches)
+    let fts_query = terms.iter().map(|s| format!("{}*", s)).collect::<Vec<_>>().join(" AND ");
+    let sql_fts = r#"
+        SELECT 
+            n.id, 
+            n.title, 
+            n.body,
+            n.file_path,
+            snippet(notes_fts, 1, '<b>', '</b>', '...', 32) as fts_snippet
+        FROM notes_fts f
+        JOIN notes n ON n.rowid = f.rowid
+        WHERE notes_fts MATCH ?1
         LIMIT 50
     "#;
 
+    let mut stmt_fts = conn.prepare(sql_fts)
+        .map_err(|e| NodaError::Database(format!("Prepare FTS search failed: {}", e)))?;
+    let mut rows_fts = stmt_fts.query(params![fts_query])
+        .map_err(|e| NodaError::Database(format!("Query FTS search failed: {}", e)))?;
+
+    while let Some(row) = rows_fts.next().map_err(|e| NodaError::Database(e.to_string()))? {
+        let id_str: String = row.get("id").unwrap();
+        let title: String = row.get("title").unwrap();
+        let body: String = row.get("body").unwrap();
+        let file_path: String = row.get("file_path").unwrap();
+        let fts_snippet: Option<String> = row.get("fts_snippet").unwrap();
+
+        let id_val = parse_ulid(&id_str).unwrap();
+        let acc = accumulators.entry(id_str.clone()).or_insert_with(|| ScoreAccumulator {
+            id: id_val,
+            title: title.clone(),
+            body: body.clone(),
+            file_path: file_path.clone(),
+            title_match: false,
+            body_match: false,
+            tag_match: false,
+            id_match: false,
+            filename_match: false,
+            fts_snippet: None,
+        });
+
+        let title_lower = deaccent(&title);
+        let body_lower = deaccent(&body);
+        if terms.iter().any(|t| title_lower.contains(t)) {
+            acc.title_match = true;
+        }
+        if terms.iter().any(|t| body_lower.contains(t)) {
+            acc.body_match = true;
+        }
+        acc.fts_snippet = fts_snippet;
+    }
+
+    // 2. Tag Match
+    let sql_tags = r#"
+        SELECT n.id, n.title, n.body, n.file_path, t.name as tag_name
+        FROM note_tags nt
+        JOIN tags t ON nt.tag_id = t.id
+        JOIN notes n ON nt.note_id = n.id
+    "#;
+    let mut stmt_tags = conn.prepare(sql_tags)
+        .map_err(|e| NodaError::Database(format!("Prepare Tag match failed: {}", e)))?;
+    let mut rows_tags = stmt_tags.query([])
+        .map_err(|e| NodaError::Database(format!("Query Tag match failed: {}", e)))?;
+
+    while let Some(row) = rows_tags.next().map_err(|e| NodaError::Database(e.to_string()))? {
+        let id_str: String = row.get("id").unwrap();
+        let title: String = row.get("title").unwrap();
+        let body: String = row.get("body").unwrap();
+        let file_path: String = row.get("file_path").unwrap();
+        let tag_name: String = row.get("tag_name").unwrap();
+
+        let tag_norm = deaccent(&tag_name);
+        let matches_any_term = terms.iter().any(|t| tag_norm.contains(t));
+
+        if matches_any_term {
+            let id_val = parse_ulid(&id_str).unwrap();
+            let acc = accumulators.entry(id_str.clone()).or_insert_with(|| ScoreAccumulator {
+                id: id_val,
+                title: title.clone(),
+                body: body.clone(),
+                file_path: file_path.clone(),
+                title_match: false,
+                body_match: false,
+                tag_match: false,
+                id_match: false,
+                filename_match: false,
+                fts_snippet: None,
+            });
+            acc.tag_match = true;
+        }
+    }
+
+    // 2. Direct Note ID Match or Filename Match
+    let sql_direct = r#"
+        SELECT n.id, n.title, n.body, n.file_path
+        FROM notes n
+    "#;
     let mut stmt_direct = conn.prepare(sql_direct)
-        .map_err(|e| NodaError::Database(format!("Prepare direct search failed: {}", e)))?;
+        .map_err(|e| NodaError::Database(format!("Prepare Direct match failed: {}", e)))?;
+    let mut rows_direct = stmt_direct.query([])
+        .map_err(|e| NodaError::Database(format!("Query Direct match failed: {}", e)))?;
 
-    let rows_direct = stmt_direct.query_map(params![direct_pattern], |row| {
-        let id_str: String = row.get("id")?;
-        let title: String = row.get("title")?;
-        let file_path: String = row.get("file_path")?;
-        let body: String = row.get("body")?;
-        
-        Ok((id_str, title, file_path, body))
-    }).map_err(|e| NodaError::Database(format!("Query direct search failed: {}", e)))?;
+    while let Some(row) = rows_direct.next().map_err(|e| NodaError::Database(e.to_string()))? {
+        let id_str: String = row.get("id").unwrap();
+        let title: String = row.get("title").unwrap();
+        let body: String = row.get("body").unwrap();
+        let file_path: String = row.get("file_path").unwrap();
 
-    let mut direct_results = Vec::new();
-    for row in rows_direct {
-        if let Ok((id_str, title, file_path, body)) = row {
-            if let Ok(id) = parse_ulid(&id_str) {
-                // Generate a high quality highlighted snippet
-                let snippet = if let Some(hl) = highlight_match(&id_str, clean_query) {
-                    format!("ID: {}", hl)
-                } else if let Some(hl) = highlight_match(&file_path, clean_query) {
-                    format!("File: {}", hl)
-                } else {
-                    // Fallback to body preview
-                    let body_chars: Vec<char> = body.chars().collect();
-                    if body_chars.len() > 32 {
-                        format!("{}...", body_chars[..32].iter().collect::<String>())
-                    } else {
-                        body
+        let id_norm = deaccent(&id_str);
+        let path_norm = deaccent(&file_path);
+
+        let id_match = terms.iter().any(|t| id_norm.contains(t));
+        let filename_match = terms.iter().any(|t| path_norm.contains(t));
+
+        if id_match || filename_match {
+            let id_val = parse_ulid(&id_str).unwrap();
+            let acc = accumulators.entry(id_str.clone()).or_insert_with(|| ScoreAccumulator {
+                id: id_val,
+                title: title.clone(),
+                body: body.clone(),
+                file_path: file_path.clone(),
+                title_match: false,
+                body_match: false,
+                tag_match: false,
+                id_match: false,
+                filename_match: false,
+                fts_snippet: None,
+            });
+            if id_match {
+                acc.id_match = true;
+            }
+            if filename_match {
+                acc.filename_match = true;
+            }
+        }
+    }
+
+    // 3. Title & Body matches (FTS5 search helper, plus direct contains fallback to support middle-of-word substrings)
+    // To support middle-of-word substrings (e.g. "aydin" in "kerimaydinn"), FTS5 prefix search "aydin*" won't match.
+    // So we do a complete table scan fallback on deaccented title and body if FTS5 doesn't find it.
+    // In fact, let's scan all notes in the database (or those not matched yet) to see if their title/body contains any of the search terms.
+    let sql_all = r#"
+        SELECT n.id, n.title, n.body, n.file_path
+        FROM notes n
+    "#;
+    let mut stmt_all = conn.prepare(sql_all)
+        .map_err(|e| NodaError::Database(format!("Prepare scan all failed: {}", e)))?;
+    let mut rows_all = stmt_all.query([])
+        .map_err(|e| NodaError::Database(format!("Query scan all failed: {}", e)))?;
+
+    while let Some(row) = rows_all.next().map_err(|e| NodaError::Database(e.to_string()))? {
+        let id_str: String = row.get("id").unwrap();
+        let title: String = row.get("title").unwrap();
+        let body: String = row.get("body").unwrap();
+        let file_path: String = row.get("file_path").unwrap();
+
+        let title_norm = deaccent(&title);
+        let body_norm = deaccent(&body);
+
+        let matches_title = terms.iter().any(|t| title_norm.contains(t));
+        let matches_body = terms.iter().any(|t| body_norm.contains(t));
+
+        if matches_title || matches_body {
+            let id_val = parse_ulid(&id_str).unwrap();
+            let acc = accumulators.entry(id_str.clone()).or_insert_with(|| ScoreAccumulator {
+                id: id_val,
+                title: title.clone(),
+                body: body.clone(),
+                file_path: file_path.clone(),
+                title_match: false,
+                body_match: false,
+                tag_match: false,
+                id_match: false,
+                filename_match: false,
+                fts_snippet: None,
+            });
+
+            if matches_title {
+                acc.title_match = true;
+            }
+            if matches_body {
+                acc.body_match = true;
+                // If there's an highlighted match, let's build a snippet using highlight_match
+                if acc.fts_snippet.is_none() {
+                    if let Some(hl) = highlight_match(&body, clean_query) {
+                        acc.fts_snippet = Some(hl);
                     }
-                };
-
-                direct_results.push(SearchResult {
-                    id,
-                    title,
-                    snippet,
-                    score: -1000.0, // Ranks first in sorting
-                });
+                }
             }
         }
     }
 
-    // 2. FTS5 Search
-    let terms: Vec<String> = clean_query
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|s| !s.is_empty())
-        .map(|s| format!("{}*", s))
-        .collect();
+    // Compile scores and snippets
+    let mut results = Vec::new();
+    for (_, acc) in accumulators {
+        // Calculate score: Note Title (10) > Tags (7) > Filename (4) > Note Body (1) > Note ID (1)
+        let mut score = 0.0;
+        if acc.title_match { score += 10.0; }
+        if acc.tag_match { score += 7.0; }
+        if acc.filename_match { score += 4.0; }
+        if acc.body_match { score += 1.0; }
+        if acc.id_match { score += 1.0; }
 
-    let mut fts_results = Vec::new();
-    if !terms.is_empty() {
-        let fts_query = terms.join(" AND ");
-
-        // Using FTS5 snippet function: snippet(notes_fts, 1, '<b>', '</b>', '...', 32)
-        // 1 specifies the column (body is column index 1 in notes_fts: title=0, body=1, tags=2)
-        // bm25() returns lower values for better matches, so we order by bm25(notes_fts) ASC
-        let sql_fts = r#"
-            SELECT 
-                n.id, 
-                n.title, 
-                snippet(notes_fts, 1, '<b>', '</b>', '...', 32) as snippet,
-                bm25(notes_fts) as score
-            FROM notes_fts f
-            JOIN notes n ON n.rowid = f.rowid
-            WHERE notes_fts MATCH ?1
-            ORDER BY score ASC
-            LIMIT 50
-        "#;
-
-        let mut stmt_fts = conn.prepare(sql_fts)
-            .map_err(|e| NodaError::Database(format!("Prepare search failed: {}", e)))?;
-
-        let rows_fts = stmt_fts.query_map(params![fts_query], row_to_search_result)
-            .map_err(|e| NodaError::Database(format!("Query map search failed: {}", e)))?;
-
-        for row in rows_fts {
-            match row {
-                Ok(r) => fts_results.push(r),
-                Err(e) => return Err(NodaError::Database(format!("Row parsing failed in search: {}", e))),
+        let snippet = if acc.id_match {
+            let id_str = acc.id.0.to_string();
+            if let Some(hl) = highlight_match(&id_str, clean_query) {
+                format!("ID: {}", hl)
+            } else {
+                format!("ID: {}", id_str)
             }
-        }
+        } else if acc.filename_match {
+            if let Some(hl) = highlight_match(&acc.file_path, clean_query) {
+                format!("File: {}", hl)
+            } else {
+                format!("File: {}", acc.file_path)
+            }
+        } else if let Some(snip) = acc.fts_snippet {
+            snip
+        } else if acc.tag_match {
+            format!("Tag match: {}", clean_query)
+        } else {
+            let body_chars: Vec<char> = acc.body.chars().collect();
+            if body_chars.len() > 32 {
+                format!("{}...", body_chars[..32].iter().collect::<String>())
+            } else {
+                acc.body
+            }
+        };
+
+        results.push(SearchResult {
+            id: acc.id,
+            title: acc.title,
+            snippet,
+            score,
+        });
     }
 
-    // 3. Merge & Deduplicate (keeping direct results first)
-    let mut combined = direct_results;
-    for r in fts_results {
-        if !combined.iter().any(|existing| existing.id == r.id) {
-            combined.push(r);
-        }
-    }
+    // Sort by score DESC (highest score first)
+    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.truncate(50);
 
-    // Sort by score ascending (so lower scores like -1000.0 or lowest BM25 are first)
-    combined.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal));
-    combined.truncate(50);
-
-    Ok(combined)
+    Ok(results)
 }
+
+
+
 
 #[cfg(test)]
 mod tests {
@@ -279,6 +457,37 @@ mod tests {
         let results_attach = search_notes(&conn, "xxh3_265b76ac10173dcc.jpg").unwrap();
         assert_eq!(results_attach.len(), 1);
         assert_eq!(results_attach[0].id, note3.id);
+
+        // 1. Middle-of-word search: 'aydin' should match 'kerimaydinn'
+        let mut note4 = Note::new();
+        note4.title = "User Profile".to_string();
+        note4.body = "username is kerimaydinn.".to_string();
+        insert_note(&conn, &note4, "4.md").unwrap();
+
+        let results_mid = search_notes(&conn, "aydin").unwrap();
+        assert_eq!(results_mid.len(), 1);
+        assert_eq!(results_mid[0].id, note4.id);
+
+        // 2. De-accentuation / Turkish sensitivity test
+        let mut note5 = Note::new();
+        note5.title = "göl".to_string();
+        note5.body = "çöl ve göl kelimeleri test ediliyor.".to_string();
+        insert_note(&conn, &note5, "5.md").unwrap();
+
+        // search 'gol' (no accents) -> should match note5 ('göl')
+        let results_accent1 = search_notes(&conn, "gol").unwrap();
+        assert_eq!(results_accent1.len(), 1);
+        assert_eq!(results_accent1[0].id, note5.id);
+
+        // search 'göl' (with accents) -> should match note5 ('göl')
+        let results_accent2 = search_notes(&conn, "göl").unwrap();
+        assert_eq!(results_accent2.len(), 1);
+        assert_eq!(results_accent2[0].id, note5.id);
+
+        // search 'col' -> should match note5 ('çöl')
+        let results_accent3 = search_notes(&conn, "col").unwrap();
+        assert_eq!(results_accent3.len(), 1);
+        assert_eq!(results_accent3[0].id, note5.id);
     }
 
     #[test]

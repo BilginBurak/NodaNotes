@@ -1058,3 +1058,20 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
 - **Focus-Driven Blank Paper Editor:** Simplified `NoteEditorScreen.kt` by blending the TopAppBar container and TextField title backgrounds into the `Surface` background. This creates a unified "blank sheet of paper" writing canvas.
 - **Divider and Spacing Replacements:** Replaced all structural dividers in `NodaAppShell.kt` and `NoteInfoSheet.kt` with vertical spacers (`Spacer(modifier = Modifier.height(8.dp))` or `24.dp`) to maintain a clean layout hierarchy.
 - **Tags Input Autocomplete Alignment:** Updated `TagInputBar.kt` to use solid borders and background colors, ensuring visual readability without using transparency.
+
+---
+
+## 49. Weighted Search Scoring (Rust Core FTS) & Input Debouncing / Threshold (June 2026)
+
+- **Goal:** Optimize search relevance by ordering match hits using prioritized field weights and prevent redundant JNI bridge synchronization requests.
+- **Weighted Scoring Implementation:**
+  - Refactored `search_notes` in `crates/core/src/database/search.rs` to query FTS5, tags, IDs, and file paths.
+  - Reordered and calculated final match scores using mathematical weights: **Note Title (Weight: 10) > Tags (Weight: 7) > Filename (Weight: 4) > Note Body (Weight: 1) > Note ID (Weight: 1)**.
+  - Handled SQLite FTS5 `MATCH` context restrictions (which prevent `MATCH` in subqueries/SELECT projections) by moving column matching logic to Rust memory (checking `.contains()` case-insensitively on retrieved title/body content).
+  - Prioritized direct metadata match snippets (ID/Filename) over full-text body snippets to explain the exact query hit reason.
+  - Sorts search results descending by score.
+  - **Turkish Accent Normalization (De-accentuation):** Implemented a custom `deaccent` normalization function in `search.rs` to strip Turkish accent marks (e.g. converting `ç/Ç -> c`, `ğ/Ğ -> g`, `ı/İ/I -> i`, `ö/Ö -> o`, `ş/Ş -> s`, `ü/Ü -> u`, `â/Â -> a`, etc.). Search queries are matched case-insensitively and accent-insensitively, meaning searching for "gol" successfully returns notes containing "göl", and "col" returns "çöl".
+  - **Middle-of-word Substring Searching:** Addressed FTS5's prefix-only boundary limitation (e.g. FTS5 failing to match "aydin" inside "kerimaydinn"). In addition to fast FTS5 index lookups, the search engine falls back to a Rust-memory deaccented substring sweep on note fields, ensuring middle-of-word hits are retrieved and highlighted correctly.
+- **Input Debouncing & Min-Char Threshold Implementation:**
+  - Modified [SearchViewModel.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/search/SearchViewModel.kt) to use a **250ms** debounce timer.
+  - Enforced a minimum character threshold: if the query contains less than **2 characters** (`query.trim().length < 2`), it instantly returns `SearchUiState.Success(emptyList())` without calling the search repository or querying the Rust JNI bridge, unless the input is explicitly cleared (empty string), which returns `SearchUiState.Idle`.
