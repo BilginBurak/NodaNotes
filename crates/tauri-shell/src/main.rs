@@ -13,6 +13,9 @@ pub mod window;
 
 use state::AppState;
 use tauri::Manager;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static CLOSE_REQUESTED_BY_USER: AtomicBool = AtomicBool::new(false);
 
 fn main() {
     let app_state = AppState::default();
@@ -84,12 +87,11 @@ fn main() {
             commands::folder_commands::move_folder,
             commands::folder_commands::rename_folder,
         ])
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
                 #[cfg(target_os = "macos")]
                 {
-                    api.prevent_close();
-                    let _ = window.hide();
+                    CLOSE_REQUESTED_BY_USER.store(true, Ordering::Relaxed);
                 }
             }
         })
@@ -117,11 +119,37 @@ fn main() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = event {
-                if let Some(window) = app_handle.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+            match &event {
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    if CLOSE_REQUESTED_BY_USER.swap(false, Ordering::Relaxed) {
+                        api.prevent_exit();
+                    }
                 }
+                tauri::RunEvent::Reopen { .. } => {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    } else {
+                        // Recreate the window
+                        let builder = tauri::WebviewWindowBuilder::new(
+                            app_handle,
+                            "main",
+                            tauri::WebviewUrl::default(),
+                        )
+                        .title("Noda")
+                        .inner_size(1200.0, 800.0)
+                        .min_inner_size(800.0, 600.0)
+                        .transparent(true)
+                        .hidden_title(true)
+                        .disable_drag_drop_handler()
+                        .title_bar_style(tauri::TitleBarStyle::Overlay);
+
+                        if let Ok(window) = builder.build() {
+                            let _ = window::setup_window(&window);
+                        }
+                    }
+                }
+                _ => {}
             }
 
             if let tauri::RunEvent::Exit = event {
