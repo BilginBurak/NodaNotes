@@ -204,6 +204,7 @@ export const addAttachmentBytes = (fileName: string, bytes: number[]) =>
 // ── Added Tags & Daily Notes Commands ───────────────────────
 export const listTagsWithCounts = () => call<TagWithCountDto[]>('list_tags_with_counts');
 export const triggerDailyNote   = () => call<NoteDto>('trigger_daily_note');
+export const revealInFileManager = (relPath: string) => call<void>('reveal_in_file_manager', { relPath });
 
 
 

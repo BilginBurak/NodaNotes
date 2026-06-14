@@ -19,6 +19,8 @@ Bu sırayla oku ve sistemi kavra:
 * **Task İşaretleme (Checkboxes):** Herhangi bir task üzerinde çalışırken ve o task'i tamamladığında, mutlaka  ilgili checkbox'ı (`[ ]` -> `[x]`) işaretle/güncelle.
 * **Olağan Dışı Bulgular & Direksiyon Rehberi:** Kod yazarken veya sistemi incelerken olağan dışı, kritik veya çok önemli bir bulgu/öğrenim elde edersen (her basit task'ten sonra değil, sadece gerçekten önemli ve geleceğe ışık tutacak durumlarda), kullanıcıya: `"Bu bulguyu core/steering.md dosyasına Project-Specific Patterns başlığı altına eklemek ister misiniz?"` diye sor. Kullanıcı onay verirse bu bulguyu ilgili yere ekle.
 * **Rust-First:** Tauri-Svelte tarafında HİÇBİR iş mantığı yazılmaz. Tüm veriler RustCore singleton üzerinden JSON String olarak alınır. Svelte sadece "Dumb Monitor" (Aptal Ekran) olarak görev yapar.
+* **Yeniden Yazma Yasağı:** düzenleme yapacağın veya diğer bir değişle üzerinde çalışacağın dosyayı en baştan yazma. Önce oku, anla ve sadece gerekli yerleri düzenle. Gereksiz yere dokunma. Kodu anlamadan hiçbir şeye müdahale etme!
+
 
 ### 3. PROJE BİLGİLERİ VE DIZINLER
 
@@ -26,28 +28,31 @@ Bu sırayla oku ve sistemi kavra:
 * **tauri-shell:** `crates/tauri-shell` klasörü cargo tauri dev komutu burada çalıştırılacak.
 * **vault klasörü:** `/Users/burakbilgin/NodaVault/NodaRust`
 
+#### WebDAV Sunucu Bilgileri (InfiniCloud):
+- URL: `https://rausu.infini-cloud.net/dav/rusttest`
+- Kullanıcı adı: `kerimaydinn168`
+- Parola: `jgRFjaSZL3rP2f4q`
+
 ---
 
-### ILK GÖREVİN: aşağıdaki hata ve eksikler listesi ile İşe Koyul!
+
+### 4. İSTEK LİSTESİ (İLK GÖREVİN):aşağıdaki hata ve eksikler listesi ile İşe Koyul!
 liste:
-#### 🚨 ACİL TAMİR: Mantık Hataları ve Bug Temizliği
-- [ ] **Settings Modalı Tamiri (Tauri/Rust):** settings-modal'da inputların neredeyse hiç biri çalışmıyor. şu uyarıyı veriyor tarayıcı console "[Warning] [svelte] binding_property_non_reactive (client.js, line 3356)
-`bind:group={localConfig.appearance.theme}` (src/lib/components/settings/SettingsModal.svelte:453:36) is binding to a non-reactive property
-https://svelte.dev/e/binding_property_non_reactive" bununla alakalı olabilir. `nav-tab-maintenance` altındaki settings-section -> maintenance-card -> butonlarını incele. birçoğu çalışmıyor.
-çalışmayan tüm fonksiyonları (indeks temizliği, vault kontrolü, gereksiz duplicate/attachments/remnants silme, reset queue, clear cache, rebuil cache, vacuum db vb.) incele.
-ayrıca sanırım "90ddea0" commitinden sonra başladı sanırım bu sorun. farketmeden birşeyleri bozmuş olabilirim. 
-- [ ] **Inline Tag İzolasyonu (Rust):** `save_note` fonksiyonunu revize et. `#inline_tag` yapıları regex ile yakalanıp sadece SQLite'taki `note_tags` tablosuna (`source = 'inline'`) yazılmalı; KESİNLİKLE dosyanın üstündeki YAML alanına enjekte edilmemeli. Metinden silindiğinde SQLite'tan da temizlenmeli.
-- [ ] **Tag Manager UI İyileştirmesi:** tag-manager svelte-1mnw26j tagın inline mi yoksa yaml mı olduğunu göstersin. inline ise tıklayınca notta ilgili satıra odaklansın. yaml ise ekleyip çıkarma imkanı versin.
-- [ ] **Akıllı History Yönetimi (Debounce/Milestone):** Autosave mekanizmasını değiştir. Her autosave tetiklendiğinde history klasörüne dosya YAZMA. History yedeklemesini sadece: 1) Başka bir nota geçildiğinde (blur), 2) Kesintisiz yazımda en az 5 dakika geçince (ayarlar kısmından süreyi değiştirebilsin), 3) Sync motoru ateşlenmeden hemen önce, 4) uygulama kapanmadan önce tetikle. dosya içerisinde bir değişiklik olmamışsa yukarıdaki durumlar gerçekleşse bile snapshot oluşturma. 
-- [ ] **Live Preview Task Toggle (Svelte & Rust):** Live Preview ve Reading modda render edilen `- [ ]` checkbox elemanlarına tıklama eventi ekle. Tıklandığı an Rust metindeki ilgili satırı `- [x]` (veya tersi) olarak güncellesin. değşiiklik olduğunda snapshot kuralları varsayılan şekilde işlesin. 
+- build edilmiş uygulama arayüzde bazı metinlerin seçilmesi engellenmiş gibi. mesela editörde okuma modunda metin seçmek mümkün değil aynı zamanda note-info-popover scrollbar-thin içerisindeki metinler de seçilebilir olmalı. mesela not id isim gibi bilgiler kesin seçilebilir olmalı. yine diff-modal svelte-1i5euec içerisindeki metinler de seçilebilir olmalı.
+- okuma modunda "markdown-preview scrollbar-thin" text wrap çok güzel çalışırken edit ve live preiview panllerindeki metin çok fazla uzuyor sayfaya sığmıyor. width 100 üzerine çıkıyor ve paneli sağ sola sürüklemek gerekiyor. kullanıcı içeriye ne yazarsa yazsın sayfanın genişliğini aşmamalı.
+- note-list-panel içerisindeki notlara sağ tıklayınca finderde/dosya yöneticisnde göster butonu ekle. tıklayınca notun olduğu klasör açılsın nota odaklanmış şekilde.
+- benzer şekilde sidebar-middle > folder-tree scrollbar-thin sağ tıklama menüsünde de finderde göster butonu ekle. klasör ise klasörün bulunduğu klasör açılsın ve klasör seçili olsun. not ise notun olduğu klasör açılsın nota odaklanmış şekilde açılsın. 
+
 
 ---
 
-Yukarıdaki tüm dokümanları ve kuralları okuyup anladıktan sonra, listedeki tüm görevleri sırasıyla tamamla, testlerini yap, eğer testler başarılıysa doğrudan bir sonraki taska geç. 
-sorunları çözmeye çalışırken veya geliştirme yaparken rust ile alaklı olmadığına 100% eminsen frontende odaklanabilirsin. 
-adımları tamamladıktan sonra taskların checkbox'ları işaretle. her adımı otomatik ve kendi içinde onayla(implementation plan, test sonuçları vs bana sorma). bana sadece tüm tamamlanış halde olan taskları tek seferde teslim et.
+### 5. RAPORLAMA VE DEVLOG
+
 Herhangi bir aşamada tıkanırsan veya kodda kırılma yaşarsan süreci durdurma; en rasyonel fallback (geri çekilme) mekanizmasını kurarak bir sonraki adıma geç ve nihai raporda bana nerede ne yaptığını açıkça belirt.
 
+Yaptığın tüm güncellemeleri, şema değişikliklerini ve karşılaşılan OS-level/JNI engellerini `.agent/DEVLOG.md` dosyası içerisine teknik ve detaylıca İngilizce olarak kaydet. Görev tamamlandığında bana tüm doğrulanmış taskları tek seferde teslim et.
+
+İşe koyul!
 
 
 

@@ -2499,6 +2499,7 @@
     animation: slideDown 0.15s cubic-bezier(0.16, 1, 0.3, 1);
     max-height: 400px;
     overflow-y: auto;
+    user-select: text;
   }
 
   .popover-header {

@@ -111,6 +111,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    user-select: text;
   }
 
   .modal-header {

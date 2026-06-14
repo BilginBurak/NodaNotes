@@ -56,3 +56,54 @@ pub async fn get_vault_info(
         Ok(None)
     }
 }
+
+#[tauri::command]
+pub async fn reveal_in_file_manager(
+    state: State<'_, AppState>,
+    rel_path: String,
+) -> Result<(), AppError> {
+    let vault_path_lock = state.vault_path.read();
+    let vault_path = vault_path_lock.as_ref().ok_or_else(|| AppError {
+        code: "NO_VAULT_OPEN".to_string(),
+        message: "No active vault is currently open".to_string(),
+    })?;
+    
+    let target_path = vault_path.join(&rel_path);
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&target_path)
+            .spawn()
+            .map_err(|e| AppError {
+                code: "FILE_MANAGER_ERROR".to_string(),
+                message: format!("Failed to spawn open command: {}", e),
+            })?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{}", target_path.to_string_lossy()))
+            .spawn()
+            .map_err(|e| AppError {
+                code: "FILE_MANAGER_ERROR".to_string(),
+                message: format!("Failed to spawn explorer: {}", e),
+            })?;
+    }
+    
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let parent = target_path.parent().unwrap_or(&target_path);
+        std::process::Command::new("xdg-open")
+            .arg(parent)
+            .spawn()
+            .map_err(|e| AppError {
+                code: "FILE_MANAGER_ERROR".to_string(),
+                message: format!("Failed to spawn xdg-open: {}", e),
+            })?;
+    }
+    
+    Ok(())
+}

@@ -509,6 +509,7 @@ export function getEditorExtensions(onDocChange: (val: string) => void, viewMode
     editorModeCompartment.of(EditorView.editorAttributes.of({
       class: viewMode === 'live' ? 'cm-mode-live' : 'cm-mode-edit'
     })),
+    EditorView.lineWrapping,
 
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {

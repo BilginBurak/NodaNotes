@@ -1079,3 +1079,15 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
 - **Input Debouncing & Min-Char Threshold Implementation:**
   - Modified [SearchViewModel.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/search/SearchViewModel.kt) to use a **250ms** debounce timer.
   - Enforced a minimum character threshold: if the query contains less than **2 characters** (`query.trim().length < 2`), it instantly returns `SearchUiState.Success(emptyList())` without calling the search repository or querying the Rust JNI bridge, unless the input is explicitly cleared (empty string), which returns `SearchUiState.Idle`.
+
+---
+
+## 50. UI Selection, Editor Text Wrap, and Show in Finder Context Menu (June 2026)
+
+### 50.1 Selection and Text Wrapping Enhancements
+- **Selectability:** Resolved UI selection block by adding `user-select: text` to CSS stylings of `.markdown-preview` in `Preview.svelte`, `.note-info-popover` in `Editor.svelte`, and `.diff-modal` in `DiffViewer.svelte`. Users can now easily highlight and copy text in reading preview, note info dialogs, and version history differences.
+- **Line Wrapping:** Configured CodeMirror 6 to wrap text in edit and live preview modes by adding the `EditorView.lineWrapping` extension inside `getEditorExtensions` in `extensions.ts`. This keeps document lines constrained to the screen size and prevents horizontal scrolling.
+
+### 50.2 Reveal in System File Manager
+- **Tauri IPC Command:** Implemented `reveal_in_file_manager(state, rel_path)` in `vault_commands.rs` and registered it in `main.rs`. The command joins the active vault path with the target relative path and spawns the native file manager (Finder with `-R` on macOS, Explorer with `/select,` on Windows, or `xdg-open` parent folder on Linux).
+- **Context Menus:** Added a "Show in Finder" action in `ContextMenu.svelte` for both note and folder types, enabling quick access to physical files directly from the note list or folder tree interface.

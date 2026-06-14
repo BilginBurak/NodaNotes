@@ -46,6 +46,7 @@
     max-width: 800px;
     margin: 0 auto;
     box-sizing: border-box;
+    user-select: text;
   }
 
   :global(.markdown-preview input[type="checkbox"]) {

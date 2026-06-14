@@ -76,6 +76,15 @@
     navigator.clipboard.writeText(noteId).catch(() => {});
   }
 
+  async function triggerRevealInFinder(relPath: string) {
+    closeContextMenu();
+    try {
+      await ipc.revealInFileManager(relPath);
+    } catch (e) {
+      console.error('Failed to reveal in finder:', e);
+    }
+  }
+
   onMount(() => {
     const handleOutsideClick = () => {
       if (menu.show) {
@@ -130,6 +139,14 @@
         </svg>
         Rename Folder
       </button>
+      <button class="ctx-item" role="menuitem" onclick={() => triggerRevealInFinder(menu.relPath)}>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1.5 3.5a1 1 0 0 1 1-1h3.586a1 1 0 0 1 .707.293L8.5 4.5H13.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8z" />
+          <polyline points="7.5 7.5 10.5 7.5 10.5 10.5" />
+          <line x1="10.5" y1="7.5" x2="6.5" y2="11.5" />
+        </svg>
+        Show in Finder
+      </button>
       <div class="ctx-sep" role="separator"></div>
       <button class="ctx-item ctx-danger" role="menuitem" onclick={() => triggerDeleteFolder(menu.relPath)}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -153,6 +170,14 @@
           <path d="M9 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2"/>
         </svg>
         Copy Note ID
+      </button>
+      <button class="ctx-item" role="menuitem" onclick={() => triggerRevealInFinder(menu.relPath)}>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1.5 3.5a1 1 0 0 1 1-1h3.586a1 1 0 0 1 .707.293L8.5 4.5H13.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8z" />
+          <polyline points="7.5 7.5 10.5 7.5 10.5 10.5" />
+          <line x1="10.5" y1="7.5" x2="6.5" y2="11.5" />
+        </svg>
+        Show in Finder
       </button>
       <div class="ctx-sep" role="separator"></div>
       <button class="ctx-item ctx-danger" role="menuitem" onclick={() => triggerTrashNote(menu.noteId)}>

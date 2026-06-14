@@ -626,6 +626,7 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    user-select: text;
   }
 
   /* Stat grid */
