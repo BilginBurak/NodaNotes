@@ -4,19 +4,20 @@ Sen Antigravity'sin. NodaNotes Rust + Tauri uygulamasını geliştireceğiz.
 ### 1. ZORUNLU OKUMA (Başlamadan Önce)
 
 Bu sırayla oku ve sistemi kavra:
-1. `.agent/steering/noda-steering.md` — Değişmez kurallar ve yasak kalıplar
-2. `.agent/specs/noda-specs.md` 
-3. `.agent/specs/design.md` 
-4. `.agent/specs/reqirements.md`
-5. `.agent/Noda-Development_LOG.md` — Bilinen tuzaklar ve kritik teknik kararlar
+1. `.agent/DEVLOG.md` — Tüm projenin master kayıt defteri. En önemli dosya. MUTLAKA oku.
+2. `.agent/core/steering.md` — Değişmez kurallar ve yasak kalıplar
+3. `.agent/core/spec.md` — Fonksiyonel gereksinimler
+4. `.agent/core/design.md` — Sistem mimarisi
+5. `.agent/core/requirements.md` — FR/NFR/CON listesi
 
 
 ### 2. SANA ÖZEL ÇALIŞMA KURALLARI (ÇOK ÖNEMLİ)
 
 * **Dumb Monitor:** Tauri-Svelte frontend sadece görüntüler, komut gönderir. Dosya okuma/yazma, sync, search = Rust.
+* **Çelişki Durumu:** Herhangi bir döküman ile `.agent/DEVLOG.md` çelişirse, DEVLOG kazanır.
 * **Dil Kuralları:** Benimle (kullanıcıyla) chat üzerindeki tüm iletişimin **Türkçe** olmalıdır. Ancak bunun dışındaki her şey (yazdığın kodlar, yorum satırları, commit mesajları, hata çıktıları ve teknik dokümantasyonlar) tamamen **İngilizce** olmalıdır.
 * **Task İşaretleme (Checkboxes):** Herhangi bir task üzerinde çalışırken ve o task'i tamamladığında, mutlaka  ilgili checkbox'ı (`[ ]` -> `[x]`) işaretle/güncelle.
-* **Olağan Dışı Bulgular & Direksiyon Rehberi:** Kod yazarken veya sistemi incelerken olağan dışı, kritik veya çok önemli bir bulgu/öğrenim elde edersen (her basit task'ten sonra değil, sadece gerçekten önemli ve geleceğe ışık tutacak durumlarda), kullanıcıya: `"Bu bulguyu noda-steering.md dosyasına Project-Specific Patterns başlığı altına eklemek ister misiniz?"` diye sor. Kullanıcı onay verirse bu bulguyu ilgili yere ekle.
+* **Olağan Dışı Bulgular & Direksiyon Rehberi:** Kod yazarken veya sistemi incelerken olağan dışı, kritik veya çok önemli bir bulgu/öğrenim elde edersen (her basit task'ten sonra değil, sadece gerçekten önemli ve geleceğe ışık tutacak durumlarda), kullanıcıya: `"Bu bulguyu core/steering.md dosyasına Project-Specific Patterns başlığı altına eklemek ister misiniz?"` diye sor. Kullanıcı onay verirse bu bulguyu ilgili yere ekle.
 * **Rust-First:** Tauri-Svelte tarafında HİÇBİR iş mantığı yazılmaz. Tüm veriler RustCore singleton üzerinden JSON String olarak alınır. Svelte sadece "Dumb Monitor" (Aptal Ekran) olarak görev yapar.
 
 ### 3. PROJE BİLGİLERİ VE DIZINLER
@@ -50,8 +51,6 @@ Herhangi bir aşamada tıkanırsan veya kodda kırılma yaşarsan süreci durdur
 
 
 
-
-
 ---------
 # android
 
@@ -63,23 +62,24 @@ Sen Antigravity'sin. NodaNotes Android uygulamasını geliştireceğiz.
 ### 1. ZORUNLU OKUMA (Başlamadan Önce)
 
 Bu sırayla oku ve sistemi kavra:
-1. `.agent/android/android-steering.md` — Değişmez kurallar ve yasak kalıplar
-2. `.agent/android/android-bridge-spec.md` — JNI fonksiyon imzaları ve JSON şemaları
-3. `.agent/android/android-design.md` — Sistem mimarisi ve veri akışları
-4. `.agent/android/android-ui-spec.md` — Ekran ve bileşen spesifikasyonları
-5. `.agent/android/android-devlog-reference.md` — Bilinen tuzaklar ve kritik teknik kararlar
+1. `.agent/DEVLOG.md` — Tüm projenin master kayıt defteri. En önemli dosya. MUTLAKA oku.
+2. `.agent/android/steering.md` — Değişmez kurallar ve yasak kalıplar
+3. `.agent/android/bridge-spec.md` — JNI fonksiyon imzaları ve JSON şemaları
+4. `.agent/android/design.md` — Sistem mimarisi ve veri akışları
+5. `.agent/android/ui-spec.md` — Ekran ve bileşen spesifikasyonları
 
 İhtiyaç duyarsan:
-- `.agent/android/android-spec.md` — Fonksiyonel gereksinimler
+- `.agent/android/spec.md` — Fonksiyonel gereksinimler
 
 ### 2. SANA ÖZEL ÇALIŞMA KURALLARI (MUTLAK ZORUNLULUK)
 * **Dumb Monitor:** Kotlin sadece görüntüler, komut gönderir. Dosya okuma/yazma, DB operasyonları, sync, search işlemleri tamamen Rust Core sorumluluğundadır. Kotlin tarafında HİÇBİR iş mantığı (business logic) yazılamaz.
+* **Çelişki Durumu:** Herhangi bir döküman ile `.agent/DEVLOG.md` çelişirse, DEVLOG kazanır.
 * **Threading:** Tüm JNI çağrıları Kotlin tarafında kesinlikle `Dispatchers.IO` üzerinde çalıştırılmalıdır, asla Main Thread bloklanamaz.
 * **Vault Path:** Kullanıcı tarafından SAF/Storage Access Framework ile seçilir (`MANAGE_EXTERNAL_STORAGE`). `SharedPreferences` veya `DataStore` üzerinde kalıcı saklanır ve Rust Core'a pointer olarak geçilir.
 * **Tema:** Tamamen Material 3 Dynamic Color (Monet) destekli olmalıdır. Kod içinde hardcoded renk kullanımı yasaktır.
 * **Dil Kuralları:** Kullanıcıyla chat üzerindeki tüm iletişimin **Türkçe** olmalıdır. Ancak bunun dışındaki her şey (yazdığın kodlar, yorum satırları, commit mesajları, hata çıktıları ve teknik dokümantasyonlar) tamamen **İngilizce** olmalıdır.
 * **Task İşaretleme (Checkboxes):** Herhangi bir task üzerinde çalışırken ve o task'i tamamladığında, mutlaka ilgili checkbox'ı (`[ ]` -> `[x]`) işaretle/güncelle.
-* **Olağan Dışı Bulgular & Direksiyon Rehberi:** Kod yazarken gerçekten önemli ve geleceğe ışık tutacak kritik bir bulgu/öğrenim elde edersen kullanıcıya: `"Bu bulguyu android-steering.md dosyasına Project-Specific Patterns başlığı altına eklemek ister misiniz?"` diye sor.
+* **Olağan Dışı Bulgular & Direksiyon Rehberi:** Kod yazarken gerçekten önemli ve geleceğe ışık tutacak kritik bir bulgu/öğrenim elde edersen kullanıcıya: `"Bu bulguyu android/steering.md dosyasına Project-Specific Patterns başlığı altına eklemek ister misiniz?"` diye sor.
 * **No Half-Baked Commits:** Adımları tamamladıktan sonra taskların checkbox'larını işaretle. Her adımı otomatik ve kendi içinde onayla (implementation plan, test sonuçları vs kullanıcıya sorma). Bana sadece tüm tamamlanmış halde olan taskları tek seferde teslim et.
 
 ---
@@ -110,6 +110,6 @@ liste:
 
 Herhangi bir aşamada tıkanırsan veya kodda kırılma yaşarsan süreci durdurma; en rasyonel fallback (geri çekilme) mekanizmasını kurarak bir sonraki adıma geç ve nihai raporda bana nerede ne yaptığını açıkça belirt.
 
-Yaptığın tüm güncellemeleri, şema değişikliklerini ve karşılaşılan OS-level/JNI engellerini `.agent/android/android-devlog-reference.md` dosyası içerisine teknik ve detaylıca İngilizce olarak kaydet. Görev tamamlandığında bana tüm doğrulanmış taskları tek seferde teslim et.
+Yaptığın tüm güncellemeleri, şema değişikliklerini ve karşılaşılan OS-level/JNI engellerini `.agent/DEVLOG.md` dosyası içerisine teknik ve detaylıca İngilizce olarak kaydet. Görev tamamlandığında bana tüm doğrulanmış taskları tek seferde teslim et.
 
 İşe koyul!

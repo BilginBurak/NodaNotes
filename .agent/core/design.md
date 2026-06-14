@@ -1,7 +1,9 @@
-# Noda — Design Document
+# Noda — Core & Tauri Design Document
 
-> Technical architecture and design decisions for the Noda cross-platform Rust Markdown vault.
+> Technical architecture and design decisions for the Rust Core and Tauri/macOS frontend.
 > This document describes **how** the system is built, not what it does (see `requirements.md`).
+> **For Android architecture, see `.agent/android/design.md`.**
+> **For full project history & decisions, see `.agent/DEVLOG.md` (highest priority).**
 
 ---
 

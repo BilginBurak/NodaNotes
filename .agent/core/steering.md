@@ -1,8 +1,11 @@
-# Noda — Steering Document
+# Noda — Core & Tauri Steering Document
 
-> This document governs all implementation decisions for the Noda project.
+> This document governs implementation decisions for the Rust Core (`crates/core`, `crates/shared`, `crates/tauri-shell`) and Tauri/macOS frontend.
 > Every contributor, agent, and automation MUST adhere to these rules.
 > Violations render the output invalid and must be corrected before merge.
+>
+> **For Android-specific rules, see `.agent/android/steering.md`.**
+> **For the full project development history, see `.agent/DEVLOG.md`.**
 
 ---
 

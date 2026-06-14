@@ -3,6 +3,10 @@
 > This document governs ALL implementation decisions for the NodaNotes Android project.
 > Every contributor, agent, and automation MUST read this file FIRST before touching any code.
 > Violations render the output invalid and must be corrected before proceeding.
+>
+> **For the full project development history, see `.agent/DEVLOG.md` (highest priority).**
+> **For JNI function signatures, see `.agent/android/bridge-spec.md`.**
+> **For Rust Core rules, see `.agent/core/steering.md`.**
 
 ---
 

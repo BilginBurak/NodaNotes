@@ -3,10 +3,11 @@
 > This document defines every JNI function that must be implemented in `crates/android-bridge/src/lib.rs`
 > and the corresponding `external fun` declarations in `RustCore.kt`.
 >
-> **Current state:** Only `initVault` is implemented. ALL other functions must be added.
->
 > **Rule:** Each JNI function maps 1:1 to a Tauri command in `crates/tauri-shell/src/commands/`.
 > Study those command files to understand what Rust Core API to call.
+>
+> **For steering rules, see `.agent/android/steering.md`.**
+> **For full development history & decisions, see `.agent/DEVLOG.md`.**
 
 ---
 

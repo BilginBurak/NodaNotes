@@ -1,8 +1,9 @@
 # Noda Android — System Design Document
 
 > Describes HOW the Android app is built — architecture, data flows, module design.
-> Read `android-spec.md` for WHAT it does.
-> Read `android-bridge-spec.md` for JNI function details.
+> Read `.agent/android/spec.md` for WHAT it does.
+> Read `.agent/android/bridge-spec.md` for JNI function details.
+> **For full project history & decisions, see `.agent/DEVLOG.md` (highest priority).**
 
 ---
 

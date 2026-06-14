@@ -1,9 +1,13 @@
-# Noda Android — Development Knowledge Base
+# Noda — Master Development Knowledge Base
 
-> This document distills actionable technical decisions from the macOS Development Log.
-> Source: `.agent/Noda-Development_LOG.md` — READ THAT for full context.
-> This file only captures decisions that DIRECTLY apply to Android/Rust core development.
-> macOS-specific UI items (Svelte, WKWebView, CodeMirror, CSS) are intentionally excluded.
+> **This is the single source of truth for the entire NodaNotes project.**
+> Covers: Rust Core (`crates/core`), Android (Kotlin/JNI), and Tauri/macOS (SvelteKit).
+>
+> **Priority rule:** In case of conflict between any other document and this file, THIS FILE WINS.
+> It reflects the most recent architectural decisions, bug fixes, and proven patterns.
+>
+> Platform-specific UI decisions (Svelte/CodeMirror for Tauri, Jetpack Compose for Android)
+> are noted inline with their platform tag. Rust Core decisions apply to ALL platforms.
 
 ---
 
