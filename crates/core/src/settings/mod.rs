@@ -188,6 +188,8 @@ impl AppConfig {
                 }
 
                 // Create the new .sync file on remote WebDAV
+                let _ = client.mkcol(".noda").await;
+                let _ = client.mkcol(".noda/sync").await;
                 let new_sync_path = format!(".noda/sync/{}.sync", self.sync.device_name);
                 let _ = client.put(&new_sync_path, Vec::new()).await;
             }

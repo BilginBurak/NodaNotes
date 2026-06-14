@@ -84,6 +84,15 @@ fn main() {
             commands::folder_commands::move_folder,
             commands::folder_commands::rename_folder,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                #[cfg(target_os = "macos")]
+                {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             // Configure main window
             if let Some(window) = app.get_webview_window("main") {
@@ -107,6 +116,14 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
             if let tauri::RunEvent::Exit = event {
                 let app_state = app_handle.state::<AppState>();
                 let app_state_clone = app_state.inner().clone();

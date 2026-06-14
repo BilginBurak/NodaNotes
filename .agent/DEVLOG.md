@@ -1091,3 +1091,21 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
 ### 50.2 Reveal in System File Manager
 - **Tauri IPC Command:** Implemented `reveal_in_file_manager(state, rel_path)` in `vault_commands.rs` and registered it in `main.rs`. The command joins the active vault path with the target relative path and spawns the native file manager (Finder with `-R` on macOS, Explorer with `/select,` on Windows, or `xdg-open` parent folder on Linux).
 - **Context Menus:** Added a "Show in Finder" action in `ContextMenu.svelte` for both note and folder types, enabling quick access to physical files directly from the note list or folder tree interface.
+
+---
+
+## 51. WebDAV Parent Folder Creation, Sync Status Reset, and macOS Window Close Handling (June 2026)
+
+- **WebDAV PUT 403 Forbidden Bug:**
+  - **Problem:** Attempting to upload a manifest file (`.noda/sync/manifests/manifest_*.json`) or a sync signature (`.noda/sync/*.sync`) to a remote WebDAV server without ensuring that their parent directories exist caused a `403 Forbidden` or `409 Conflict` error on WebDAV servers like InfiniCloud.
+  - **Solution:** Modified `sync_now_internal_inner` in `crates/core/src/sync/engine.rs` to invoke `ensure_remote_parent_dirs_exist` for both the manifest and sync signature upload paths, ensuring `.noda`, `.noda/sync`, and `.noda/sync/manifests` collections are created step-by-step prior to upload.
+  - **Settings Registration:** Added explicit `mkcol` calls for `.noda` and `.noda/sync` in `crates/core/src/settings/mod.rs` before uploading the initial sync signature file.
+  - **Test Coverage:** Updated mock WebDAV server in `test_sync_engine_orchestration_flow` to support `MKCOL` requests, ensuring test suites compile and pass.
+
+- **Stuck Sync Status:**
+  - **Problem:** When `sync_now_internal` encountered errors and returned early, it did not reset the internal sync engine state from `SyncStatus::Syncing` back to `SyncStatus::Idle`, locking out subsequent sync triggers with `Sync error: Sync already in progress`.
+  - **Solution:** Renamed the core execution logic to `sync_now_internal_inner` and wrapped it in `sync_now_internal` with a transition wrapper. This ensures the status is unconditionally reset to `SyncStatus::Idle` upon completion or early error returns.
+
+- **macOS Window Hide on Close Override:**
+  - **Problem:** Tapping the close button of the main window on macOS fully closed/terminated the application, rather than keeping it running in the background.
+  - **Solution:** Modified `crates/tauri-shell/src/main.rs` to register `.on_window_event` on the Tauri Builder, intercepting the `tauri::WindowEvent::CloseRequested` event. On macOS, this calls `api.prevent_close()` and `window.hide()`. In the `.run` event loop, handled `tauri::RunEvent::Reopen` to show and focus the main window again when clicking the dock icon.

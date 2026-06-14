@@ -274,6 +274,12 @@ impl SyncEngine {
     /// Core sync implementation
     async fn sync_now_internal(&self, vault_path: &Path, database: &Database) -> Result<SyncReport, NodaError> {
         self.update_status(SyncStatus::Syncing);
+        let result = self.sync_now_internal_inner(vault_path, database).await;
+        self.update_status(SyncStatus::Idle);
+        result
+    }
+
+    async fn sync_now_internal_inner(&self, vault_path: &Path, database: &Database) -> Result<SyncReport, NodaError> {
 
         let config = self.config.read().clone();
         let client = WebDavClient::new(
@@ -898,7 +904,7 @@ impl SyncEngine {
                 .map_err(|e| NodaError::Sync(format!("Failed to serialize manifest: {}", e)))?;
 
             let manifest_rel_path = format!(".noda/sync/manifests/manifest_{}.json", config.device_name);
-            let _ = client.mkcol(".noda/sync/manifests").await;
+            ensure_remote_parent_dirs_exist(&client, &manifest_rel_path, &remote_entries_list, "").await?;
             client.put(&manifest_rel_path, manifest_json.as_bytes().to_vec()).await?;
 
             // Save locally
@@ -911,6 +917,7 @@ impl SyncEngine {
             // Upload 0-byte .sync signature
             let our_sync_file_name = format!("{}.sync", config.device_name);
             let our_sync_rel_path = format!(".noda/sync/{}", our_sync_file_name);
+            ensure_remote_parent_dirs_exist(&client, &our_sync_rel_path, &remote_entries_list, "").await?;
             client.put(&our_sync_rel_path, Vec::new()).await?;
 
             // Capture the server's ETag for our sync file
@@ -1648,6 +1655,9 @@ mod tests {
                             );
                             let _ = socket.write_all(response.as_bytes()).await;
                         } else if req_str.starts_with("PUT") {
+                            let response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                            let _ = socket.write_all(response.as_bytes()).await;
+                        } else if req_str.starts_with("MKCOL") {
                             let response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                             let _ = socket.write_all(response.as_bytes()).await;
                         }
