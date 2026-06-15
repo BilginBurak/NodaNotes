@@ -156,10 +156,9 @@ fn main() {
                         .title("Noda")
                         .inner_size(1200.0, 800.0)
                         .min_inner_size(800.0, 600.0)
-                        .transparent(true)
+                        .transparent(false)
                         .hidden_title(true)
-                        .disable_drag_drop_handler()
-                        .title_bar_style(tauri::TitleBarStyle::Overlay);
+                        .disable_drag_drop_handler();
 
                         if let Ok(window) = builder.build() {
                             let _ = window::setup_window(&window);

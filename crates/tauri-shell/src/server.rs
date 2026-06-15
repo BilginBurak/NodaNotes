@@ -1,11 +1,10 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
-use parking_lot::RwLock;
 use axum::{
     body::Body,
-    extract::{Path, Query, Request, State, ConnectInfo},
+    extract::{Path, Query, State, ConnectInfo},
     http::{header, Method, StatusCode},
-    middleware::{self, Next},
+    middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,

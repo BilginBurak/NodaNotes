@@ -1193,3 +1193,13 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
 - **Settings tab:** Renamed the settings section to "Clipper & Devices" in `SettingsModal.svelte`.
 - **Performance Optimizations:** Removed high-frequency background polling loops ($effect-driven automatic 3-second fetches). The device list and clipper token are loaded once when the settings pane opens, and subsequent updates are triggered via a manual "Yenile" (Refresh) button, reducing CPU and SQLite connection load.
 - **Controls:** Embedded a "Tokeni Yenile" (Regenerate Token) button next to the Clipper token, enabling instant revocation and replacement of the Web Clipper token. Added clear "Onayla" (Approve) and "Kaldır" (Remove/Revoke) visual state controls for external LAN devices.
+
+---
+
+## 55. Standard macOS Window Styling and Unused Imports Cleanups (June 2026)
+
+- **Standard macOS Window Experience:**
+  - **Problem:** When the window was closed (red traffic light) and reopened from the macOS Dock, the recreated window was built with custom properties (transparent frame, hidden title, and overlay title bar style) that integrated the traffic lights directly inside the Svelte UI, causing visual disproportion and loss of window drag functionality.
+  - **Solution:** Configured both `tauri.conf.json` and the reopen recreate handler in `crates/tauri-shell/src/main.rs` to use standard window settings. Changed `transparent` and `hiddenTitle` (or `hidden_title`) to `false`, and removed the `.title_bar_style(tauri::TitleBarStyle::Overlay)` call, ensuring a consistent standard macOS native window frame and title bar.
+- **Compiler Warning Resolution:**
+  - **Unused Imports Cleaned:** Cleaned up unused imports in `crates/tauri-shell/src/server.rs` (`parking_lot::RwLock`, `Next`, `Request`), bringing the codebase to zero compiler warnings.
