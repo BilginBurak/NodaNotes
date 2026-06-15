@@ -34,13 +34,31 @@ document.addEventListener('DOMContentLoaded', () => {
       showStatus(setupStatus, 'Token cannot be empty', 'error');
       return;
     }
-    chrome.storage.local.set({ noda_clipper_token: token }, () => {
-      activeToken = token;
-      showStatus(setupStatus, 'Configured successfully!', 'success');
-      setTimeout(() => {
-        setupStatus.style.display = 'none';
-        showClipScreen();
-      }, 1000);
+    
+    saveTokenBtn.disabled = true;
+    saveTokenBtn.innerHTML = '<span class="spinner"></span> <span>Saving...</span>';
+    setupStatus.style.display = 'none';
+
+    chrome.runtime.sendMessage({
+      action: 'VALIDATE_TOKEN',
+      payload: { token }
+    }, (response) => {
+      saveTokenBtn.disabled = false;
+      saveTokenBtn.innerHTML = 'Save Configuration';
+      
+      if (response && response.success) {
+        chrome.storage.local.set({ noda_clipper_token: token }, () => {
+          activeToken = token;
+          showStatus(setupStatus, 'Configured successfully!', 'success');
+          setTimeout(() => {
+            setupStatus.style.display = 'none';
+            showClipScreen();
+          }, 1000);
+        });
+      } else {
+        const errMsg = (response && response.error) ? response.error : 'Could not connect to Noda Notes server. Ensure the app is open.';
+        showStatus(setupStatus, errMsg, 'error');
+      }
     });
   });
 
@@ -101,19 +119,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const tab = tabs[0];
         currentTabUrl = tab.url || '';
         
-        // Query content script
-        chrome.tabs.sendMessage(tab.id, { action: 'GET_CLIP_DATA' }, (response) => {
-          if (chrome.runtime.lastError || !response) {
-            // Content script not loaded (e.g. browser settings page or chrome web store)
+        // Inject content.js dynamically using scripting API
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        }, () => {
+          if (chrome.runtime.lastError) {
+            console.warn('Could not inject content script:', chrome.runtime.lastError);
             clipTitle.value = tab.title || '';
             clipBody.value = `No content script available on this page.\nURL: ${currentTabUrl}`;
             charCounter.textContent = '0 chars';
             return;
           }
 
-          clipTitle.value = response.title || tab.title || '';
-          clipBody.value = response.contentMarkdown || '';
-          charCounter.textContent = `${response.contentMarkdown.length} chars`;
+          // Query content script
+          chrome.tabs.sendMessage(tab.id, { action: 'GET_CLIP_DATA' }, (response) => {
+            if (chrome.runtime.lastError || !response) {
+              // Content script not loaded (e.g. browser settings page or chrome web store)
+              clipTitle.value = tab.title || '';
+              clipBody.value = `No content script available on this page.\nURL: ${currentTabUrl}`;
+              charCounter.textContent = '0 chars';
+              return;
+            }
+
+            clipTitle.value = response.title || tab.title || '';
+            clipBody.value = response.contentMarkdown || '';
+            charCounter.textContent = `${response.contentMarkdown.length} chars`;
+          });
         });
       }
     });

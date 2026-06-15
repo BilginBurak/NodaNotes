@@ -44,7 +44,9 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Stri
             if origin_bytes.starts_with(b"http://localhost") || origin_bytes.starts_with(b"http://127.0.0.1") {
                 return true;
             }
-            if origin_bytes.starts_with(b"safari-extension://") || origin_bytes.starts_with(b"chrome-extension://") {
+            if origin_bytes.starts_with(b"safari-extension://") 
+                || origin_bytes.starts_with(b"safari-web-extension://") 
+                || origin_bytes.starts_with(b"chrome-extension://") {
                 return true;
             }
             false
@@ -54,6 +56,7 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Stri
     let api_routes = Router::new()
         .route("/clipper", post(clipper_handler))
         .route("/rpc", post(rpc_handler))
+        .route("/validate", get(validate_token_handler))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
     let app = Router::new()
@@ -72,11 +75,18 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Stri
     Ok(())
 }
 
+async fn validate_token_handler() -> impl IntoResponse {
+    StatusCode::OK
+}
+
 async fn auth_middleware(
     State(state): State<ServerState>,
     req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    if req.method() == Method::OPTIONS {
+        return Ok(next.run(req).await);
+    }
     if let Some(auth_header) = req.headers().get(header::AUTHORIZATION) {
         if let Ok(auth_str) = auth_header.to_str() {
             if auth_str.starts_with("Bearer ") {

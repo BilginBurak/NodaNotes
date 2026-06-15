@@ -1141,3 +1141,13 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
 - **DOM to Markdown Parser:** Implemented a zero-dependency HTML-to-Markdown parser in `content.js` that recursively processes document node formats (headers, lists, preformatted code, blockquotes, tables, links, images).
 - **Background and Popup:** Added background worker dispatcher and minimalist Japandi Zen themed configuration settings view. Can be compiled into native macOS/iOS Safari app extension with `xcrun safari-web-extension-converter`.
 - **Bundle ID Prefix Alignment:** Modified the generated Xcode project configuration (`project.pbxproj`) to align the bundle identifier prefixes case-sensitively (changing `com.burakbilgin.nodaclipper.Extension` to `com.burakbilgin.NodaClipper.Extension` to match parent target `com.burakbilgin.NodaClipper`). This fixes the Xcode build validation failure.
+
+---
+
+## 53. Web Clipper Reliability, Dynamic Injection, and Token Verification (June 2026)
+
+- **Token Verification:** Exposed a new `GET /api/validate` route in `crates/tauri-shell/src/server.rs` protected by the authorization middleware. In `popup.js`, the setup view now sends a `VALIDATE_TOKEN` message to `background.js` to verify credentials against the backend before saving, preventing false success states.
+- **Dynamic Content Script Injection:** Integrated dynamic script injection in `popup.js` using `chrome.scripting.executeScript` to inject `content.js` into the tab context on popup trigger. This resolves the `"No content script available on this page"` error on active web tabs.
+- **Connection Resiliency & Fallback:** Extended the host permissions in `manifest.json` to include `http://localhost:4040/*`. Configured `background.js` to try connecting to both `127.0.0.1:4040` and `localhost:4040` sequentially to handle DNS mapping and local networking constraints on macOS/WebKit environments.
+- **CORS OPTIONS Middleware Bypass:** Fixed a connection block where browser-initiated CORS preflight `OPTIONS` requests sent to protected `/api` endpoints were rejected by the Axum `auth_middleware` (due to missing `Authorization` headers in preflight requests), which caused fetch calls to fail with `TypeError: Load failed`. Modified the middleware to bypass authentication for the `OPTIONS` method.
+- **CORS Safari Extension Scheme Fix:** Corrected a CORS origin block where Safari's native extension pages running under `safari-web-extension://` (rather than `safari-extension://`) were rejected by the CORS origin whitelist predicate in `server.rs`. Added `safari-web-extension://` to the allowed origins.
