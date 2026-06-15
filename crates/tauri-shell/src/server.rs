@@ -1,7 +1,9 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
+use parking_lot::RwLock;
 use axum::{
     body::Body,
-    extract::{Path, Query, Request, State},
+    extract::{Path, Query, Request, State, ConnectInfo},
     http::{header, Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -26,11 +28,88 @@ struct Asset;
 #[derive(Clone)]
 pub struct ServerState {
     pub app_handle: AppHandle,
-    pub token: String,
+    pub token: Arc<parking_lot::RwLock<String>>,
+}
+
+#[derive(serde::Deserialize)]
+struct AuthRequestPayload {
+    device_name: String,
+}
+
+#[derive(serde::Serialize)]
+struct AuthRequestResponse {
+    id: String,
+}
+
+#[derive(serde::Serialize)]
+struct AuthStatusResponse {
+    status: String,
+    token: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct AuthStatusParams {
+    id: String,
+}
+
+async fn auth_request_handler(
+    State(state): State<ServerState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(payload): Json<AuthRequestPayload>,
+) -> impl IntoResponse {
+    let app_state = state.app_handle.state::<AppState>();
+    let db = match &*app_state.database.read() {
+        Some(d) => d.clone(),
+        None => return (StatusCode::BAD_REQUEST, "No active database connection").into_response(),
+    };
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let ip_address = addr.ip().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let conn = db.conn.lock();
+    if let Err(e) = conn.execute(
+        "INSERT INTO trusted_devices (id, device_name, ip_address, status, device_token, created_at) VALUES (?1, ?2, ?3, 'pending', NULL, ?4)",
+        [&id, &payload.device_name, &ip_address, &now],
+    ) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to register request: {}", e)).into_response();
+    }
+
+    (StatusCode::OK, Json(AuthRequestResponse { id })).into_response()
+}
+
+async fn auth_status_handler(
+    State(state): State<ServerState>,
+    Query(params): Query<AuthStatusParams>,
+) -> impl IntoResponse {
+    let app_state = state.app_handle.state::<AppState>();
+    let db = match &*app_state.database.read() {
+        Some(d) => d.clone(),
+        None => return (StatusCode::BAD_REQUEST, "No active database connection").into_response(),
+    };
+
+    let conn = db.conn.lock();
+    let mut stmt = match conn.prepare("SELECT status, device_token FROM trusted_devices WHERE id = ?1") {
+        Ok(s) => s,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+
+    let result = stmt.query_row([&params.id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+    });
+
+    match result {
+        Ok((status, token)) => {
+            (StatusCode::OK, Json(AuthStatusResponse { status, token })).into_response()
+        }
+        Err(_) => {
+            (StatusCode::NOT_FOUND, "Device request not found").into_response()
+        }
+    }
 }
 
 /// Start the Axum server on localhost:4040.
-pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Arc<parking_lot::RwLock<String>>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let state = ServerState {
         app_handle,
         token: token.clone(),
@@ -44,6 +123,11 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Stri
             if origin_bytes.starts_with(b"http://localhost") || origin_bytes.starts_with(b"http://127.0.0.1") {
                 return true;
             }
+            if origin_bytes.starts_with(b"http://192.168.") 
+                || origin_bytes.starts_with(b"http://10.") 
+                || origin_bytes.starts_with(b"http://172.") {
+                return true;
+            }
             if origin_bytes.starts_with(b"safari-extension://") 
                 || origin_bytes.starts_with(b"safari-web-extension://") 
                 || origin_bytes.starts_with(b"chrome-extension://") {
@@ -52,25 +136,33 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Stri
             false
         }));
 
+    let state_for_middleware = state.clone();
     // Routes requiring Auth token
-    let api_routes = Router::new()
+    let api_routes: Router<ServerState> = Router::new()
         .route("/clipper", post(clipper_handler))
         .route("/rpc", post(rpc_handler))
         .route("/validate", get(validate_token_handler))
-        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+        .route_layer(middleware::from_fn(move |req, next| {
+            let state = state_for_middleware.clone();
+            async move {
+                auth_middleware(state, req, next).await
+            }
+        }));
 
     let app = Router::new()
         .nest("/api", api_routes)
+        .route("/api/auth/request", post(auth_request_handler))
+        .route("/api/auth/status", get(auth_status_handler))
         .route("/attachments/:filename", get(attachments_handler))
         .fallback(static_asset_fallback)
         .layer(cors)
         .with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 4040));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 4040));
     tracing::info!("Unified Noda Daemon Server starting on {}", addr);
     
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }
@@ -80,54 +172,141 @@ async fn validate_token_handler() -> impl IntoResponse {
 }
 
 async fn auth_middleware(
-    State(state): State<ServerState>,
-    req: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+    state: ServerState,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
     if req.method() == Method::OPTIONS {
-        return Ok(next.run(req).await);
+        return next.run(req).await;
     }
     if let Some(auth_header) = req.headers().get(header::AUTHORIZATION) {
         if let Ok(auth_str) = auth_header.to_str() {
             if auth_str.starts_with("Bearer ") {
                 let req_token = &auth_str[7..];
-                if req_token == state.token {
-                    return Ok(next.run(req).await);
+                
+                // 1. Check primary master token
+                let is_master = {
+                    let master_token = state.token.read();
+                    req_token == *master_token
+                };
+                if is_master {
+                    return next.run(req).await;
+                }
+
+                // 2. Check database trusted_devices approved list
+                let app_state = state.app_handle.state::<AppState>();
+                let is_trusted = {
+                    let db_guard = app_state.database.read();
+                    if let Some(db) = &*db_guard {
+                        let conn = db.conn.lock();
+                        let query = "SELECT count(*) FROM trusted_devices WHERE device_token = ?1 AND status = 'approved'";
+                        conn.query_row(query, [req_token], |row| row.get::<_, i32>(0)).unwrap_or(0) > 0
+                    } else {
+                        false
+                    }
+                };
+
+                if is_trusted {
+                    return next.run(req).await;
                 }
             }
         }
     }
-    Err(StatusCode::UNAUTHORIZED)
+    StatusCode::UNAUTHORIZED.into_response()
 }
 
 /// Fallback route: Serves embedded static assets or SPA index.html for client-side routing.
 async fn static_asset_fallback(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<ServerState>,
-    req: Request,
+    req: axum::extract::Request,
 ) -> impl IntoResponse {
     let path = req.uri().path().trim_start_matches('/');
-    
-    // Serve index.html (with token injection) for empty path, index.html, or SPA routes (no dot in path)
     let is_spa = !path.contains('.') || path == "index.html";
 
     if is_spa {
-        if let Some(index_asset) = Asset::get("index.html") {
-            let mut html = String::from_utf8(index_asset.data.into_owned()).unwrap_or_default();
-            // Inject token into Svelte window context securely
-            let script = format!("<script>window.__NODA_TOKEN__ = \"{}\";</script>", state.token);
-            if let Some(pos) = html.find("<head>") {
-                html.insert_str(pos + 6, &script);
-            } else {
-                html = format!("{}{}", script, html);
+        // 1. Extract token from query or cookie
+        let mut token_val = "".to_string();
+        if let Some(query) = req.uri().query() {
+            for part in query.split('&') {
+                let kv: Vec<&str> = part.split('=').collect();
+                if kv.len() == 2 && kv[0] == "token" {
+                    token_val = kv[1].to_string();
+                    break;
+                }
             }
+        }
 
+        if token_val.is_empty() {
+            if let Some(cookie_header) = req.headers().get(header::COOKIE) {
+                if let Ok(cookie_str) = cookie_header.to_str() {
+                    for cookie in cookie_str.split(';') {
+                        let parts: Vec<&str> = cookie.trim().split('=').collect();
+                        if parts.len() == 2 && parts[0] == "noda_token" {
+                            token_val = parts[1].to_string();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Validate token or check if local loopback
+        let is_local = addr.ip().is_loopback();
+        let is_valid = if is_local {
+            true
+        } else if token_val.is_empty() {
+            false
+        } else {
+            // Check primary master token
+            let master_token = state.token.read();
+            if token_val == *master_token {
+                true
+            } else {
+                // Check sqlite database
+                let app_state = state.app_handle.state::<AppState>();
+                let db_guard = app_state.database.read();
+                if let Some(db) = &*db_guard {
+                    let conn = db.conn.lock();
+                    let query = "SELECT count(*) FROM trusted_devices WHERE device_token = ?1 AND status = 'approved'";
+                    conn.query_row(query, [&token_val], |row| row.get::<_, i32>(0)).unwrap_or(0) > 0
+                } else {
+                    false
+                }
+            }
+        };
+
+        if is_valid {
+            if let Some(index_asset) = Asset::get("index.html") {
+                let mut html = String::from_utf8(index_asset.data.into_owned()).unwrap_or_default();
+                let actual_token = if is_local {
+                    (*state.token.read()).clone()
+                } else {
+                    token_val
+                };
+
+                let script = format!("<script>window.__NODA_TOKEN__ = \"{}\";</script>", actual_token);
+                if let Some(pos) = html.find("<head>") {
+                    html.insert_str(pos + 6, &script);
+                } else {
+                    html = format!("{}{}", script, html);
+                }
+
+                Response::builder()
+                    .header(header::CONTENT_TYPE, "text/html")
+                    .body(Body::from(html))
+                    .unwrap()
+                    .into_response()
+            } else {
+                StatusCode::NOT_FOUND.into_response()
+            }
+        } else {
+            // Serve the pairing.html page
             Response::builder()
                 .header(header::CONTENT_TYPE, "text/html")
-                .body(Body::from(html))
+                .body(Body::from(include_str!("pairing.html")))
                 .unwrap()
                 .into_response()
-        } else {
-            StatusCode::NOT_FOUND.into_response()
         }
     } else {
         // Try serving physical static asset
@@ -151,7 +330,7 @@ async fn attachments_handler(
     State(state): State<ServerState>,
 ) -> impl IntoResponse {
     let token = params.get("token").cloned().unwrap_or_default();
-    if token != state.token {
+    if token != *state.token.read() {
         return StatusCode::UNAUTHORIZED.into_response();
     }
 
@@ -653,6 +832,12 @@ async fn handle_rpc_action(
         // Import commands
         "import_note" => rpc_match!(payload, ImportNoteArgs, |a: ImportNoteArgs| commands::note_commands::import_note(tauri_state.clone(), a.source_path, a.target_dir)),
         "import_note_from_content" => rpc_match!(payload, ImportNoteFromContentArgs, |a: ImportNoteFromContentArgs| commands::note_commands::import_note_from_content(tauri_state.clone(), a.title, a.content, a.target_dir)),
+
+        // Device authorization commands
+        "get_trusted_devices" => rpc_match_no_args!(commands::device_commands::get_trusted_devices(tauri_state.clone())),
+        "approve_device" => rpc_match!(payload, IdArgs, |a: IdArgs| commands::device_commands::approve_device(tauri_state.clone(), a.id)),
+        "revoke_device" => rpc_match!(payload, IdArgs, |a: IdArgs| commands::device_commands::revoke_device(tauri_state.clone(), a.id)),
+        "regenerate_daemon_token" => rpc_match_no_args!(commands::device_commands::regenerate_daemon_token(tauri_state.clone())),
 
         _ => Err(AppError {
             code: "UNKNOWN_ACTION".to_string(),

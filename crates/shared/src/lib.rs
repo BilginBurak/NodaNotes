@@ -181,5 +181,15 @@ pub mod dtos {
         pub sync: SyncConfigDto,
         pub history: HistorySettingsDto,
     }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TrustedDeviceDto {
+        pub id: String,
+        pub device_name: String,
+        pub ip_address: String,
+        pub status: String,
+        pub device_token: Option<String>,
+        pub created_at: String,
+    }
 }
 

@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::schema::INIT_SCHEMA;
 use tracing::info;
 
-const CURRENT_SCHEMA_VERSION: i32 = 8;
+const CURRENT_SCHEMA_VERSION: i32 = 9;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     // Check if schema_version table exists
@@ -215,6 +215,28 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
 
         current_version = 8;
+    }
+
+    if current_version < 9 {
+        info!("Applying database migration v9: adding trusted_devices");
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS trusted_devices (
+                id TEXT PRIMARY KEY,
+                device_name TEXT NOT NULL,
+                ip_address TEXT NOT NULL,
+                status TEXT NOT NULL,
+                device_token TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_trusted_devices_token ON trusted_devices(device_token);
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v9: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (9)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 9;
     }
 
     info!("Database is up to date (version {})", current_version);

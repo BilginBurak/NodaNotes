@@ -52,6 +52,7 @@
     return () => {
       window.removeEventListener('click', handleGlobalLinkClick, true);
       window.removeEventListener('keydown', handleGlobalKeyDown);
+      if (pollingInterval) clearInterval(pollingInterval);
     };
   });
 

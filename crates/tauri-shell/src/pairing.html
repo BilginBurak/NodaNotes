@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noda Notes — Cihaz Eşleştirme</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-window: #09090b;
+            --bg-elevated: #18181b;
+            --bg-control: #27272a;
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --text-primary: #f4f4f5;
+            --text-secondary: #a1a1aa;
+            --text-tertiary: #71717a;
+            --accent: #0a84ff;
+            --accent-orange: #ff9800;
+            --color-red: #ff453a;
+            --radius-lg: 12px;
+            --radius-md: 8px;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: var(--bg-window);
+            color: var(--text-primary);
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-image: radial-gradient(ellipse at 50% 0%, rgba(10, 132, 255, 0.04) 0%, transparent 60%);
+        }
+        .launcher-card {
+            width: 400px;
+            max-width: calc(100vw - 48px);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .launcher-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .brand-logo {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(10, 132, 255, 0.25);
+            background-color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .brand-logo img {
+            width: 80%;
+            height: 80%;
+            object-fit: contain;
+        }
+        .brand-text h1 {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+        .brand-text p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .action-container {
+            background-color: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .form-group label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        input[type="text"] {
+            background-color: var(--bg-control);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+        input[type="text"]:focus {
+            border-color: var(--accent);
+        }
+        .btn {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            padding: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: opacity 0.15s ease;
+            text-align: center;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .loading-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border-subtle);
+            border-top-color: var(--accent-orange);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="launcher-card">
+        <div class="launcher-brand">
+            <div class="brand-logo">
+                <img src="/logo.png" alt="Noda Logo" onerror="this.style.display='none'">
+            </div>
+            <div class="brand-text">
+                <h1>Noda</h1>
+                <p>Cihaz Yetkilendirmesi</p>
+            </div>
+        </div>
+
+        <div class="action-container">
+            <!-- Loading State -->
+            <div id="state-checking" style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 20px 0;">
+                <div class="loading-spinner" style="border-top-color: var(--accent);"></div>
+                <span style="font-size: 14px; color: var(--text-secondary);">Bağlantı kontrol ediliyor...</span>
+            </div>
+
+            <!-- Input State -->
+            <div id="state-input" class="hidden" style="display: flex; flex-direction: column; gap: 16px;">
+                <h3 class="title">Yeni Cihazı Eşleştir</h3>
+                <p class="desc">Bu cihaz henüz yetkilendirilmemiş. Lütfen bu cihazı tanımlamak için bir isim girin ve masaüstü uygulamasından onay verin.</p>
+                <div class="form-group">
+                    <label>Cihaz İsmi</label>
+                    <input type="text" id="device-name-input" placeholder="örn. iPhone'um">
+                </div>
+                <button class="btn" onclick="startPairing()">Eşleştirme İsteği Gönder</button>
+            </div>
+
+            <!-- Pending State -->
+            <div id="state-pending" class="hidden" style="display: flex; flex-direction: column; gap: 16px;">
+                <h3 class="title" style="color: var(--accent-orange);">Onay Bekleniyor...</h3>
+                <p class="desc">Masaüstü uygulamasında <strong>"Clipper & Devices"</strong> sekmesine giderek bu cihazın bağlantı isteğini onaylayın.</p>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0;">
+                    <div class="loading-spinner"></div>
+                    <span style="font-size: 13px; color: var(--text-secondary);">Masaüstü onayı aranıyor...</span>
+                </div>
+            </div>
+
+            <!-- Rejected State -->
+            <div id="state-rejected" class="hidden" style="display: flex; flex-direction: column; gap: 16px;">
+                <h3 class="title" style="color: var(--color-red);">Erişim Reddedildi</h3>
+                <p class="desc">Bu cihazın eşleştirme isteği reddedildi veya yetkisi kaldırıldı.</p>
+                <button class="btn" onclick="showInputState()" style="background-color: var(--bg-control); color: var(--text-primary); border: 1px solid var(--border-subtle);">Yeniden Dene</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tokenKey = 'noda_device_token';
+        let pairingRequestId = '';
+        let pollingInterval = null;
+
+        function showState(stateId) {
+            ['checking', 'input', 'pending', 'rejected'].forEach(id => {
+                document.getElementById('state-' + id).classList.add('hidden');
+            });
+            document.getElementById('state-' + stateId).classList.remove('hidden');
+        }
+
+        function showInputState() {
+            showState('input');
+        }
+
+        async function checkAuth() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryToken = urlParams.get('token');
+            if (queryToken) {
+                localStorage.setItem(tokenKey, queryToken);
+                document.cookie = `noda_token=${queryToken}; path=/; max-age=31536000`;
+                window.location.href = '/';
+                return;
+            }
+
+            const token = localStorage.getItem(tokenKey);
+            if (!token) {
+                showState('input');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/validate', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (res.ok) {
+                    document.cookie = `noda_token=${token}; path=/; max-age=31536000`;
+                    window.location.href = '/';
+                } else {
+                    localStorage.removeItem(tokenKey);
+                    showState('input');
+                }
+            } catch (e) {
+                showState('input');
+            }
+        }
+
+        async function startPairing() {
+            const nameInput = document.getElementById('device-name-input');
+            const name = nameInput.value.trim();
+            if (!name) {
+                alert('Lütfen cihazınıza bir isim verin.');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_name: name })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    pairingRequestId = data.id;
+                    showState('pending');
+                    pollingInterval = setInterval(pollPairingStatus, 2000);
+                } else {
+                    alert('Eşleştirme isteği gönderilemedi.');
+                }
+            } catch (e) {
+                alert('Bağlantı hatası: ' + e.toString());
+            }
+        }
+
+        async function pollPairingStatus() {
+            try {
+                const res = await fetch(`/api/auth/status?id=${pairingRequestId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === 'approved' && data.token) {
+                        clearInterval(pollingInterval);
+                        localStorage.setItem(tokenKey, data.token);
+                        document.cookie = `noda_token=${data.token}; path=/; max-age=31536000`;
+                        window.location.href = '/';
+                    } else if (data.status === 'revoked') {
+                        clearInterval(pollingInterval);
+                        showState('rejected');
+                    }
+                }
+            } catch (e) {
+                console.error('Error polling status:', e);
+            }
+        }
+
+        window.onload = checkAuth;
+    </script>
+</body>
+</html>

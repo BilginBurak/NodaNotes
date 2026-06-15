@@ -33,7 +33,11 @@ async function call<T>(cmd: string, args: Record<string, any> = {}): Promise<T> 
     }
   } else {
     // Pure browser fallback: call the Axum Daemon RPC translation bridge
-    const token = typeof window !== 'undefined' ? (window as any).__NODA_TOKEN__ || '' : '';
+    let token = typeof window !== 'undefined' ? (window as any).__NODA_TOKEN__ || '' : '';
+    if (!token && typeof window !== 'undefined') {
+      token = localStorage.getItem('noda_device_token') || '';
+      (window as any).__NODA_TOKEN__ = token;
+    }
     try {
       const response = await fetch('/api/rpc', {
         method: 'POST',
@@ -248,7 +252,20 @@ export const addAttachmentBytes = (fileName: string, bytes: number[]) =>
 // ── Added Tags & Daily Notes Commands ───────────────────────
 export const listTagsWithCounts = () => call<TagWithCountDto[]>('list_tags_with_counts');
 export const triggerDailyNote   = () => call<NoteDto>('trigger_daily_note');
-export const revealInFileManager = (relPath: string) => call<void>('reveal_in_file_manager', { relPath });
+// ── Device Authorization Commands ───────────────────────────
+export interface TrustedDevice {
+  id: string;
+  device_name: string;
+  ip_address: string;
+  status: string;
+  device_token?: string;
+  created_at: string;
+}
+
+export const getTrustedDevices = () => call<TrustedDevice[]>('get_trusted_devices');
+export const approveDevice = (id: string) => call<void>('approve_device', { id });
+export const revokeDevice = (id: string) => call<void>('revoke_device', { id });
+export const regenerateDaemonToken = () => call<string>('regenerate_daemon_token');
 
 
 

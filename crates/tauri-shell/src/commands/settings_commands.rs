@@ -60,6 +60,6 @@ pub async fn save_settings(
 
 #[tauri::command]
 pub fn get_daemon_token(state: State<'_, AppState>) -> String {
-    state.daemon_token.clone()
+    state.daemon_token.read().clone()
 }
 

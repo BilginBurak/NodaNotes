@@ -17,9 +17,13 @@
     getOrphanedRemnants,
     deleteOrphanedRemnants,
     deleteOrphanedFile,
-    getDaemonToken
+    getDaemonToken,
+    getTrustedDevices,
+    approveDevice,
+    revokeDevice,
+    regenerateDaemonToken
   } from '../../services/ipc';
-  import type { OrphanedAttachment, DuplicateNoteGroup, OrphanedRemnants } from '../../services/ipc';
+  import type { OrphanedAttachment, DuplicateNoteGroup, OrphanedRemnants, TrustedDevice } from '../../services/ipc';
   import type { AppConfig } from '../../types';
 
   let {
@@ -28,7 +32,7 @@
     onclose
   } = $props<{
     isOpen?: boolean;
-    activeTab?: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' | 'templates';
+    activeTab?: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' | 'templates' | 'devices';
     onclose?: () => void;
   }>();
 
@@ -49,6 +53,53 @@
   let historyEmptyTrashDays = $state(30);
   let historySnapshotIntervalMins = $state(5);
   let clipperToken = $state('');
+
+  // Device list and pairing states
+  let devices = $state<TrustedDevice[]>([]);
+  let pendingCount = $derived(devices.filter(d => d.status === 'pending').length);
+
+  async function fetchDevices() {
+    try {
+      devices = await getTrustedDevices();
+    } catch (e) {
+      console.error('Failed to fetch trusted devices:', e);
+    }
+  }
+
+  async function handleApproveDevice(id: string) {
+    try {
+      await approveDevice(id);
+      await fetchDevices();
+    } catch (e: any) {
+      alert('Cihaz onaylanamadı: ' + (e.message || e.toString()));
+    }
+  }
+
+  async function handleRevokeDevice(id: string) {
+    if (!confirm('Bu cihazın erişimini kaldırmak istediğinizden emin misiniz?')) return;
+    try {
+      await revokeDevice(id);
+      await fetchDevices();
+    } catch (e: any) {
+      alert('Cihaz yetkisi kaldırılamadı: ' + (e.message || e.toString()));
+    }
+  }
+
+  async function handleRegenerateToken() {
+    if (!confirm('Web Clipper tokenını yenilemek istediğinizden emin misiniz? Eski tokenı kullanan tarayıcı eklentileri erişimini kaybedecektir.')) return;
+    try {
+      clipperToken = await regenerateDaemonToken();
+      alert('Yeni token başarıyla oluşturuldu!');
+    } catch (e: any) {
+      alert('Token yenilenemedi: ' + (e.message || e.toString()));
+    }
+  }
+
+  $effect(() => {
+    if (isOpen && activeTab === 'devices') {
+      fetchDevices();
+    }
+  });
 
   const templateNotes = $derived(
     $notesList.filter(n => n.file_path.startsWith('.templates/'))
@@ -452,6 +503,17 @@
           Sync & Cloud
         </button>
 
+        <button class="nav-tab" class:active={activeTab === 'devices'} onclick={() => activeTab = 'devices'}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="1" width="6" height="14" rx="1"/>
+            <line x1="8" y1="12" x2="8" y2="12"/>
+          </svg>
+          Clipper & Devices
+          {#if pendingCount > 0}
+            <span class="pending-badge" style="background-color: var(--accent-orange, #ff9800); border-radius: 50%; width: 8px; height: 8px; margin-left: auto; box-shadow: 0 0 8px var(--accent-orange, #ff9800);"></span>
+          {/if}
+        </button>
+
         <button class="nav-tab" class:active={activeTab === 'history'} onclick={() => activeTab = 'history'}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="8" cy="8" r="6.5"/>
@@ -691,16 +753,94 @@
               </div>
             {/if}
           </div>
+        </div>
 
-          <div class="clipper-section-divider" style="margin: 24px 0; border-top: 1px solid var(--border-subtle);"></div>
-          
-          <div class="form-group">
-            <label>Web Clipper Integration</label>
-            <div class="clipper-token-container" style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
-              <input type="text" readonly value={clipperToken} style="font-family: var(--font-mono); background-color: var(--bg-control); cursor: pointer;" onclick={(e) => { e.currentTarget.select(); }} />
-              <button class="btn btn-ghost" onclick={() => { navigator.clipboard.writeText(clipperToken); alert('Token copied to clipboard!'); }} style="flex-shrink: 0; padding: 0 12px; height: 36px; display: flex; align-items: center; justify-content: center;">Copy</button>
+      {:else if activeTab === 'devices'}
+        <div class="content-header">
+          <h2>Clipper & Devices</h2>
+          <p>Manage your Web Clipper integration and authorize or revoke remote peer devices on your local network.</p>
+        </div>
+
+        <div class="settings-section">
+          <!-- Web Clipper Section -->
+          <div class="maintenance-group" style="margin-bottom: 32px;">
+            <div class="group-title-row">
+              <span class="group-title">Web Clipper Integration</span>
+              <span class="group-subtitle">Configure the browser extension to clip articles and notes directly into Noda</span>
             </div>
-            <span class="input-desc">Copy this token to configure the Noda Notes Web Clipper extension in your browser.</span>
+
+            <div class="form-group" style="margin-top: 16px;">
+              <label>API Access Token</label>
+              <div class="clipper-token-container" style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
+                <input type="text" readonly value={clipperToken} style="font-family: var(--font-mono); background-color: var(--bg-control); cursor: pointer; flex: 1; height: 36px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: 4px;" onclick={(e) => { e.currentTarget.select(); }} />
+                <button class="btn btn-ghost" onclick={() => { navigator.clipboard.writeText(clipperToken); alert('Token copied to clipboard!'); }} style="flex-shrink: 0; padding: 0 16px; height: 36px; display: flex; align-items: center; justify-content: center;">Copy</button>
+                <button class="btn" onclick={handleRegenerateToken} style="flex-shrink: 0; padding: 0 16px; height: 36px; display: flex; align-items: center; justify-content: center; background-color: var(--accent-orange, #ff9800); color: #fff; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Regenerate Token</button>
+              </div>
+              <span class="input-desc" style="margin-top: 4px; display: block; font-size: 12px; color: var(--text-muted);">Copy this token to configure the Noda Notes Web Clipper extension in your browser.</span>
+            </div>
+          </div>
+
+          <!-- Peer Authorization Section -->
+          <div class="maintenance-group">
+            <div class="group-title-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <div>
+                <span class="group-title">Authorized Peer Devices</span>
+                <span class="group-subtitle">Approve incoming pairing requests from mobile/desktop apps on the same network or revoke active devices</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick={fetchDevices} style="height: 28px; padding: 0 10px; font-size: 11px; display: flex; align-items: center; gap: 4px; border-radius: 4px; cursor: pointer; background-color: var(--bg-control); border: 1px solid var(--border-subtle); color: var(--text-primary);">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px; margin-right: 2px;">
+                  <path d="M1.5 8a6.5 6.5 0 0 1 10.5-5L14 5.5"/>
+                  <polyline points="14,2 14,5.5 10.5,5.5"/>
+                  <path d="M14.5 8a6.5 6.5 0 0 1-10.5 5L2 10.5"/>
+                  <polyline points="2,14 2,10.5 5.5,10.5"/>
+                </svg>
+                Yenile
+              </button>
+            </div>
+
+            <div style="margin-top: 20px;">
+              {#if devices.length === 0}
+                <div class="empty-devices-state" style="padding: 32px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: 8px; color: var(--text-muted);">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width: 36px; height: 36px; margin: 0 auto 12px; opacity: 0.6;">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                    <line x1="12" y1="18" x2="12" y2="18"/>
+                  </svg>
+                  <p>No registered or pending devices found.</p>
+                  <span style="font-size: 11px; opacity: 0.8;">Initiate pairing from Noda on another device connected to the same Wi-Fi.</span>
+                </div>
+              {:else}
+                <div class="devices-grid" style="display: flex; flex-direction: column; gap: 12px;">
+                  {#each devices as device}
+                    <div class="device-card" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: 8px; background-color: var(--bg-card, rgba(255, 255, 255, 0.02));">
+                      <div class="device-info" style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                          <span class="device-name" style="font-weight: 500; font-size: 14px; color: var(--text-main);">{device.device_name}</span>
+                          {#if device.status === 'pending'}
+                            <span class="badge badge-pending" style="background-color: rgba(255, 152, 0, 0.15); color: #ff9800; font-size: 10px; padding: 2px 8px; border-radius: 12px; font-weight: 500;">Pending</span>
+                          {:else if device.status === 'approved'}
+                            <span class="badge badge-approved" style="background-color: rgba(76, 175, 80, 0.15); color: #4caf50; font-size: 10px; padding: 2px 8px; border-radius: 12px; font-weight: 500;">Approved</span>
+                          {:else}
+                            <span class="badge badge-revoked" style="background-color: rgba(244, 67, 54, 0.15); color: #f44336; font-size: 10px; padding: 2px 8px; border-radius: 12px; font-weight: 500;">Revoked</span>
+                          {/if}
+                        </div>
+                        <span class="device-ip-date" style="font-size: 12px; color: var(--text-muted);">
+                          IP: {device.ip_address} • Paired: {new Date(device.created_at).toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div class="device-actions" style="display: flex; gap: 8px;">
+                        {#if device.status === 'pending'}
+                          <button class="btn btn-secondary btn-sm" onclick={() => handleApproveDevice(device.id)} style="height: 30px; font-size: 12px; padding: 0 12px; border-radius: 4px;">Approve</button>
+                        {/if}
+                        {#if device.status !== 'revoked'}
+                          <button class="btn btn-ghost btn-sm" onclick={() => handleRevokeDevice(device.id)} style="height: 30px; font-size: 12px; padding: 0 12px; border-radius: 4px; color: var(--accent-red, #f44336);">Revoke</button>
+                        {/if}
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
           </div>
         </div>
 

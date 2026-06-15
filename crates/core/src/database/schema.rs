@@ -98,5 +98,16 @@ CREATE TABLE IF NOT EXISTS sync_device_states (
     last_known_etag TEXT,
     last_known_modified TEXT
 );
+
+-- Trusted devices for remote authorization
+CREATE TABLE IF NOT EXISTS trusted_devices (
+    id TEXT PRIMARY KEY,
+    device_name TEXT NOT NULL,
+    ip_address TEXT NOT NULL,
+    status TEXT NOT NULL,
+    device_token TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_token ON trusted_devices(device_token);
 "#;
 

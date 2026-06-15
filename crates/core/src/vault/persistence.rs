@@ -66,3 +66,14 @@ pub fn get_or_create_daemon_token_sync() -> Result<String, NodaError> {
         Ok(token)
     }
 }
+
+/// Overwrites and saves the daemon token synchronously.
+pub fn save_daemon_token_sync(token: &str) -> Result<(), NodaError> {
+    let file_path = settings_path()?;
+    let mut settings = load_settings_sync().unwrap_or_default();
+    settings.daemon_token = Some(token.to_string());
+    let content = serde_json::to_string_pretty(&settings)
+        .map_err(|e| NodaError::Vault(format!("Failed to serialize settings: {}", e)))?;
+    std::fs::write(file_path, content).map_err(NodaError::Io)?;
+    Ok(())
+}

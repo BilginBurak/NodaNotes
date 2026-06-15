@@ -89,6 +89,10 @@ fn main() {
             commands::folder_commands::move_note,
             commands::folder_commands::move_folder,
             commands::folder_commands::rename_folder,
+            commands::device_commands::get_trusted_devices,
+            commands::device_commands::approve_device,
+            commands::device_commands::revoke_device,
+            commands::device_commands::regenerate_daemon_token,
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

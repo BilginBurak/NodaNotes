@@ -17,7 +17,7 @@ pub struct AppState {
     pub watcher: Arc<RwLock<Option<VaultWatcher>>>,
     pub sync_engine: Arc<RwLock<Option<SyncEngine>>>,
     pub active_note_id: Arc<RwLock<Option<noda_core::models::note::NoteId>>>,
-    pub daemon_token: String,
+    pub daemon_token: Arc<RwLock<String>>,
 }
 
 impl Default for AppState {
@@ -31,7 +31,7 @@ impl Default for AppState {
             watcher: Arc::new(RwLock::new(None)),
             sync_engine: Arc::new(RwLock::new(None)),
             active_note_id: Arc::new(RwLock::new(None)),
-            daemon_token: token,
+            daemon_token: Arc::new(RwLock::new(token)),
         }
     }
 }
