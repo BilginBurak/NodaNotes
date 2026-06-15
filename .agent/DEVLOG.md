@@ -1153,3 +1153,43 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
 - **CORS Safari Extension Scheme Fix:** Corrected a CORS origin block where Safari's native extension pages running under `safari-web-extension://` (rather than `safari-extension://`) were rejected by the CORS origin whitelist predicate in `server.rs`. Added `safari-web-extension://` to the allowed origins.
 - **Token Persistence:** Changed the daemon auth token lifecycle to persist across restarts. It is generated once on first run and saved in the global configuration settings file (`noda/settings.json`) located in the user's config directory. Synchronous loading helpers were added to `crates/core/src/vault/persistence.rs` to fetch it during application state initialization.
 - **Default Clipper Note Subdirectory:** Redirected all clipped web clippings to be saved inside the `clipper/` directory of the active vault (e.g. `clipper/{UUID}.md`), rather than the vault root. Parent folder creation is handled automatically on write.
+
+---
+
+## 54. Dynamic Peer Authorization, Local Loopback Restriction, and pairing.html (June 2026)
+
+### 54.1 Relational Device Registry Schema (SQLite Migration v9)
+- **Database Schema:** Created a database schema migration `v9` inside `crates/core/src/database/migrations.rs` and updated `INIT_SCHEMA` in `crates/core/src/database/schema.rs` to deploy the `trusted_devices` table in SQLite:
+  ```sql
+  CREATE TABLE IF NOT EXISTS trusted_devices (
+      id TEXT PRIMARY KEY,          -- Unique Request/Device UUID
+      device_name TEXT NOT NULL,    -- Human-readable name (e.g., "Burak's iPhone")
+      ip_address TEXT NOT NULL,     -- Remote IP address of the requesting peer
+      status TEXT NOT NULL,         -- 'pending', 'approved', or 'revoked'
+      token TEXT,                   -- Cryptographically secure token generated upon approval
+      created_at TEXT NOT NULL,     -- ISO 8601 creation timestamp
+      updated_at TEXT NOT NULL      -- ISO 8601 status modification timestamp
+  );
+  ```
+
+### 54.2 OAuth-Style Dynamic Handshake Endpoints
+- **HTTP Routing:** Bound the Axum server to `0.0.0.0:4040` (previously restricted to `127.0.0.1:4040`) to make it accessible to external devices on the same local area network (LAN).
+- **Request Endpoint (`POST /api/auth/request`):** Evaluates the peer's socket address, extracts their remote IP, parses the incoming `device_name`, generates a new UUID, and inserts a `pending` status row into the SQLite database.
+- **Status Endpoint (`GET /api/auth/status?id=<UUID>`):** Allows the pairing client to check their request status. Once approved by the user, returns `{"status": "approved", "token": "<device_token>"}`.
+- **Micro-Commit Integration:** Any approvals or revocations commit directly to SQLite and trigger immediate connection-level updates.
+
+### 54.3 Security Isolation (Local Loopback Restriction & pairing.html)
+- **Local Loopback Constraint:** The full Svelte Single-Page App (SPA) and automatic `window.__NODA_TOKEN__` injection are strictly confined to local loopback requests (`127.0.0.1` or `localhost`). Remote devices hitting the server directly are blocked from accessing the vault interface.
+- **Custom Fallback (`pairing.html`):** Served unauthorized remote requests a lightweight `pairing.html` file embedded via `rust-embed`. This page presents a user-friendly pairing screen asking for the device's display name, posts a request to `/api/auth/request`, and polls `/api/auth/status` until the host approves the connection.
+- **Dynamic Token Authorization Middleware:** Refactored the Axum `auth_middleware` to validate the incoming `Bearer` token against both the master daemon token and any active `approved` device tokens stored in SQLite.
+
+### 54.4 Tauri FFI Bridge Commands
+- Exposed commands to Svelte to manage trusted devices:
+  - `get_trusted_devices`: Retrieves the list of all registered devices.
+  - `approve_device(id: String)`: Sets device status to `approved`, generates a cryptographically secure token, and records it in SQLite.
+  - `revoke_device(id: String)`: Updates device status to `revoked`, instantly invalidating their access token.
+
+### 54.5 Clipper & Devices Settings UI Redesign
+- **Settings tab:** Renamed the settings section to "Clipper & Devices" in `SettingsModal.svelte`.
+- **Performance Optimizations:** Removed high-frequency background polling loops ($effect-driven automatic 3-second fetches). The device list and clipper token are loaded once when the settings pane opens, and subsequent updates are triggered via a manual "Yenile" (Refresh) button, reducing CPU and SQLite connection load.
+- **Controls:** Embedded a "Tokeni Yenile" (Regenerate Token) button next to the Clipper token, enabling instant revocation and replacement of the Web Clipper token. Added clear "Onayla" (Approve) and "Kaldır" (Remove/Revoke) visual state controls for external LAN devices.
