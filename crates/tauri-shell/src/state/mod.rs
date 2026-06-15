@@ -22,7 +22,8 @@ pub struct AppState {
 
 impl Default for AppState {
     fn default() -> Self {
-        let token = uuid::Uuid::new_v4().simple().to_string();
+        let token = noda_core::vault::persistence::get_or_create_daemon_token_sync()
+            .unwrap_or_else(|_| uuid::Uuid::new_v4().simple().to_string());
         Self {
             vault_path: Arc::new(RwLock::new(None)),
             database: Arc::new(RwLock::new(None)),

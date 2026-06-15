@@ -211,7 +211,7 @@ async fn clipper_handler(
 
     let id = NoteId::new();
     let now = Utc::now();
-    let file_path = format!("{}.md", id.0.to_string());
+    let file_path = format!("clipper/{}.md", id.0.to_string());
     
     let mut body = payload.content_markdown;
     if !payload.url.is_empty() {
