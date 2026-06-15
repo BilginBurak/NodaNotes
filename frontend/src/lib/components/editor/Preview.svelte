@@ -2,10 +2,11 @@
   import { marked } from 'marked';
   import { activeNote } from '../../stores/notes';
   import * as ipc from '../../services/ipc';
+  import { rewriteHtmlAttachments } from '../../utils/attachment';
 
   export let content: string = '';
 
-  $: html = marked.parse(content) as string;
+  $: html = rewriteHtmlAttachments(marked.parse(content) as string);
 
   function handlePreviewClick(e: MouseEvent) {
     const target = e.target as HTMLElement;

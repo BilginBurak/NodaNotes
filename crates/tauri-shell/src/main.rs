@@ -10,9 +10,11 @@ pub mod events;
 pub mod protocols;
 pub mod state;
 pub mod window;
+pub mod server;
 
 use state::AppState;
 use tauri::Manager;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static CLOSE_REQUESTED_BY_USER: AtomicBool = AtomicBool::new(false);
@@ -25,6 +27,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
+            commands::settings_commands::get_daemon_token,
             commands::vault_commands::open_vault,
             commands::vault_commands::create_vault,
             commands::vault_commands::get_vault_info,
@@ -110,6 +113,16 @@ fn main() {
                     if let Err(e) = app_state.init_vault(&path, app_handle).await {
                         tracing::error!("Failed to auto-open last vault: {}", e);
                     }
+                }
+            });
+
+            // Start Unified Axum Localhost Integrated Server
+            let app_state_server = app.state::<AppState>().inner().clone();
+            let app_handle_clone = app.handle().clone();
+            let token = app_state_server.daemon_token.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = crate::server::run_server(app_handle_clone, app_state_server, token).await {
+                    tracing::error!("Failed to start unified daemon server: {}", e);
                 }
             });
 

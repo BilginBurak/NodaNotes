@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Noda Clipper</title>
+  <style>
+    :root {
+      --bg-primary: #121214;
+      --bg-secondary: #1a1a1e;
+      --bg-tertiary: #26262b;
+      --text-primary: #f5f5f7;
+      --text-secondary: #9a9ab0;
+      --accent: #d4af37; /* Japandi Gold */
+      --accent-hover: #e5c158;
+      --border-color: #2e2e38;
+      --success: #34c759;
+      --error: #ff453a;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      width: 350px;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    h1 span.logo-dot {
+      width: 8px;
+      height: 8px;
+      background-color: var(--accent);
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .version {
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    .screen {
+      display: none;
+    }
+
+    .screen.active {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+    }
+
+    input, textarea {
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    input:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.15);
+    }
+
+    textarea {
+      resize: none;
+      height: 120px;
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    button {
+      background-color: var(--accent);
+      color: var(--bg-primary);
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    button:hover {
+      background-color: var(--accent-hover);
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button:disabled {
+      background-color: var(--border-color);
+      color: var(--text-secondary);
+      cursor: not-allowed;
+    }
+
+    .status-msg {
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: none;
+      text-align: center;
+    }
+
+    .status-msg.error {
+      display: block;
+      background-color: rgba(255, 69, 58, 0.1);
+      color: var(--error);
+      border: 1px solid rgba(255, 69, 58, 0.2);
+    }
+
+    .status-msg.success {
+      display: block;
+      background-color: rgba(52, 199, 89, 0.1);
+      color: var(--success);
+      border: 1px solid rgba(52, 199, 89, 0.2);
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 16px;
+      font-size: 11px;
+      border-top: 1px solid var(--border-color);
+      padding-top: 12px;
+    }
+
+    .footer-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      cursor: pointer;
+      transition: color 0.2s ease;
+    }
+
+    .footer-links a:hover {
+      color: var(--accent);
+    }
+
+    /* Loading Spinner */
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(0, 0, 0, 0.1);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1><span class="logo-dot"></span>Noda Clipper</h1>
+      <span class="version">v1.0.0</span>
+    </header>
+
+    <!-- SETUP SCREEN -->
+    <div id="setup-screen" class="screen">
+      <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.5;">
+        Enter the Web Clipper Auth Token from Noda Notes settings to configure the extension.
+      </p>
+      <div class="form-group">
+        <label for="token-input">Auth Token</label>
+        <input type="password" id="token-input" placeholder="Paste Daemon Auth Token...">
+      </div>
+      <button id="save-token-btn">Save Configuration</button>
+      <div id="setup-status" class="status-msg"></div>
+    </div>
+
+    <!-- MAIN CLIP SCREEN -->
+    <div id="clip-screen" class="screen">
+      <div class="form-group">
+        <label for="clip-title">Title</label>
+        <input type="text" id="clip-title" placeholder="Note Title">
+      </div>
+      <div class="form-group">
+        <label for="clip-tags">Tags</label>
+        <input type="text" id="clip-tags" placeholder="e.g. web, research, code (comma separated)">
+      </div>
+      <div class="form-group">
+        <label for="clip-body">Markdown Preview</label>
+        <textarea id="clip-body" placeholder="Clipped markdown content..." readonly></textarea>
+      </div>
+      <button id="submit-clip-btn">
+        <span>Clip to Noda Notes</span>
+      </button>
+      <div id="clip-status" class="status-msg"></div>
+      
+      <div class="footer-links">
+        <a id="config-link">Configure Token</a>
+        <span style="color: var(--border-color);">|</span>
+        <span id="char-counter" style="color: var(--text-secondary);">0 chars</span>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

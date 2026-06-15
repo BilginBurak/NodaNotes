@@ -1111,3 +1111,33 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
   - **Solution:** Modified `crates/tauri-shell/src/main.rs` to allow the window close event to proceed without calling `api.prevent_close()`, ensuring it gets fully destroyed by the OS. Defined a static atomic flag `CLOSE_REQUESTED_BY_USER`. Intercepted `CloseRequested` in `.on_window_event` to set this flag to `true`.
   - **Exit Interception:** Intercepted `tauri::RunEvent::ExitRequested` in the `.run` loop. If `CLOSE_REQUESTED_BY_USER` is `true`, called `api.prevent_exit()` to stop the application process from terminating, keeping the lightweight Rust core (`Noda` process, consuming ~25MB and 0% CPU) running. If the flag is `false` (e.g., standard Cmd+Q or native Dock Quit), the app exits normally.
   - **Dynamic Reopen Recreation:** Intercepted `tauri::RunEvent::Reopen` in the `.run` loop. If the "main" window is missing (destroyed), rebuilt it dynamically using `tauri::WebviewWindowBuilder::new` with all specified window settings (`title("Noda")`, `inner_size(1200.0, 800.0)`, `min_inner_size(800.0, 600.0)`, `transparent(true)`, `hidden_title(true)`, `disable_drag_drop_handler()`, and `title_bar_style(tauri::TitleBarStyle::Overlay)`), re-registering standard native frame shadow attributes.
+
+---
+
+## 52. Unified Localhost Integrated Daemon (Axum Engine), SPA Fallback, and Web Clipper (June 2026)
+
+### 52.1 Unified Localhost Daemon Server
+- **Server Spawning:** Implemented a unified localhost HTTP daemon in `crates/tauri-shell/src/server.rs` that binds strictly to `127.0.0.1:4040` on boot. 
+- **Embedded Svelte serving:** Uses `rust-embed` to serve the production frontend built into `frontend/build` folder, avoiding local asset file-system permissions overhead.
+- **RPC Translation Bridge:** Exposes `POST /api/rpc` that dynamically routes frontend calls to internal Tauri command handlers (`vault_commands`, `note_commands`, `sync_commands`, etc.). Resolves RPC payloads by mapping to domain structures (`SyncConfig`, `AppConfig`, `OrphanedRemnants`).
+- **Cryptographic Gatekeeper:** Restricts all daemon API and attachment routes via a token authorization middleware (`Authorization: Bearer <Daemon_Auth_Token>`) using a UUID v4 generated once at app start. Hardcoded CORS rules whitelist only `localhost` and webextension schemes.
+
+### 52.2 Web Clipper API Ingestion
+- **Ingestion Pipeline:** Exposes `POST /api/clipper` to ingest web clippings immediately. It executes a physical markdown write to the vault disk (via `VaultService`), computes its XXH3 64-bit content hash, and performs a direct autocommit SQL insert into `sync_file_states` with `is_dirty = 1`. This makes sure the note is synchronized instantly on the next sync cycles without holding open global database transactions.
+
+### 52.3 SPA Fallback and Browser Asset Resolution
+- **SPA Fallback Routing:** Resolved F5/refresh 404 failure in browser context by routing all client-side SvelteKit route requests (paths without dots) to return `index.html` with injected `window.__NODA_TOKEN__` script block, enabling SvelteKit to resolve client-side routes natively.
+- **Attachment URL Interception:** Intercepted Svelte page and markdown preview rendering to rewrite `noda://attachments/...` URLs before DOM insertion. Created utility file `attachment.ts` to map these paths to `/attachments/...` API endpoints with authentication tokens when running in a pure browser window, keeping Safari images and document frames unbroken.
+
+### 52.4 Web Extension & Settings Integration
+- **Web Clipper Token Exposure:** Added `getDaemonToken` API to retrieve the daemon auth token from Svelte. Integrated a dedicated Web Clipper Integration section under the "Sync & Cloud" Settings tab (`SettingsModal.svelte`), including a read-only input box showing the token and a copy-to-clipboard action.
+- **Browser Event Listener & Dialog Crash Fixes:**
+  - Prevented crash on startup in standard browser context by wrapping Tauri event listeners (`listenToVaultUpdated`, `listenToSyncStatus`, etc.) inside `events.ts` to skip registration and return dummy unsubscribe functions if `__TAURI_INTERNALS__` is absent. This allows the layout to successfully complete mount and execute `checkActiveVault()` to load the active vault.
+  - Removed top-level import of `@tauri-apps/plugin-dialog` in `+page.svelte` and replaced native dialogs in `handleOpenVault` and `handleCreateVault` with dynamic imports. In standard browser context, the app falls back to a prompt requesting the absolute path on disk, letting users open/create vault directories seamlessly.
+- **Vite Build Target Upgrade:** Updated the build target fallback in `vite.config.ts` from `safari13` to `safari15`. This allows esbuild to build the Svelte 5 application successfully by supporting parameter list destructuring features in arrow functions.
+
+### 52.5 Browser Web Extension
+- **Manifest V3:** Created MV3 extension files in `.clipper/safari-extension` folder.
+- **DOM to Markdown Parser:** Implemented a zero-dependency HTML-to-Markdown parser in `content.js` that recursively processes document node formats (headers, lists, preformatted code, blockquotes, tables, links, images).
+- **Background and Popup:** Added background worker dispatcher and minimalist Japandi Zen themed configuration settings view. Can be compiled into native macOS/iOS Safari app extension with `xcrun safari-web-extension-converter`.
+- **Bundle ID Prefix Alignment:** Modified the generated Xcode project configuration (`project.pbxproj`) to align the bundle identifier prefixes case-sensitively (changing `com.burakbilgin.nodaclipper.Extension` to `com.burakbilgin.NodaClipper.Extension` to match parent target `com.burakbilgin.NodaClipper`). This fixes the Xcode build validation failure.

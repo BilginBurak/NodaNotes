@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { AttachmentInfoDto } from '../../types';
+  import { resolveAttachmentUrl } from '../../utils/attachment';
 
   let {
     isOpen = $bindable(false),
@@ -31,7 +32,7 @@
       textError = null;
       textContent = '';
       
-      const attachmentUrl = `noda://attachments/${attachment.name}`;
+      const attachmentUrl = resolveAttachmentUrl(`noda://attachments/${attachment.name}`);
       fetch(attachmentUrl)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -130,11 +131,11 @@
       <div class="quicklook-content">
         {#if isImage}
           <div class="image-viewer">
-            <img src="noda://attachments/{attachment.name}" alt={attachment.name} />
+            <img src={resolveAttachmentUrl(`noda://attachments/${attachment.name}`)} alt={attachment.name} />
           </div>
         {:else if isPdf}
           <div class="pdf-viewer">
-            <iframe src="noda://attachments/{attachment.name}" title={attachment.name} class="pdf-iframe"></iframe>
+            <iframe src={resolveAttachmentUrl(`noda://attachments/${attachment.name}`)} title={attachment.name} class="pdf-iframe"></iframe>
           </div>
         {:else if isTextLike}
           <div class="text-viewer scrollbar-thin">

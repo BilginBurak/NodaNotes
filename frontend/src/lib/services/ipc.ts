@@ -17,17 +17,60 @@ import type {
 } from '../types';
 
 async function call<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
-  try {
-    return await invoke<T>(cmd, args);
-  } catch (err: any) {
-    // If err matches AppError shape, re-throw
-    if (err && typeof err === 'object' && 'code' in err && 'message' in err) {
-      throw err as AppError;
+  const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
+  if (isTauri) {
+    try {
+      return await invoke<T>(cmd, args);
+    } catch (err: any) {
+      // If err matches AppError shape, re-throw
+      if (err && typeof err === 'object' && 'code' in err && 'message' in err) {
+        throw err as AppError;
+      }
+      throw {
+        code: 'UNKNOWN_ERROR',
+        message: err?.toString() || 'An unexpected error occurred'
+      } as AppError;
     }
-    throw {
-      code: 'UNKNOWN_ERROR',
-      message: err?.toString() || 'An unexpected error occurred'
-    } as AppError;
+  } else {
+    // Pure browser fallback: call the Axum Daemon RPC translation bridge
+    const token = typeof window !== 'undefined' ? (window as any).__NODA_TOKEN__ || '' : '';
+    try {
+      const response = await fetch('/api/rpc', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          action: cmd,
+          payload: args
+        })
+      });
+      if (!response.ok) {
+        let errJson: any;
+        try {
+          errJson = await response.json();
+        } catch {
+          // ignore
+        }
+        if (errJson && typeof errJson === 'object' && 'code' in errJson && 'message' in errJson) {
+          throw errJson as AppError;
+        }
+        throw {
+          code: 'HTTP_ERROR',
+          message: `HTTP error ${response.status}: ${response.statusText}`
+        } as AppError;
+      }
+      return await response.json() as T;
+    } catch (err: any) {
+      if (err && typeof err === 'object' && 'code' in err && 'message' in err) {
+        throw err as AppError;
+      }
+      throw {
+        code: 'NETWORK_ERROR',
+        message: err?.message || err?.toString() || 'Network error communicating with server'
+      } as AppError;
+    }
   }
 }
 
@@ -141,6 +184,7 @@ export const listAttachmentsWithMetadata = ()                   => call<Attachme
 // ── Settings Commands ───────────────────────────────────────
 export const getSettings      = ()                   => call<AppConfig>('get_settings');
 export const saveSettings     = (config: AppConfig)  => call<void>('save_settings',       { config });
+export const getDaemonToken   = ()                   => call<string>('get_daemon_token');
 
 // ── Maintenance Commands ────────────────────────────────────
 export interface OrphanedAttachment {

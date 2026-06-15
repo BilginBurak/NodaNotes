@@ -21,6 +21,7 @@
   import { appConfig } from '../../stores/settings';
   import Preview from './Preview.svelte';
   import StatusBar from './StatusBar.svelte';
+  import { resolveAttachmentUrl } from '../../utils/attachment';
 
   let editorView: EditorView | null = null;
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1088,7 +1089,7 @@
                               ondragstart={(e) => e.dataTransfer && e.dataTransfer.setData('text/noda-attachment', item.name)}
                             >
                               {#if isImg}
-                                <img class="item-preview" src="noda://attachments/{item.name}" alt={item.name} loading="lazy" />
+                                <img class="item-preview" src={resolveAttachmentUrl(`noda://attachments/${item.name}`)} alt={item.name} loading="lazy" />
                               {:else}
                                 <div class="item-preview doc-preview">
                                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { notesList, activeNote, selectedFolder, draggedItem, moveNote, activeViewMode, selectTrashNote, selectConflictNote, selectedTag } from '../../stores/notes';
+  import { resolveAttachmentUrl } from '../../utils/attachment';
   import { get } from 'svelte/store';
   import { trashList, attachmentsWithMetadataList, loadAttachmentsWithMetadata, removeAttachment, triggerQuickLook } from '../../stores/editor';
   import { syncConflicts } from '../../stores/sync';
@@ -344,7 +345,7 @@
               >
                 {#if isImg}
                    <div class="attachment-thumb" aria-hidden="true">
-                     <img src="noda://attachments/{attachment.name}" alt={attachment.name} loading="lazy" />
+                     <img src={resolveAttachmentUrl(`noda://attachments/${attachment.name}`)} alt={attachment.name} loading="lazy" />
                    </div>
                 {:else}
                    <div class="attachment-thumb doc-icon" aria-hidden="true">

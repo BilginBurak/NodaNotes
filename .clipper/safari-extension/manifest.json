@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Noda Clipper",
+  "version": "1.0.0",
+  "description": "Clip web pages directly to Noda Notes",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:4040/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

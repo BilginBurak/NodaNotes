@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { open } from '@tauri-apps/plugin-dialog';
   import { vaultInfo, openExistingVault, createNewVault, vaultError, loadingVault } from '../lib/stores/vault';
   import { loadSettings } from '../lib/stores/settings';
   import Sidebar from '../lib/components/sidebar/Sidebar.svelte';
@@ -76,13 +75,26 @@
 
   async function handleOpenVault() {
     vaultError.set(null);
+    const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: 'Select Vault Folder'
-      });
-      if (selected && typeof selected === 'string') {
+      let selected: string | null = null;
+      if (isTauri) {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const res = await open({
+          directory: true,
+          multiple: false,
+          title: 'Select Vault Folder'
+        });
+        if (typeof res === 'string') {
+          selected = res;
+        }
+      } else {
+        const path = prompt('Enter the absolute path of your vault folder on disk:');
+        if (path) {
+          selected = path.trim();
+        }
+      }
+      if (selected) {
         await openExistingVault(selected);
       }
     } catch (e: any) {
@@ -93,13 +105,26 @@
 
   async function handleCreateVault() {
     vaultError.set(null);
+    const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: 'Choose Folder for New Vault'
-      });
-      if (selected && typeof selected === 'string') {
+      let selected: string | null = null;
+      if (isTauri) {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const res = await open({
+          directory: true,
+          multiple: false,
+          title: 'Choose Folder for New Vault'
+        });
+        if (typeof res === 'string') {
+          selected = res;
+        }
+      } else {
+        const path = prompt('Enter the absolute path where you want to create a new vault folder:');
+        if (path) {
+          selected = path.trim();
+        }
+      }
+      if (selected) {
         await createNewVault(selected);
       }
     } catch (e: any) {

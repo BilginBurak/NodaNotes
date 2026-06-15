@@ -20,3 +20,11 @@ parking_lot = "0.12"
 chrono = { version = "0.4", features = ["serde"] }
 ulid = { version = "1.2.1", features = ["serde"] }
 tracing = "0.1"
+axum = "0.7"
+rust-embed = { version = "8.0", features = ["interpolate-folder-path"] }
+tower-http = { version = "0.6", features = ["cors"] }
+uuid = { version = "1.8", features = ["v4"] }
+mime_guess = "2.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
+xxhash-rust = { version = "0.8.5", features = ["xxh3"] }
+

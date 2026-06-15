@@ -16,7 +16,8 @@
     getConflictNote,
     getOrphanedRemnants,
     deleteOrphanedRemnants,
-    deleteOrphanedFile
+    deleteOrphanedFile,
+    getDaemonToken
   } from '../../services/ipc';
   import type { OrphanedAttachment, DuplicateNoteGroup, OrphanedRemnants } from '../../services/ipc';
   import type { AppConfig } from '../../types';
@@ -47,6 +48,7 @@
   let historyMaxSnapshots = $state(50);
   let historyEmptyTrashDays = $state(30);
   let historySnapshotIntervalMins = $state(5);
+  let clipperToken = $state('');
 
   const templateNotes = $derived(
     $notesList.filter(n => n.file_path.startsWith('.templates/'))
@@ -320,6 +322,11 @@
 
   onMount(async () => {
     await fetchSettings();
+    try {
+      clipperToken = await getDaemonToken();
+    } catch (e) {
+      console.error('Failed to load clipper token:', e);
+    }
   });
 
   async function fetchSettings() {
@@ -683,6 +690,17 @@
                 <span>{validationErrorMessage}</span>
               </div>
             {/if}
+          </div>
+
+          <div class="clipper-section-divider" style="margin: 24px 0; border-top: 1px solid var(--border-subtle);"></div>
+          
+          <div class="form-group">
+            <label>Web Clipper Integration</label>
+            <div class="clipper-token-container" style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
+              <input type="text" readonly value={clipperToken} style="font-family: var(--font-mono); background-color: var(--bg-control); cursor: pointer;" onclick={(e) => { e.currentTarget.select(); }} />
+              <button class="btn btn-ghost" onclick={() => { navigator.clipboard.writeText(clipperToken); alert('Token copied to clipboard!'); }} style="flex-shrink: 0; padding: 0 12px; height: 36px; display: flex; align-items: center; justify-content: center;">Copy</button>
+            </div>
+            <span class="input-desc">Copy this token to configure the Noda Notes Web Clipper extension in your browser.</span>
           </div>
         </div>
 
