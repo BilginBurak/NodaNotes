@@ -32,6 +32,7 @@ fn main() {
             commands::vault_commands::create_vault,
             commands::vault_commands::get_vault_info,
             commands::vault_commands::reveal_in_file_manager,
+            commands::vault_commands::open_external_url,
             commands::note_commands::create_note,
             commands::note_commands::get_note,
             commands::note_commands::get_note_metadata,

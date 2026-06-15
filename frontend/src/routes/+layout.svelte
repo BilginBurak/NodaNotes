@@ -5,6 +5,8 @@
   import { loadNotes } from '../lib/stores/notes';
   import { syncStatus, syncConflicts, lastSyncReport, showSyncReport, syncProgress } from '../lib/stores/sync';
   import { listenToVaultUpdated, listenToSyncStatus, listenToSyncConflict, listenToSyncFinished, listenToSyncProgress } from '../lib/services/events';
+  import * as ipc from '../lib/services/ipc';
+
   import '../lib/styles/app.css'; // Let's create a beautiful global styles file!
 
   let unlistenUpdated: (() => void) | null = null;
@@ -12,6 +14,8 @@
   let unlistenConflicts: (() => void) | null = null;
   let unlistenSyncFinished: (() => void) | null = null;
   let unlistenSyncProgress: (() => void) | null = null;
+  let globalClickListener: ((e: MouseEvent) => void) | null = null;
+
 
   $: info = $vaultInfo;
 
@@ -22,6 +26,25 @@
 
   onMount(async () => {
     try {
+      // 0. Intercept global clicks on links to open in the default browser
+      globalClickListener = (e: MouseEvent) => {
+        let target = e.target as HTMLElement | null;
+        while (target && target !== document.body) {
+          if (target.tagName === 'A' && target.hasAttribute('href')) {
+            const href = target.getAttribute('href');
+            if (href && (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:') || href.startsWith('tel:'))) {
+              e.preventDefault();
+              ipc.openExternalUrl(href).catch(err => {
+                console.error('Failed to open external url:', err);
+              });
+              break;
+            }
+          }
+          target = target.parentElement;
+        }
+      };
+      document.addEventListener('click', globalClickListener);
+
       // 1. Listen for background file updates (Watcher)
       unlistenUpdated = await listenToVaultUpdated((payload) => {
         console.log('Vault updated in background:', payload);
@@ -82,6 +105,9 @@
     if (unlistenConflicts) unlistenConflicts();
     if (unlistenSyncFinished) unlistenSyncFinished();
     if (unlistenSyncProgress) unlistenSyncProgress();
+    if (globalClickListener) {
+      document.removeEventListener('click', globalClickListener);
+    }
   });
 </script>
 

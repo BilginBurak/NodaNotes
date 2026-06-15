@@ -499,6 +499,12 @@ struct RelPathArgs {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct OpenUrlArgs {
+    url: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateNoteArgs {
     title: String,
     body: String,
@@ -702,6 +708,8 @@ async fn handle_rpc_action(
         "create_vault" => rpc_match!(payload, PathArgs, |a: PathArgs| commands::vault_commands::create_vault(tauri_state.clone(), a.path, app_handle.clone())),
         "get_vault_info" => rpc_match_no_args!(commands::vault_commands::get_vault_info(tauri_state.clone())),
         "reveal_in_file_manager" => rpc_match!(payload, RelPathArgs, |a: RelPathArgs| commands::vault_commands::reveal_in_file_manager(tauri_state.clone(), a.rel_path)),
+        "open_external_url" => rpc_match!(payload, OpenUrlArgs, |a: OpenUrlArgs| commands::vault_commands::open_external_url(a.url)),
+
 
         // Note commands
         "create_note" => rpc_match!(payload, CreateNoteArgs, |a: CreateNoteArgs| commands::note_commands::create_note(tauri_state.clone(), a.title, a.body, a.parent_id, a.color, a.pinned, a.tags)),

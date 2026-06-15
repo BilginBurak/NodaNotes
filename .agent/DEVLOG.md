@@ -1203,3 +1203,16 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
   - **Solution:** Configured both `tauri.conf.json` and the reopen recreate handler in `crates/tauri-shell/src/main.rs` to use standard window settings. Changed `transparent` and `hiddenTitle` (or `hidden_title`) to `false`, and removed the `.title_bar_style(tauri::TitleBarStyle::Overlay)` call, ensuring a consistent standard macOS native window frame and title bar.
 - **Compiler Warning Resolution:**
   - **Unused Imports Cleaned:** Cleaned up unused imports in `crates/tauri-shell/src/server.rs` (`parking_lot::RwLock`, `Next`, `Request`), bringing the codebase to zero compiler warnings.
+
+---
+
+## 56. External Link Redirection and Reveal in Finder Integration (June 2026)
+
+- **External Link Click Routing to Default Browser:**
+  - **Problem:** Clicking web links (e.g. `http://` or `https://`) in markdown preview mode loaded the target URL directly inside the Tauri application's native WebView, disrupting the application context.
+  - **Solution:** Created the Tauri command `open_external_url` in `crates/tauri-shell/src/commands/vault_commands.rs`, using platform-specific spawn execution (`open` on macOS, `cmd /c start` on Windows, and `xdg-open` on Linux) to safely launch the target URL in the default browser. Added its routing schema to the Axum browser-RPC server. In Svelte, registered a global event interceptor in `frontend/src/routes/+layout.svelte` that catches click events on `<a>` tags targeting remote protocols, cancels the default WebView navigation, and calls `open_external_url`.
+- **Reveal in Finder (Show in Finder) Fix:**
+  - **Problem:** Tapping "Show in Finder" in note or folder context menus did not perform any action because the corresponding IPC function `revealInFileManager` was missing in `frontend/src/lib/services/ipc.ts`.
+  - **Solution:** Exported `revealInFileManager` in `ipc.ts` to call the Tauri `reveal_in_file_manager` command correctly.
+- **Launcher Cleanup:**
+  - **Cleanup:** Fixed a Svelte compilation error in `frontend/src/routes/+page.svelte` by removing a reference to an undefined `pollingInterval` in the onMount cleanup callback.

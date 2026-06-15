@@ -107,3 +107,46 @@ pub async fn reveal_in_file_manager(
     
     Ok(())
 }
+
+#[tauri::command]
+pub async fn open_external_url(
+    url: String,
+) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| AppError {
+                code: "OPEN_URL_ERROR".to_string(),
+                message: format!("Failed to open URL: {}", e),
+            })?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .arg("/c")
+            .arg("start")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| AppError {
+                code: "OPEN_URL_ERROR".to_string(),
+                message: format!("Failed to open URL: {}", e),
+            })?;
+    }
+    
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| AppError {
+                code: "OPEN_URL_ERROR".to_string(),
+                message: format!("Failed to open URL: {}", e),
+            })?;
+    }
+    
+    Ok(())
+}
+

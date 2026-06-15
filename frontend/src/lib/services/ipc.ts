@@ -82,6 +82,8 @@ async function call<T>(cmd: string, args: Record<string, any> = {}): Promise<T> 
 export const openVault   = (path: string) => call<VaultInfoDto>('open_vault',  { path });
 export const createVault = (path: string) => call<VaultInfoDto>('create_vault',{ path });
 export const getVaultInfo = ()             => call<VaultInfoDto | null>('get_vault_info');
+export const revealInFileManager = (relPath: string) => call<void>('reveal_in_file_manager', { relPath });
+export const openExternalUrl     = (url: string) => call<void>('open_external_url', { url });
 
 // ── Note Commands ───────────────────────────────────────────
 /**
