@@ -130,7 +130,8 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Arc<
             }
             if origin_bytes.starts_with(b"safari-extension://") 
                 || origin_bytes.starts_with(b"safari-web-extension://") 
-                || origin_bytes.starts_with(b"chrome-extension://") {
+                || origin_bytes.starts_with(b"chrome-extension://")
+                || origin_bytes.starts_with(b"moz-extension://") {
                 return true;
             }
             false

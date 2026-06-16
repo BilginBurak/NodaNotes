@@ -1234,3 +1234,26 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
   - **Solution:** Implemented HTML boundary detection in `server.rs`. Append transactions locate `<!-- noda-webclipper -->` and inject paragraphs above it with rigid formatting (`\n***\n*Appended on {datetime}:*\n\n{content}\n\n`). New notes generate a premium multi-line footer block incorporating extracted author and publication metadata.
 - **Visual Design Alignment:**
   - **Solution:** Created `.clipper/safari-extension/popup.css` cleanly inheriting Noda's desktop Japandi color palette, rounded borders, and shadows from `frontend/src/lib/styles/app.css`.
+
+---
+
+## 58. Build Mode Image Fixes and Chromium Clipper Extension Support (June 2026)
+
+- **Tauri Build Mode Image Restrictions Fixed:**
+  - **Problem:** When the Tauri application was compiled and built (`cargo tauri build`), images—specifically external remote links (e.g. `https://`) and occasionally local assets—failed to render inside the preview markdown reader due to strict Content Security Policies (CSP) and strict custom protocol path comparisons.
+  - **Solution:** 
+    1. Modernized the Content Security Policy inside `tauri.conf.json` by appending `https:` and `http:` to the `img-src` key under `security.csp`, enabling the WebView to safely fetch remote image sources inside production builds.
+    2. Modified `resolve_path` in `crates/core/src/attachments/mod.rs` to dynamically search for the `/attachments/` sequence inside the URI rather than enforcing a strict prefix check of `"noda://attachments/"`. This ensures the protocol engine resolves attachments correctly regardless of host/authority rewrites applied by WKWebView or WebView2.
+- **Chromium Web Extension Release:**
+  - **Task:** Port the Safari Web Extension to Chromium-based browsers (Brave, Chrome, Edge, etc.).
+  - **Solution:** Packaged a production-ready Web Extension in `.clipper/chromium-extension` carrying all Manifest V3 resources. Since the extension's code was already utilizing standard MV3 APIs (e.g. `chrome.runtime`), it is now immediately loadable in any Chromium browser via the "Load Unpacked" extension feature.
+- **Firefox/Zen Browser Web Extension Release:**
+  - **Task:** Port the Web Extension to Firefox-based browsers (Zen Browser, Firefox, Waterfox, etc.).
+  - **Solution:** Packaged a compatible Web Extension in `.clipper/firefox-extension` by adjusting the `manifest.json` background handler to use `"background": { "scripts": ["background.js"] }` instead of `"service_worker"`. The extension compiles and is fully ready to be loaded in Firefox-based browsers.
+  - **Firefox MV3 Installation ID & Data Collection Consent Fixed:** Resolved `This add-on appears to be corrupt` error and AMO upload validation rejections. Added `"browser_specific_settings": { "gecko": { "id": "clipper@nodanotes.com", "data_collection_permissions": { "required": ["none"] } } }` to the Firefox `manifest.json`, satisfying Gecko's Manifest V3 strict requirements for a unique extension ID during local installation and Mozilla's new mandatory developer data collection consent verification policy.
+  - **CORS Allowed Origins Upgrade:** Resolved `TypeError: NetworkError when attempting to fetch resource` in Firefox/Zen. Unlike Chromium browsers which exempt extension background contexts from CORS checks, Firefox enforces standard origin policies (`moz-extension://`). Upgraded `crates/tauri-shell/src/server.rs` to allow `moz-extension://` headers in the Axum CORS layer origin predicate, satisfying preflight `OPTIONS` requests.
+- **Symlinked Multi-Browser Extension Architecture & Nested Directory Cleanliness:**
+  - **Problem:** Keeping separate duplicate copies of standard Web Extension files (JS, CSS, HTML) across Safari, Chromium, and Firefox directories creates redundancy and maintenance overhead. Additionally, having multiple extension folders clutter the root of `.clipper` reduces directory neatness.
+  - **Solution:** Restructured the `.clipper` folder. Created `.clipper/src/` to hold all shared source assets (`background.js`, `content.js`, `popup.js`, `popup.css`, `popup.html`, `Readability.js`, `turndown.js`). Created a clean, nested subfolder `.clipper/extensions/` containing three browser subfolders: `safari/`, `chromium/`, and `firefox/`. Cleared the duplicate code assets from these subfolders and replaced them with relative symbolic links pointing back to `.clipper/src/` (`../../src/filename`). Now, changes are written once in the central `src/` folder, and all browser directories dynamically reference the same assets, keeping the root of `.clipper` extremely clean and tidy. Only browser-specific `manifest.json` configurations are physically isolated. Packaging scripts can easily resolve the symlinks physically when bundling the extension for publication.
+- **Automated Selective Extension Packaging Script:**
+  - **Solution:** Wrote `.clipper/package.js` supporting both interactive menu prompts and direct terminal arguments (`1` or `chromium`, `2` or `firefox`, `3` or `all`). The script resolves symbolic links dynamically into actual files during compilation, creating clean production bundles (Chromium `.zip` and Firefox `.xpi`) inside a dedicated `.clipper/build/` directory without polluting the root extension folders.

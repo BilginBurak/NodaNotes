@@ -20,7 +20,7 @@ class CheckboxWidget extends WidgetType {
     input.type = 'checkbox';
     input.checked = this.checked;
     input.className = 'cm-task-checkbox';
-    
+
     input.addEventListener('click', (e) => {
       e.preventDefault();
       const from = this.pos;
@@ -34,7 +34,7 @@ class CheckboxWidget extends WidgetType {
       } else {
         return;
       }
-      
+
       view.dispatch({
         changes: { from, to, insert: replacement }
       });
@@ -68,7 +68,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
   getDecorations(view: EditorView): DecorationSet {
     const builder = new RangeSetBuilder<Decoration>();
     const state = view.state;
-    
+
     // Aktif cursor satırlarını bul (destek: çoklu cursor)
     const cursorLines = new Set<number>();
     for (const range of state.selection.ranges) {
@@ -92,7 +92,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             const bracketStart = line.from + startMarkOffset;
             const bracketEnd = bracketStart + match[2].length;
             const isChecked = match[3].toLowerCase() === 'x';
-            
+
             decos.push({
               from: bracketStart,
               to: bracketEnd,
@@ -100,7 +100,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
                 widget: new CheckboxWidget(isChecked, bracketStart)
               })
             });
-            
+
             decos.push({
               from: line.from,
               to: bracketStart,
@@ -126,7 +126,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         from, to,
         enter(node) {
           const type = node.name;
-          
+
           // Eğer cursor bu düğümün satırındaysa markdown sembollerini gizleme (raw edit)
           if (isCursorInNode(node.from, node.to)) {
             return;
@@ -278,7 +278,7 @@ const macOSDarkTheme = EditorView.theme({
   '.cm-content': {
     caretColor: 'var(--accent)',
     padding: '32px 60px',
-    maxWidth: '800px',
+    maxWidth: '900px',
     margin: '0 auto',
     lineHeight: '1.7',
   },
@@ -503,7 +503,7 @@ export function getEditorExtensions(onDocChange: (val: string) => void, viewMode
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     markdown(),
     search({ top: true }),
-    
+
     // Live Preview dynamic compartment
     livePreviewCompartment.of(viewMode === 'live' ? [livePreviewPlugin] : []),
     editorModeCompartment.of(EditorView.editorAttributes.of({

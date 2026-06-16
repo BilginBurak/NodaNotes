@@ -44,7 +44,7 @@
     font-size: 15px;
     line-height: 1.7;
     background-color: var(--bg-editor);
-    max-width: 800px;
+    max-width: 900px;
     margin: 0 auto;
     box-sizing: border-box;
     user-select: text;

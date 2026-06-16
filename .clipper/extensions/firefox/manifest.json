@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Noda Clipper",
+  "version": "1.0.0",
+  "description": "Clip web pages directly to Noda Notes",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:4040/*",
+    "http://localhost:4040/*"
+  ],
+  "icons": {
+    "16": "icons/icon-32.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-64.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-32.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-64.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "clipper@nodanotes.com",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  }
+}

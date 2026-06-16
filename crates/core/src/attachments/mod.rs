@@ -9,15 +9,16 @@ use std::path::{Path, PathBuf};
 
 /// Resolves a noda:// URI to an absolute file path on disk
 pub fn resolve_path<P: AsRef<Path>>(vault_path: P, uri: &str) -> Result<PathBuf, NodaError> {
-    if !uri.starts_with("noda://attachments/") {
+    let target = "/attachments/";
+    let file_name = if let Some(idx) = uri.find(target) {
+        &uri[idx + target.len()..]
+    } else {
         return Err(NodaError::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "Invalid attachment URI",
+            format!("Invalid attachment URI: {}", uri),
         )));
-    }
+    };
 
-    let file_name = uri.trim_start_matches("noda://attachments/");
-    
     // Path traversal protection
     if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
         return Err(NodaError::PathTraversal("Path traversal detected in URI".into()));

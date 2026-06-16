@@ -4,46 +4,52 @@
  */
 
 :root {
-  --bg-window:        #1c1c1e;   /* Main window */
-  --bg-sidebar:       #161618;   /* Sidebar / darker panels */
-  --bg-elevated:      #2c2c2e;   /* Modals, popovers */
-  --bg-elevated-2:    #3a3a3c;   /* Hover states */
-  --bg-control:       rgba(255, 255, 255, 0.07);   /* Button, inputs */
+  --bg-window: #1c1c1e;
+  /* Main window */
+  --bg-sidebar: #161618;
+  /* Sidebar / darker panels */
+  --bg-elevated: #2c2c2e;
+  /* Modals, popovers */
+  --bg-elevated-2: #3a3a3c;
+  /* Hover states */
+  --bg-control: rgba(255, 255, 255, 0.07);
+  /* Button, inputs */
   --bg-control-hover: rgba(255, 255, 255, 0.11);
-  --bg-selected:      rgba(10, 132, 255, 0.18);
+  --bg-selected: rgba(10, 132, 255, 0.18);
 
   /* Borders */
-  --border-subtle:    rgba(255, 255, 255, 0.07);
-  --border-normal:    rgba(255, 255, 255, 0.12);
-  --border-strong:    rgba(255, 255, 255, 0.20);
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-normal: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.20);
 
   /* Text */
-  --text-primary:     rgba(255, 255, 255, 0.88);
-  --text-secondary:   rgba(255, 255, 255, 0.55);
-  --text-tertiary:    rgba(255, 255, 255, 0.30);
-  --text-disabled:    rgba(255, 255, 255, 0.18);
+  --text-primary: rgba(255, 255, 255, 0.88);
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-tertiary: rgba(255, 255, 255, 0.30);
+  --text-disabled: rgba(255, 255, 255, 0.18);
 
   /* Accent (Apple Blue / Gold Accent hybrid) */
-  --accent:           #0a84ff;
-  --accent-hover:     #409cff;
-  --accent-muted:     rgba(10, 132, 255, 0.18);
-  --accent-gold:      #d4af37; /* Japandi Gold from previous spec */
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --accent-muted: rgba(10, 132, 255, 0.18);
+  --accent-gold: #d4af37;
+  /* Japandi Gold from previous spec */
   --accent-gold-hover: #e5c158;
 
   /* Semantic */
-  --color-green:      #30d158;
-  --color-red:        #ff453a;
-  
-  --radius-sm:        5px;
-  --radius-md:        8px;
-  --radius-lg:        12px;
-  --radius-pill:      9999px;
+  --color-green: #30d158;
+  --color-red: #ff453a;
 
-  --font-sans:        -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-  --font-mono:        "SF Mono", "Fira Code", "JetBrains Mono", Menlo, monospace;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
 
-  --shadow-sm:        0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md:        0 4px 12px rgba(0, 0, 0, 0.5);
+  --font-sans: -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", Menlo, monospace;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -126,7 +132,8 @@ label {
   color: var(--text-secondary);
 }
 
-input, textarea {
+input,
+textarea {
   background-color: var(--bg-sidebar);
   border: 1px solid var(--border-normal);
   color: var(--text-primary);
@@ -138,7 +145,8 @@ input, textarea {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-input:focus, textarea:focus {
+input:focus,
+textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-muted);
 }
@@ -296,12 +304,12 @@ button:disabled {
   border-radius: 50%;
 }
 
-input:checked + .slider {
+input:checked+.slider {
   background-color: var(--color-green);
   border-color: transparent;
 }
 
-input:checked + .slider:before {
+input:checked+.slider:before {
   transform: translateX(16px);
   background-color: #ffffff;
 }
@@ -364,10 +372,19 @@ input:checked + .slider:before {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

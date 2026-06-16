@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: noda: data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; img-src 'self' asset: noda: data: https: http:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     },
     "macOSPrivateApi": true
   },
