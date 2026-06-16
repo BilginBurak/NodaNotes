@@ -1216,3 +1216,21 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
   - **Solution:** Exported `revealInFileManager` in `ipc.ts` to call the Tauri `reveal_in_file_manager` command correctly.
 - **Launcher Cleanup:**
   - **Cleanup:** Fixed a Svelte compilation error in `frontend/src/routes/+page.svelte` by removing a reference to an undefined `pollingInterval` in the onMount cleanup callback.
+
+---
+
+## 57. Surgical Clipper Fixes: Static UI, Safari-Safe Viewport Snipping, and Boundary Enforcement (June 2026)
+
+- **Minimalist Split-Action Clipper UI:**
+  - **Problem:** Dynamic titles and logs cluttered the clipper popup UI, violating minimalist guidelines. Additionally, clipper action buttons were static and didn't support appending to existing notes cleanly.
+  - **Solution:** Redesigned `popup.html` and `popup.js` to dynamically query `/api/clipper/check?title=...`. If the note exists, the button transitions to `"Append to Existing Note"` and renders a static secondary dropdown with `"Create New Note"`. Kept all labels strictly static.
+- **Safari-Safe Viewport Snipping:**
+  - **Problem:** Region selection canvas overlays caused Safari's extension popup to lose runtime context and fail upon blur.
+  - **Solution:** Removed canvas elements and drag event listeners from `content.js`. Added a toggle switch in `popup.html` to capture the entire viewport. If enabled, it triggers `chrome.tabs.captureVisibleTab`, converts the base64 output into a raw `ArrayBuffer`, and streams it via the extension's background messaging bridge to `/api/attachments/upload` (safely bypassing Safari popup CORS restrictions).
+- **Axum Upload Body Limit & Background Upload handler:**
+  - **Solution:** Registered `UPLOAD_ATTACHMENT` message action in `background.js` to perform the fetch asynchronously from the service worker background page. Implemented `axum::extract::DefaultBodyLimit::disable()` middleware in `server.rs` to allow high-resolution retina screens' screenshots (often larger than default 2MB limit) to upload without failure.
+- **Strict Boundary Injection & Footer Generation:**
+  - **Problem:** Appending clipped paragraphs bypassed the boundaries, cluttering metadata footers.
+  - **Solution:** Implemented HTML boundary detection in `server.rs`. Append transactions locate `<!-- noda-webclipper -->` and inject paragraphs above it with rigid formatting (`\n***\n*Appended on {datetime}:*\n\n{content}\n\n`). New notes generate a premium multi-line footer block incorporating extracted author and publication metadata.
+- **Visual Design Alignment:**
+  - **Solution:** Created `.clipper/safari-extension/popup.css` cleanly inheriting Noda's desktop Japandi color palette, rounded borders, and shadows from `frontend/src/lib/styles/app.css`.

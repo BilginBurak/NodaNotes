@@ -35,7 +35,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'SUBMIT_CLIP') {
-    const { title, url, contentMarkdown, tags, token } = request.payload;
+    const { title, url, contentMarkdown, tags, token, append, author, publishedDate } = request.payload;
     const urls = ['http://127.0.0.1:4040/api/clipper', 'http://localhost:4040/api/clipper'];
 
     const tryFetch = (index) => {
@@ -54,7 +54,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           title,
           url,
           content_markdown: contentMarkdown,
-          tags
+          tags,
+          append,
+          author,
+          published_date: publishedDate
         })
       })
       .then(async response => {
@@ -75,6 +78,52 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           console.error('Clipper submission error:', error);
           sendResponse({ success: false, error: error.message });
         }
+      });
+    };
+
+    tryFetch(0);
+    return true; // Keep message channel open for async response
+  }
+
+  if (request.action === 'UPLOAD_ATTACHMENT') {
+    const { token, filename, base64Data } = request.payload;
+    const urls = ['http://127.0.0.1:4040/api/attachments/upload', 'http://localhost:4040/api/attachments/upload'];
+
+    // Convert base64 data to Uint8Array in the service worker context
+    const byteString = atob(base64Data);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+
+    const tryFetch = (index) => {
+      if (index >= urls.length) {
+        sendResponse({ success: false, error: 'Could not upload attachment. Ensure the app is open.' });
+        return;
+      }
+
+      fetch(`${urls[index]}?filename=${encodeURIComponent(filename)}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/octet-stream'
+        },
+        body: ab
+      })
+      .then(async response => {
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || `Server returned status ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        sendResponse({ success: true, data });
+      })
+      .catch(error => {
+        console.warn(`Upload to ${urls[index]} failed, trying next...`, error);
+        tryFetch(index + 1);
       });
     };
 

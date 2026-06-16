@@ -17,10 +17,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       title: document.title || 'Clipped Note',
       url: window.location.href,
       contentMarkdown: contentMarkdown.trim(),
+      author: extractAuthor(),
+      publishedDate: extractPublishedDate(),
     });
   }
   return true; // Keep message channel open for async response
 });
+
+function getMetaValue(selectors) {
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    if (el) {
+      const content = el.getAttribute('content') || el.getAttribute('datetime') || el.innerText;
+      if (content && content.trim()) {
+        return content.trim();
+      }
+    }
+  }
+  return '';
+}
+
+function extractAuthor() {
+  return getMetaValue([
+    'meta[name="author"]',
+    'meta[property="article:author"]',
+    'meta[name="twitter:creator"]',
+    '[itemprop="author"]',
+    '.author',
+    '.byline'
+  ]) || 'Unknown';
+}
+
+function extractPublishedDate() {
+  return getMetaValue([
+    'meta[property="article:published_time"]',
+    'meta[name="publish-date"]',
+    'meta[name="pubdate"]',
+    'meta[name="dc.date"]',
+    'time[datetime]'
+  ]) || 'Unknown';
+}
 
 function getSelectionHtml() {
   let html = "";

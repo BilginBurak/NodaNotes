@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0C62A31C2FE0DAF8005C3C16 /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = 0C62A31B2FE0DAF8005C3C16 /* popup.css */; };
+		0C62A31F2FE0DB2D005C3C16 /* Readability.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C62A31D2FE0DB2D005C3C16 /* Readability.js */; };
+		0C62A3202FE0DB2D005C3C16 /* turndown.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C62A31E2FE0DB2D005C3C16 /* turndown.js */; };
 		0CED3D642FDF7F3700399D58 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CED3D632FDF7F3700399D58 /* AppDelegate.swift */; };
 		0CED3D682FDF7F3700399D58 /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = 0CED3D662FDF7F3700399D58 /* Main.html */; };
 		0CED3D6A2FDF7F3700399D58 /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 0CED3D692FDF7F3700399D58 /* Icon.png */; };
@@ -49,6 +52,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0C62A31B2FE0DAF8005C3C16 /* popup.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = popup.css; path = "/Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/safari-extension/popup.css"; sourceTree = "<absolute>"; };
+		0C62A31D2FE0DB2D005C3C16 /* Readability.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = Readability.js; path = "/Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/safari-extension/Readability.js"; sourceTree = "<absolute>"; };
+		0C62A31E2FE0DB2D005C3C16 /* turndown.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = turndown.js; path = "/Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/safari-extension/turndown.js"; sourceTree = "<absolute>"; };
 		0CED3D602FDF7F3700399D58 /* Noda Clipper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Noda Clipper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0CED3D632FDF7F3700399D58 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		0CED3D672FDF7F3700399D58 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
@@ -144,6 +150,9 @@
 			children = (
 				0CED3D8D2FDF7F3900399D58 /* popup.js */,
 				0CED3D8E2FDF7F3900399D58 /* background.js */,
+				0C62A31D2FE0DB2D005C3C16 /* Readability.js */,
+				0C62A31E2FE0DB2D005C3C16 /* turndown.js */,
+				0C62A31B2FE0DAF8005C3C16 /* popup.css */,
 				0CED3D8F2FDF7F3900399D58 /* popup.html */,
 				0CED3D902FDF7F3900399D58 /* manifest.json */,
 				0CED3D912FDF7F3900399D58 /* content.js */,
@@ -253,8 +262,11 @@
 			files = (
 				0CED3D952FDF7F3900399D58 /* manifest.json in Resources */,
 				0CED3D932FDF7F3900399D58 /* background.js in Resources */,
+				0C62A31C2FE0DAF8005C3C16 /* popup.css in Resources */,
 				0CED3D942FDF7F3900399D58 /* popup.html in Resources */,
 				0CED3D922FDF7F3900399D58 /* popup.js in Resources */,
+				0C62A31F2FE0DB2D005C3C16 /* Readability.js in Resources */,
+				0C62A3202FE0DB2D005C3C16 /* turndown.js in Resources */,
 				0CED3D962FDF7F3900399D58 /* content.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

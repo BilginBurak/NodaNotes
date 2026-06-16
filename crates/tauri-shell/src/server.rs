@@ -19,6 +19,7 @@ use crate::state::AppState;
 use chrono::Utc;
 use noda_core::models::note::{Note, NoteId};
 use noda_core::database::queries;
+use rusqlite::OptionalExtension;
 
 #[derive(RustEmbed)]
 #[folder = "../../frontend/build"]
@@ -139,6 +140,9 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Arc<
     // Routes requiring Auth token
     let api_routes: Router<ServerState> = Router::new()
         .route("/clipper", post(clipper_handler))
+        .route("/clipper/check", get(clipper_check_handler))
+        .route("/attachments/upload", post(attachments_upload_handler))
+        .layer(axum::extract::DefaultBodyLimit::disable())
         .route("/rpc", post(rpc_handler))
         .route("/validate", get(validate_token_handler))
         .route_layer(middleware::from_fn(move |req, next| {
@@ -357,11 +361,91 @@ async fn attachments_handler(
 }
 
 #[derive(serde::Deserialize)]
+struct ClipperCheckQuery {
+    title: String,
+}
+
+#[derive(serde::Serialize)]
+struct ClipperCheckResponse {
+    exists: bool,
+}
+
+async fn clipper_check_handler(
+    State(state): State<ServerState>,
+    Query(query): Query<ClipperCheckQuery>,
+) -> impl IntoResponse {
+    let app_state = state.app_handle.state::<AppState>();
+    let db = {
+        let guard = app_state.database.read();
+        match guard.clone() {
+            Some(d) => d,
+            None => return (StatusCode::BAD_REQUEST, "No active database connection").into_response(),
+        }
+    };
+
+    let conn = db.conn.lock();
+    let exists = match conn.query_row(
+        "SELECT 1 FROM notes WHERE title = ?1 AND status = 'active' LIMIT 1",
+        rusqlite::params![query.title],
+        |_| Ok(true)
+    ).optional() {
+        Ok(Some(true)) => true,
+        _ => false,
+    };
+
+    (StatusCode::OK, Json(ClipperCheckResponse { exists })).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct UploadQuery {
+    filename: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct UploadResponse {
+    url: String,
+}
+
+async fn attachments_upload_handler(
+    State(state): State<ServerState>,
+    Query(query): Query<UploadQuery>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let app_state = state.app_handle.state::<AppState>();
+    let service = {
+        let guard = app_state.vault_service.read();
+        match guard.clone() {
+            Some(s) => s,
+            None => return (StatusCode::BAD_REQUEST, "No active vault is open").into_response(),
+        }
+    };
+
+    let filename = query.filename
+        .or_else(|| {
+            headers.get("x-filename")
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "screenshot.png".to_string());
+
+    let vault_path = service.base_path();
+
+    match noda_core::attachments::store_attachment_bytes(vault_path, &body, &filename).await {
+        Ok(url) => (StatusCode::OK, Json(UploadResponse { url })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save attachment: {}", e)).into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
 struct ClipperPayload {
     title: String,
     url: String,
     content_markdown: String,
     tags: Vec<String>,
+    append: Option<bool>,
+    author: Option<String>,
+    published_date: Option<String>,
 }
 
 /// Ingest clipped notes securely.
@@ -387,29 +471,89 @@ async fn clipper_handler(
         }
     };
 
-    let id = NoteId::new();
-    let now = Utc::now();
-    let file_path = format!("clipper/{}.md", id.0.to_string());
-    
-    let mut body = payload.content_markdown;
-    if !payload.url.is_empty() {
-        body = format!("{}\n\nSource: [{}]({})", body, payload.url, payload.url);
-    }
+    let existing_note_info = {
+        let conn = db.conn.lock();
+        conn.query_row(
+            "SELECT id, file_path FROM notes WHERE title = ?1 AND status = 'active' LIMIT 1",
+            rusqlite::params![payload.title],
+            |row| {
+                let id_str: String = row.get(0)?;
+                let file_path: String = row.get(1)?;
+                let id = ulid::Ulid::from_string(&id_str)
+                    .map(NoteId)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))?;
+                Ok((id, file_path))
+            }
+        ).optional().unwrap_or(None)
+    };
 
-    let inline_tags = Note::parse_inline_tags(&body);
-    let note = Note {
-        id,
-        parent_id: None,
-        title: payload.title,
-        body,
-        color: None,
-        pinned: false,
-        tags: payload.tags,
-        inline_tags,
-        status: "active".to_string(),
-        created_at: now,
-        updated_at: now,
-        file_path: file_path.clone(),
+    let now = Utc::now();
+    let note = if payload.append.unwrap_or(false) && existing_note_info.is_some() {
+        let (existing_id, _) = existing_note_info.unwrap();
+        let mut n = match service.read_note(existing_id).await {
+            Ok(note) => note,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read existing note: {}", e)).into_response(),
+        };
+
+        let marker = "<!-- noda-webclipper -->";
+        let now_local = chrono::Local::now().format("%d.%m.%Y %H:%M").to_string();
+        let appended_text = format!(
+            "\n***\n*Appended on {}:*\n\n{}\n\n",
+            now_local,
+            payload.content_markdown
+        );
+
+        if let Some(idx) = n.body.find(marker) {
+            let (before, after) = n.body.split_at(idx);
+            let mut new_body = String::new();
+            new_body.push_str(before.trim_end());
+            new_body.push_str(&appended_text);
+            new_body.push_str(after);
+            n.body = new_body;
+        } else {
+            n.body = format!("{}\n\n{}", n.body.trim_end(), appended_text);
+        }
+        n.updated_at = now;
+        n
+    } else {
+        let id = NoteId::new();
+        let file_path = format!("clipper/{}.md", id.0.to_string());
+        
+        let author = payload.author.filter(|a| !a.is_empty()).unwrap_or_else(|| "Unknown".to_string());
+        let published = payload.published_date.filter(|p| !p.is_empty()).unwrap_or_else(|| "Unknown".to_string());
+        let added_date = chrono::Local::now().format("%d.%m.%Y %H:%M").to_string();
+
+        let source_link = if payload.url.is_empty() {
+            "Unknown".to_string()
+        } else {
+            format!("[Link]({})", payload.url)
+        };
+
+        let footer = format!(
+            "<!-- noda-webclipper -->\n\n---\n*Added via NodaNotes #webclipper*\n\n**Source:** {}  \n**Author:** {}  \n**Published:** {}  \n**Added:** {}",
+            source_link,
+            author,
+            published,
+            added_date
+        );
+
+        let body = format!("{}\n\n{}", payload.content_markdown, footer);
+        let inline_tags = Note::parse_inline_tags(&body);
+
+        Note {
+            id,
+            parent_id: None,
+            title: payload.title,
+            body,
+            color: None,
+            pinned: false,
+            tags: payload.tags,
+            inline_tags,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+            file_path,
+        }
     };
 
     // 1. Write note to disk
