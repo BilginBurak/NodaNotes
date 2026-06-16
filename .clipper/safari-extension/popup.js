@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const dropdownMenu = document.getElementById('dropdown-menu');
   const createNewNoteItem = document.getElementById('create-new-note-item');
   const screenshotToggle = document.getElementById('screenshot-toggle');
+  const selectAreaBtn = document.getElementById('select-area-btn');
+  const areaCapturedIndicator = document.getElementById('area-captured-indicator');
   const clipStatus = document.getElementById('clip-status');
   const configLink = document.getElementById('config-link');
   const charCounter = document.getElementById('char-counter');
@@ -24,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let extractedAuthor = 'Unknown';
   let extractedPublishedDate = 'Unknown';
   let noteExists = false;
+  let areaScreenshotUrl = '';
   let checkTimeout;
 
   // Check storage for token
@@ -129,6 +132,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
   clipTitle.addEventListener('input', checkNoteExists);
 
+  // Clear area selection when viewport toggle is clicked on
+  screenshotToggle.addEventListener('change', () => {
+    if (screenshotToggle.checked) {
+      areaScreenshotUrl = '';
+      areaCapturedIndicator.style.display = 'none';
+      chrome.storage.local.get(['temp_clip_state'], (result) => {
+        if (result.temp_clip_state) {
+          const state = result.temp_clip_state;
+          delete state.screenshotUrl;
+          chrome.storage.local.set({ temp_clip_state: state });
+        }
+      });
+    }
+  });
+
+  // "Select Area" Action
+  selectAreaBtn.addEventListener('click', () => {
+    const title = clipTitle.value.trim();
+    const tagsStr = clipTags.value.trim();
+    const contentMarkdown = clipBody.value;
+
+    const tempState = {
+      title,
+      tags: tagsStr,
+      contentMarkdown,
+      author: extractedAuthor,
+      publishedDate: extractedPublishedDate,
+      url: currentTabUrl,
+      screenshotUrl: areaScreenshotUrl
+    };
+
+    chrome.storage.local.set({ temp_clip_state: tempState }, () => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs && tabs[0]) {
+          chrome.tabs.sendMessage(tabs[0].id, { action: 'START_AREA_SELECTION' }, () => {
+            window.close(); // Popup closes instantly
+          });
+        }
+      });
+    });
+  });
+
   submitClipBtn.addEventListener('click', () => {
     submitClipAction(noteExists);
   });
@@ -136,16 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
   createNewNoteItem.addEventListener('click', () => {
     submitClipAction(false);
   });
-
-  function dataURItoUint8Array(dataURI) {
-    const byteString = atob(dataURI.split(',')[1]);
-    const ab = new ArrayBuffer(byteString.length);
-    const ia = new Uint8Array(ab);
-    for (let i = 0; i < byteString.length; i++) {
-      ia[i] = byteString.charCodeAt(i);
-    }
-    return ia;
-  }
 
   function submitClipAction(shouldAppend) {
     const title = clipTitle.value.trim();
@@ -177,10 +212,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }, (response) => {
         setLoading(false);
         if (response && response.success) {
-          showStatus(clipStatus, shouldAppend ? 'Appended to Noda Notes!' : 'Clipped to Noda Notes!', 'success');
-          setTimeout(() => {
-            window.close();
-          }, 1500);
+          // Clear temp clip state from storage upon success
+          chrome.storage.local.remove(['temp_clip_state'], () => {
+            showStatus(clipStatus, shouldAppend ? 'Appended to Noda Notes!' : 'Clipped to Noda Notes!', 'success');
+            setTimeout(() => {
+              window.close();
+            }, 1500);
+          });
         } else {
           const errMsg = (response && response.error) ? response.error : 'Could not connect to Noda Notes server. Ensure the app is open.';
           showStatus(clipStatus, errMsg, 'error');
@@ -188,8 +226,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
 
-    // Viewport Capture Snipping Engine
-    if (screenshotToggle.checked) {
+    // If an area selection screenshot is attached
+    if (areaScreenshotUrl) {
+      contentMarkdown += `\n\n![Viewport Screenshot](${areaScreenshotUrl})\n`;
+      performSubmission(contentMarkdown);
+    } else if (screenshotToggle.checked) {
       chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
         if (chrome.runtime.lastError || !dataUrl) {
           console.warn('Screenshot capture failed, submitting without screenshot:', chrome.runtime.lastError);
@@ -238,42 +279,65 @@ document.addEventListener('DOMContentLoaded', () => {
         const tab = tabs[0];
         currentTabUrl = tab.url || '';
         
-        // Inject content.js dynamically using scripting API
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content.js']
-        }, () => {
-          if (chrome.runtime.lastError) {
-            console.warn('Could not inject content script:', chrome.runtime.lastError);
-            clipTitle.value = tab.title || '';
-            clipBody.value = `No content script available on this page.\nURL: ${currentTabUrl}`;
-            charCounter.textContent = '0 chars';
-            checkNoteExists();
-            return;
-          }
-
-          // Query content script
-          chrome.tabs.sendMessage(tab.id, { action: 'GET_CLIP_DATA' }, (response) => {
-            if (chrome.runtime.lastError || !response) {
-              // Content script not loaded (e.g. browser settings page or chrome web store)
-              clipTitle.value = tab.title || '';
-              clipBody.value = `No content script available on this page.\nURL: ${currentTabUrl}`;
-              charCounter.textContent = '0 chars';
-              extractedAuthor = 'Unknown';
-              extractedPublishedDate = 'Unknown';
-              checkNoteExists();
-              return;
+        // Restore from storage if exists
+        chrome.storage.local.get(['temp_clip_state'], (result) => {
+          if (result.temp_clip_state) {
+            const state = result.temp_clip_state;
+            clipTitle.value = state.title || '';
+            clipTags.value = state.tags || '';
+            clipBody.value = state.contentMarkdown || '';
+            extractedAuthor = state.author || 'Unknown';
+            extractedPublishedDate = state.publishedDate || 'Unknown';
+            currentTabUrl = state.url || currentTabUrl;
+            
+            if (state.screenshotUrl) {
+              areaScreenshotUrl = state.screenshotUrl;
+              areaCapturedIndicator.style.display = 'flex';
+              screenshotToggle.checked = false;
             }
-
-            clipTitle.value = response.title || tab.title || '';
-            clipBody.value = response.contentMarkdown || '';
-            charCounter.textContent = `${response.contentMarkdown.length} chars`;
-            extractedAuthor = response.author || 'Unknown';
-            extractedPublishedDate = response.publishedDate || 'Unknown';
+            charCounter.textContent = `${clipBody.value.length} chars`;
             checkNoteExists();
-          });
+          } else {
+            // Load fresh content
+            injectAndLoadContent(tab);
+          }
         });
       }
+    });
+  }
+
+  function injectAndLoadContent(tab) {
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content.js']
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn('Could not inject content script:', chrome.runtime.lastError);
+        clipTitle.value = tab.title || '';
+        clipBody.value = `No content script available on this page.\nURL: ${currentTabUrl}`;
+        charCounter.textContent = '0 chars';
+        checkNoteExists();
+        return;
+      }
+
+      chrome.tabs.sendMessage(tab.id, { action: 'GET_CLIP_DATA' }, (response) => {
+        if (chrome.runtime.lastError || !response) {
+          clipTitle.value = tab.title || '';
+          clipBody.value = `No content script available on this page.\nURL: ${currentTabUrl}`;
+          charCounter.textContent = '0 chars';
+          extractedAuthor = 'Unknown';
+          extractedPublishedDate = 'Unknown';
+          checkNoteExists();
+          return;
+        }
+
+        clipTitle.value = response.title || tab.title || '';
+        clipBody.value = response.contentMarkdown || '';
+        charCounter.textContent = `${response.contentMarkdown.length} chars`;
+        extractedAuthor = response.author || 'Unknown';
+        extractedPublishedDate = response.publishedDate || 'Unknown';
+        checkNoteExists();
+      });
     });
   }
 

@@ -40,13 +40,22 @@
         <textarea id="clip-body" placeholder="Clipped markdown content..." readonly></textarea>
       </div>
       
-      <!-- Screenshot Toggle -->
+      <!-- Screenshot Toggle & Area Selector -->
       <div class="toggle-group">
         <label for="screenshot-toggle" style="font-size: 12px; font-weight: 500; color: var(--text-primary);">Attach Viewport Screenshot</label>
-        <label class="switch">
-          <input type="checkbox" id="screenshot-toggle">
-          <span class="slider"></span>
-        </label>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" id="select-area-btn" style="padding: 4px 8px; font-size: 11px; height: 24px; border-radius: var(--radius-sm); background-color: var(--bg-control); border: 1px solid var(--border-normal); color: var(--text-primary); cursor: pointer; flex: none;">Select Area</button>
+          <label class="switch">
+            <input type="checkbox" id="screenshot-toggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      
+      <!-- Area Captured Indicator (Minimalist & Static) -->
+      <div id="area-captured-indicator" style="display: none; align-items: center; gap: 6px; font-size: 11px; color: var(--color-green); margin-bottom: 4px;">
+        <span style="display: inline-block; width: 6px; height: 6px; background-color: var(--color-green); border-radius: 50%;"></span>
+        <span>Area Screenshot Attached</span>
       </div>
 
       <!-- Action Area -->

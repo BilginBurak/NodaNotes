@@ -130,4 +130,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     tryFetch(0);
     return true; // Keep message channel open for async response
   }
+
+  if (request.action === 'CAPTURE_TAB') {
+    chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+      if (chrome.runtime.lastError || !dataUrl) {
+        sendResponse({ success: false, error: chrome.runtime.lastError ? chrome.runtime.lastError.message : 'Capture failed' });
+      } else {
+        sendResponse({ success: true, dataUrl: dataUrl });
+      }
+    });
+    return true;
+  }
 });
