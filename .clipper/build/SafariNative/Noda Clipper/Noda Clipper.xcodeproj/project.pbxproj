@@ -7,15 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0C196DFE2FE1D8C2009A3823 /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DFA2FE1D8C2009A3823 /* popup.html */; };
-		0C196DFF2FE1D8C2009A3823 /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DF92FE1D8C2009A3823 /* popup.css */; };
-		0C196E002FE1D8C2009A3823 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DF72FE1D8C2009A3823 /* icons */; };
-		0C196E012FE1D8C2009A3823 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DF82FE1D8C2009A3823 /* manifest.json */; };
-		0C196E022FE1D8C2009A3823 /* Readability.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DFC2FE1D8C2009A3823 /* Readability.js */; };
-		0C196E032FE1D8C2009A3823 /* turndown.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DFD2FE1D8C2009A3823 /* turndown.js */; };
-		0C196E042FE1D8C2009A3823 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DF62FE1D8C2009A3823 /* content.js */; };
-		0C196E052FE1D8C2009A3823 /* popup.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DFB2FE1D8C2009A3823 /* popup.js */; };
-		0C196E062FE1D8C2009A3823 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196DF52FE1D8C2009A3823 /* background.js */; };
+		0C196E102FE1F721009A3823 /* turndown.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E0F2FE1F721009A3823 /* turndown.js */; };
+		0C196E112FE1F721009A3823 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E092FE1F721009A3823 /* icons */; };
+		0C196E122FE1F721009A3823 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E0A2FE1F721009A3823 /* manifest.json */; };
+		0C196E132FE1F721009A3823 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E082FE1F721009A3823 /* content.js */; };
+		0C196E142FE1F721009A3823 /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E0C2FE1F721009A3823 /* popup.html */; };
+		0C196E152FE1F721009A3823 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E072FE1F721009A3823 /* background.js */; };
+		0C196E162FE1F721009A3823 /* popup.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E0D2FE1F721009A3823 /* popup.js */; };
+		0C196E172FE1F721009A3823 /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E0B2FE1F721009A3823 /* popup.css */; };
+		0C196E182FE1F721009A3823 /* Readability.js in Resources */ = {isa = PBXBuildFile; fileRef = 0C196E0E2FE1F721009A3823 /* Readability.js */; };
 		0CED3D642FDF7F3700399D58 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CED3D632FDF7F3700399D58 /* AppDelegate.swift */; };
 		0CED3D682FDF7F3700399D58 /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = 0CED3D662FDF7F3700399D58 /* Main.html */; };
 		0CED3D6A2FDF7F3700399D58 /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 0CED3D692FDF7F3700399D58 /* Icon.png */; };
@@ -53,15 +53,15 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0C196DF52FE1D8C2009A3823 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/background.js; sourceTree = "<absolute>"; };
-		0C196DF62FE1D8C2009A3823 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/content.js; sourceTree = "<absolute>"; };
-		0C196DF72FE1D8C2009A3823 /* icons */ = {isa = PBXFileReference; lastKnownFileType = text; name = icons; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/icons; sourceTree = "<absolute>"; };
-		0C196DF82FE1D8C2009A3823 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/manifest.json; sourceTree = "<absolute>"; };
-		0C196DF92FE1D8C2009A3823 /* popup.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = popup.css; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/popup.css; sourceTree = "<absolute>"; };
-		0C196DFA2FE1D8C2009A3823 /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = popup.html; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/popup.html; sourceTree = "<absolute>"; };
-		0C196DFB2FE1D8C2009A3823 /* popup.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = popup.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/popup.js; sourceTree = "<absolute>"; };
-		0C196DFC2FE1D8C2009A3823 /* Readability.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = Readability.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/Readability.js; sourceTree = "<absolute>"; };
-		0C196DFD2FE1D8C2009A3823 /* turndown.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = turndown.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/turndown.js; sourceTree = "<absolute>"; };
+		0C196E072FE1F721009A3823 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/background.js; sourceTree = "<absolute>"; };
+		0C196E082FE1F721009A3823 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/content.js; sourceTree = "<absolute>"; };
+		0C196E092FE1F721009A3823 /* icons */ = {isa = PBXFileReference; lastKnownFileType = text; name = icons; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/icons; sourceTree = "<absolute>"; };
+		0C196E0A2FE1F721009A3823 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/manifest.json; sourceTree = "<absolute>"; };
+		0C196E0B2FE1F721009A3823 /* popup.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = popup.css; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/popup.css; sourceTree = "<absolute>"; };
+		0C196E0C2FE1F721009A3823 /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = popup.html; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/popup.html; sourceTree = "<absolute>"; };
+		0C196E0D2FE1F721009A3823 /* popup.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = popup.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/popup.js; sourceTree = "<absolute>"; };
+		0C196E0E2FE1F721009A3823 /* Readability.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = Readability.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/Readability.js; sourceTree = "<absolute>"; };
+		0C196E0F2FE1F721009A3823 /* turndown.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = turndown.js; path = /Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/.clipper/extensions/safari/turndown.js; sourceTree = "<absolute>"; };
 		0CED3D602FDF7F3700399D58 /* Noda Clipper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Noda Clipper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0CED3D632FDF7F3700399D58 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		0CED3D672FDF7F3700399D58 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
@@ -150,15 +150,15 @@
 		0CED3D8C2FDF7F3900399D58 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				0C196DF52FE1D8C2009A3823 /* background.js */,
-				0C196DF62FE1D8C2009A3823 /* content.js */,
-				0C196DF72FE1D8C2009A3823 /* icons */,
-				0C196DF82FE1D8C2009A3823 /* manifest.json */,
-				0C196DF92FE1D8C2009A3823 /* popup.css */,
-				0C196DFA2FE1D8C2009A3823 /* popup.html */,
-				0C196DFB2FE1D8C2009A3823 /* popup.js */,
-				0C196DFC2FE1D8C2009A3823 /* Readability.js */,
-				0C196DFD2FE1D8C2009A3823 /* turndown.js */,
+				0C196E072FE1F721009A3823 /* background.js */,
+				0C196E082FE1F721009A3823 /* content.js */,
+				0C196E092FE1F721009A3823 /* icons */,
+				0C196E0A2FE1F721009A3823 /* manifest.json */,
+				0C196E0B2FE1F721009A3823 /* popup.css */,
+				0C196E0C2FE1F721009A3823 /* popup.html */,
+				0C196E0D2FE1F721009A3823 /* popup.js */,
+				0C196E0E2FE1F721009A3823 /* Readability.js */,
+				0C196E0F2FE1F721009A3823 /* turndown.js */,
 			);
 			name = Resources;
 			path = "Noda Clipper Extension";
@@ -263,15 +263,15 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0C196DFE2FE1D8C2009A3823 /* popup.html in Resources */,
-				0C196DFF2FE1D8C2009A3823 /* popup.css in Resources */,
-				0C196E002FE1D8C2009A3823 /* icons in Resources */,
-				0C196E012FE1D8C2009A3823 /* manifest.json in Resources */,
-				0C196E022FE1D8C2009A3823 /* Readability.js in Resources */,
-				0C196E032FE1D8C2009A3823 /* turndown.js in Resources */,
-				0C196E042FE1D8C2009A3823 /* content.js in Resources */,
-				0C196E052FE1D8C2009A3823 /* popup.js in Resources */,
-				0C196E062FE1D8C2009A3823 /* background.js in Resources */,
+				0C196E102FE1F721009A3823 /* turndown.js in Resources */,
+				0C196E112FE1F721009A3823 /* icons in Resources */,
+				0C196E122FE1F721009A3823 /* manifest.json in Resources */,
+				0C196E132FE1F721009A3823 /* content.js in Resources */,
+				0C196E142FE1F721009A3823 /* popup.html in Resources */,
+				0C196E152FE1F721009A3823 /* background.js in Resources */,
+				0C196E162FE1F721009A3823 /* popup.js in Resources */,
+				0C196E172FE1F721009A3823 /* popup.css in Resources */,
+				0C196E182FE1F721009A3823 /* Readability.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
