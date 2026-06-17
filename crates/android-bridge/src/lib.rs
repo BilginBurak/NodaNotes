@@ -3586,3 +3586,78 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_listTagsWithCounts(
 
     env.new_string(result).unwrap().into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_check_1url_1history(
+    mut env: JNIEnv,
+    _class: JClass,
+    url: JString,
+) -> jstring {
+    let url_str: String = match env.get_string(&url) {
+        Ok(s) => s.into(),
+        Err(_) => return error_string(&mut env, "Invalid URL string"),
+    };
+
+    let db = {
+        let state = BRIDGE_STATE.read().unwrap();
+        match &state.database {
+            Some(d) => d.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        }
+    };
+
+    let result = get_runtime().block_on(async {
+        match noda_core::vault::clipper::check_url_history(&db, &url_str).await {
+            Ok(Some(id)) => format!("{{\"exists\":true,\"note_id\":\"{}\"}}", id),
+            Ok(None) => "{\"exists\":false}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        }
+    });
+
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_clipUrl(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+
+    let payload: noda_core::vault::clipper::ClipperPayload = match serde_json::from_str(&input) {
+        Ok(p) => p,
+        Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
+    };
+
+    let (service, db, base_path) = {
+        let state = BRIDGE_STATE.read().unwrap();
+        let s = match &state.vault_service {
+            Some(v) => v.clone(),
+            None => return error_string(&mut env, "Vault service not initialized"),
+        };
+        let d = match &state.database {
+            Some(db_ref) => db_ref.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        };
+        let p = match &state.vault_path {
+            Some(path) => path.clone(),
+            None => return error_string(&mut env, "Vault path not initialized"),
+        };
+        (s, d, p)
+    };
+
+    let result = get_runtime().block_on(async {
+        match noda_core::vault::clipper::clip_url(&service, &db, &base_path, payload).await {
+            Ok(true) => "{\"success\":true}".to_string(),
+            Ok(false) => "{\"success\":false}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        }
+    });
+
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+

@@ -17,6 +17,6 @@ thiserror = "1.0"
 opt-level = "s"      # Size optimizations, keeping execution fast and reducing memory/cache footprints
 lto = true           # Full Link-Time Optimization across all crates
 codegen-units = 1    # Reduces parallel codegen units to maximize LLVM optimizations
-panic = "abort"      # Disables panic unwinding to shrink binary size
+panic = "unwind"     # Enables unwinding for compatibility with external crates
 strip = true         # Strips all debug symbols from the final binary
 

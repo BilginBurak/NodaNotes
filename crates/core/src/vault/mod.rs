@@ -2,6 +2,7 @@ pub mod init;
 pub mod persistence;
 pub mod scan;
 pub mod service;
+pub mod clipper;
 
 pub use init::*;
 pub use persistence::*;

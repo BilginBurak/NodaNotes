@@ -92,6 +92,10 @@ object RustCore {
     external fun toggleTaskStatus(inputJson: String): String
     external fun listTagsWithCounts(inputJson: String): String
 
+    // Clipper Functions
+    external fun check_url_history(url: String): String
+    external fun clipUrl(inputJson: String): String
+
     interface SyncProgressListener {
         fun onProgress(json: String)
     }
