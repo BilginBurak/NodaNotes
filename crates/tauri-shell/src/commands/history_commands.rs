@@ -114,6 +114,9 @@ pub async fn restore_snapshot(
             created_at: current.created_at,
             updated_at: Utc::now(),
             file_path: current.file_path.clone(),
+            is_encrypted: current.is_encrypted,
+            dek_encrypted: current.dek_encrypted.clone(),
+            dek_nonce: current.dek_nonce.clone(),
         },
         None => {
             let mut note = restored_note_from_snap;

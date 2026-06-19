@@ -269,5 +269,17 @@ export const approveDevice = (id: string) => call<void>('approve_device', { id }
 export const revokeDevice = (id: string) => call<void>('revoke_device', { id });
 export const regenerateDaemonToken = () => call<string>('regenerate_daemon_token');
 
+// ── Crypto / Vault Lock Commands ───────────────────────────
+export const setMasterPassword = (password: string) => call<void>('set_master_password', { password });
+export const changeMasterPassword = (oldPassword: string, newPassword: string) => call<void>('change_master_password', { oldPassword, newPassword });
+export const unlockVaultSession = (password: string) => call<boolean>('unlock_vault_session', { password });
+export const lockVaultInstantly = () => call<void>('lock_vault_instantly');
+export const toggleNoteEncryption = (id: string) => call<void>('toggle_note_encryption', { id });
+export const isVaultSessionUnlocked = () => call<boolean>('is_vault_session_unlocked');
+export const isVaultConfigured = () => call<boolean>('is_vault_configured');
+export const getVaultTimeoutSetting = () => call<string>('get_vault_timeout_setting');
+export const setVaultTimeoutSetting = (timeout: string) => call<void>('set_vault_timeout_setting', { timeout });
+
+
 
 

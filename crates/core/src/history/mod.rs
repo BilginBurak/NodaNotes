@@ -79,6 +79,9 @@ pub async fn restore<P: AsRef<Path>>(
         created_at: frontmatter.created_at,
         updated_at: frontmatter.updated_at,
         file_path: format!("{}.md", frontmatter.id.0.to_string()),
+        is_encrypted: frontmatter.is_encrypted,
+        dek_encrypted: frontmatter.dek_encrypted.clone(),
+        dek_nonce: frontmatter.dek_nonce.clone(),
     })
 }
 

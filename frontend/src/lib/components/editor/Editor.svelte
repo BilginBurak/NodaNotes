@@ -8,7 +8,7 @@
     activeNote, updateActiveNoteBody, saveActiveNote, renameActiveNote,
     activeNoteDirty, lastSavedAt, updateActiveNoteTags, notesList,
     viewingTrashNote, viewingConflictNote, activeViewMode, selectedFolder,
-    selectNote, focusEditorAtEnd
+    selectNote, focusEditorAtEnd, activeNoteLocked
   } from '../../stores/notes';
   import { recoverFromTrash, emptyTrashPermanently } from '../../stores/editor';
   import { resolveKeepLocal, resolveKeepRemote } from '../../stores/sync';
@@ -108,6 +108,14 @@
   }
 
   $: currentNote = $activeNote;
+  $: if (currentNote) {
+    lockPassword = '';
+    lockError = '';
+  }
+  $: if ($activeNoteLocked) {
+    lockPassword = '';
+    lockError = '';
+  }
   $: viewMode    = $editorViewMode;
   $: displaySnapshots = $showSnapshots;
   $: displayAttachments = $showAttachments;
@@ -688,6 +696,31 @@
       hour: '2-digit', minute: '2-digit',
     });
   }
+
+  let lockPassword = '';
+  let lockError = '';
+  let unlocking = false;
+
+  async function handleUnlockNote() {
+    if (!lockPassword) return;
+    unlocking = true;
+    lockError = '';
+    try {
+      const success = await ipc.unlockVaultSession(lockPassword);
+      if (success) {
+        lockPassword = '';
+        if (currentNote) {
+          await selectNote(currentNote.id);
+        }
+      } else {
+        lockError = 'Invalid master password';
+      }
+    } catch (e: any) {
+      lockError = e.message || 'Unlock failed';
+    } finally {
+      unlocking = false;
+    }
+  }
 </script>
 
 <div class="editor-shell">
@@ -1142,22 +1175,58 @@
               </div>
             {/if}
 
-            <div class="editor-panels">
-              <div
-                class="panel-editor"
-                class:panel-hidden={viewMode === 'preview'}
-                use:editorAction
-                aria-hidden={viewMode === 'preview'}
-              ></div>
-
-              <div
-                class="panel-preview"
-                class:panel-hidden={viewMode !== 'preview'}
-                aria-hidden={viewMode !== 'preview'}
-              >
-                <Preview content={currentNote.body} />
+            {#if $activeNoteLocked}
+              <div class="editor-lock-screen">
+                <div class="lock-screen-card">
+                  <div class="lock-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                  </div>
+                  <h3>This note is encrypted</h3>
+                  <p>Please enter your master password to decrypt and view the content.</p>
+                  
+                  <form class="lock-form" onsubmit={(e) => { e.preventDefault(); handleUnlockNote(); }}>
+                    <input 
+                      type="password" 
+                      placeholder="Master Password" 
+                      bind:value={lockPassword} 
+                      disabled={unlocking}
+                      required 
+                    />
+                    <button type="submit" class="unlock-btn" disabled={unlocking}>
+                      {#if unlocking}
+                        Unlocking...
+                      {:else}
+                        Unlock Note
+                      {/if}
+                    </button>
+                  </form>
+                  
+                  {#if lockError}
+                    <div class="lock-error">{lockError}</div>
+                  {/if}
+                </div>
               </div>
-            </div>
+            {:else}
+              <div class="editor-panels">
+                <div
+                  class="panel-editor"
+                  class:panel-hidden={viewMode === 'preview'}
+                  use:editorAction
+                  aria-hidden={viewMode === 'preview'}
+                ></div>
+
+                <div
+                  class="panel-preview"
+                  class:panel-hidden={viewMode !== 'preview'}
+                  aria-hidden={viewMode !== 'preview'}
+                >
+                  <Preview content={currentNote.body} />
+                </div>
+              </div>
+            {/if}
           </div>
         {/if}
 
@@ -2625,5 +2694,104 @@
     color: var(--accent) !important;
     background-color: var(--accent-muted) !important;
     border-color: var(--accent-border) !important;
+  }
+
+  /* Editor Lock Screen Styling */
+  .editor-lock-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    background-color: var(--bg-primary);
+  }
+
+  .lock-screen-card {
+    max-width: 360px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+    padding: 32px;
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-normal);
+    box-shadow: var(--shadow-md);
+  }
+
+  .lock-icon {
+    width: 48px;
+    height: 48px;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+  }
+
+  .lock-screen-card h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .lock-screen-card p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .lock-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .lock-form input[type="password"] {
+    width: 100%;
+    height: 36px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-normal);
+    background-color: var(--bg-control);
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .lock-form input[type="password"]:focus {
+    border-color: var(--accent);
+  }
+
+  .unlock-btn {
+    width: 100%;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background-color: var(--accent);
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .unlock-btn:hover:not(:disabled) {
+    background-color: var(--accent-hover);
+  }
+
+  .unlock-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .lock-error {
+    font-size: 12px;
+    color: var(--color-red);
+    margin-top: 4px;
   }
 </style>

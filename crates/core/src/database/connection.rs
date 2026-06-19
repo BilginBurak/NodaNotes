@@ -99,7 +99,7 @@ mod tests {
         
         // Verify schema version
         let version: i32 = conn.query_row("SELECT MAX(version) FROM schema_version", [], |row| row.get(0)).unwrap();
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
         
         // Verify notes table exists
         let table_count: i32 = conn.query_row(

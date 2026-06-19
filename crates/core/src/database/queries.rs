@@ -22,6 +22,9 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
     let created_str: String = row.get("created")?;
     let updated_str: String = row.get("updated")?;
     let file_path: String = row.get("file_path")?;
+    let is_encrypted: bool = row.get("is_encrypted")?;
+    let dek_encrypted: Option<String> = row.get("dek_encrypted")?;
+    let dek_nonce: Option<String> = row.get("dek_nonce")?;
     
     let created_at = DateTime::parse_from_rfc3339(&created_str)
         .map(|d| d.with_timezone(&Utc))
@@ -50,6 +53,9 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
         created_at,
         updated_at,
         file_path,
+        is_encrypted,
+        dek_encrypted,
+        dek_nonce,
     })
 }
 
@@ -60,6 +66,7 @@ fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
     let inline_tags_json: String = row.get("inline_tags")?;
     let updated_str: String = row.get("updated")?;
     let file_path: String = row.get("file_path")?;
+    let is_encrypted: bool = row.get("is_encrypted")?;
     
     let updated_at = DateTime::parse_from_rfc3339(&updated_str)
         .map(|d| d.with_timezone(&Utc))
@@ -82,6 +89,7 @@ fn row_to_note_meta(row: &Row) -> Result<NoteMeta, rusqlite::Error> {
         status: row.get("status")?,
         updated_at,
         file_path,
+        is_encrypted,
     })
 }
 
@@ -109,7 +117,10 @@ pub fn get_note(conn: &Connection, id: NoteId) -> Result<Option<Note>, NodaError
             status, 
             created, 
             updated, 
-            file_path 
+            file_path,
+            is_encrypted,
+            dek_encrypted,
+            dek_nonce
         FROM notes 
         WHERE id = ?1
     "#)
@@ -129,8 +140,8 @@ pub fn insert_note(conn: &Connection, note: &Note, file_path: &str) -> Result<()
     let updated_str = note.updated_at.to_rfc3339();
 
     conn.execute(
-        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path, is_encrypted, dek_encrypted, dek_nonce) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             note.id.0.to_string(),
             parent_id_str,
@@ -141,7 +152,10 @@ pub fn insert_note(conn: &Connection, note: &Note, file_path: &str) -> Result<()
             note.status,
             created_str,
             updated_str,
-            file_path
+            file_path,
+            note.is_encrypted,
+            note.dek_encrypted,
+            note.dek_nonce
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to insert note: {}", e)))?;
     
@@ -158,7 +172,8 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str) -> Result<()
 
     conn.execute(
         "UPDATE notes SET 
-            parent_id = ?2, title = ?3, body = ?4, color = ?5, pinned = ?6, status = ?7, created = ?8, updated = ?9, file_path = ?10
+            parent_id = ?2, title = ?3, body = ?4, color = ?5, pinned = ?6, status = ?7, created = ?8, updated = ?9, file_path = ?10,
+            is_encrypted = ?11, dek_encrypted = ?12, dek_nonce = ?13
          WHERE id = ?1",
         params![
             note.id.0.to_string(),
@@ -170,7 +185,10 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str) -> Result<()
             note.status,
             created_str,
             updated_str,
-            file_path
+            file_path,
+            note.is_encrypted,
+            note.dek_encrypted,
+            note.dek_nonce
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to update note: {}", e)))?;
     
@@ -186,8 +204,8 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, mark_dirty: 
     let updated_str = note.updated_at.to_rfc3339();
 
     conn.execute(
-        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path, is_encrypted, dek_encrypted, dek_nonce) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(id) DO UPDATE SET
             parent_id = excluded.parent_id,
             title = excluded.title,
@@ -197,7 +215,10 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, mark_dirty: 
             status = excluded.status,
             created = excluded.created,
             updated = excluded.updated,
-            file_path = excluded.file_path",
+            file_path = excluded.file_path,
+            is_encrypted = excluded.is_encrypted,
+            dek_encrypted = excluded.dek_encrypted,
+            dek_nonce = excluded.dek_nonce",
         params![
             note.id.0.to_string(),
             parent_id_str,
@@ -208,7 +229,10 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, mark_dirty: 
             note.status,
             created_str,
             updated_str,
-            file_path
+            file_path,
+            note.is_encrypted,
+            note.dek_encrypted,
+            note.dek_nonce
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to upsert note: {}", e)))?;
     
@@ -283,7 +307,8 @@ pub fn list_notes(conn: &Connection) -> Result<Vec<NoteMeta>, NodaError> {
             ) as inline_tags, 
             status, 
             updated, 
-            file_path 
+            file_path,
+            is_encrypted
         FROM notes 
         ORDER BY pinned DESC, updated DESC
     "#)
@@ -317,6 +342,14 @@ pub fn delete_note_by_path(conn: &Connection, file_path: &str, mark_dirty: bool)
         set_file_dirty(conn, file_path, true)?;
     }
 
+    Ok(())
+}
+
+pub fn purge_note_fts_body(conn: &Connection, id: NoteId) -> Result<(), NodaError> {
+    conn.execute(
+        "UPDATE notes_fts SET body = '' WHERE rowid = (SELECT rowid FROM notes WHERE id = ?1)",
+        params![id.0.to_string()],
+    ).map_err(|e| NodaError::Database(format!("Failed to purge FTS5 body: {}", e)))?;
     Ok(())
 }
 
@@ -651,8 +684,20 @@ pub fn run_cold_boot_scan(conn: &Connection, vault_path: &Path) -> Result<(), No
             
             let is_mismatch = check_file_mismatch(conn, &rel_path, size, mtime)?;
             if is_mismatch {
-                tracing::info!("Cold Boot Scan: Mismatch detected for {}, marking as dirty", rel_path);
-                set_file_dirty(conn, &rel_path, true)?;
+                tracing::info!("Cold Boot Scan: Mismatch detected for {}, syncing with DB", rel_path);
+                if rel_path.ends_with(".md") || rel_path.ends_with(".markdown") {
+                    match crate::vault::scan::parse_or_create_note_from_file_sync(full_path, vault_path) {
+                        Ok(note) => {
+                            upsert_note(conn, &note, &note.file_path, true)?;
+                        }
+                        Err(e) => {
+                            tracing::error!("Cold Boot Scan: Failed to parse mismatch file {}: {}", rel_path, e);
+                            set_file_dirty(conn, &rel_path, true)?;
+                        }
+                    }
+                } else {
+                    set_file_dirty(conn, &rel_path, true)?;
+                }
             }
         }
         Ok(())
@@ -734,9 +779,18 @@ pub fn run_cold_boot_scan(conn: &Connection, vault_path: &Path) -> Result<(), No
             if path.starts_with(".noda/sync/") {
                 continue;
             }
+            if path == ".noda/vault_config.json" {
+                if vault_path.join(&path).exists() {
+                    continue;
+                }
+            }
             if !scanned_paths.contains(&path) {
-                tracing::info!("Cold Boot Scan: File {} no longer exists on disk, marking as dirty", path);
-                set_file_dirty(conn, &path, true)?;
+                tracing::info!("Cold Boot Scan: File {} no longer exists on disk, deleting from notes and marking dirty", path);
+                if path.ends_with(".md") || path.ends_with(".markdown") {
+                    let _ = delete_note_by_path(conn, &path, true);
+                } else {
+                    set_file_dirty(conn, &path, true)?;
+                }
             }
         }
     }
@@ -768,7 +822,10 @@ pub fn list_full_notes(conn: &Connection) -> Result<Vec<Note>, NodaError> {
             status, 
             created, 
             updated, 
-            file_path 
+            file_path,
+            is_encrypted,
+            dek_encrypted,
+            dek_nonce
         FROM notes
     "#).map_err(|e| NodaError::Database(format!("Prepare list_full_notes failed: {}", e)))?;
 

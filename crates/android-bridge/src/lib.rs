@@ -883,6 +883,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_createNote(
             created_at: now,
             updated_at: now,
             file_path,
+            is_encrypted: false,
+            dek_encrypted: None,
+            dek_nonce: None,
         };
 
         // 1. Write to local disk
@@ -972,6 +975,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
             created_at: existing_note.created_at,
             updated_at: now,
             file_path: existing_note.file_path.clone(),
+            is_encrypted: existing_note.is_encrypted,
+            dek_encrypted: existing_note.dek_encrypted.clone(),
+            dek_nonce: existing_note.dek_nonce.clone(),
         };
 
         let trigger_snap = params.trigger_snapshot.unwrap_or(false);
@@ -1663,6 +1669,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreSnapshot(
                 created_at: current.created_at,
                 updated_at: chrono::Utc::now(),
                 file_path: current.file_path.clone(),
+                is_encrypted: current.is_encrypted,
+                dek_encrypted: current.dek_encrypted.clone(),
+                dek_nonce: current.dek_nonce.clone(),
             },
             None => {
                 let mut note = restored_note_from_snap;
@@ -3395,6 +3404,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_triggerDailyNote(
                 created_at: now,
                 updated_at: now,
                 file_path: relative_path.clone(),
+                is_encrypted: false,
+                dek_encrypted: None,
+                dek_nonce: None,
             };
 
             if let Err(e) = service.write_note(&note).await {

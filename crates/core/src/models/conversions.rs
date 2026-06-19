@@ -18,6 +18,7 @@ impl From<Note> for NoteDto {
             created_at: note.created_at.to_rfc3339(),
             updated_at: note.updated_at.to_rfc3339(),
             file_path: note.file_path,
+            is_encrypted: note.is_encrypted,
         }
     }
 }
@@ -34,6 +35,7 @@ impl From<NoteMeta> for NoteListItemDto {
             inline_tags: meta.inline_tags,
             updated_at: meta.updated_at.to_rfc3339(),
             file_path: meta.file_path,
+            is_encrypted: meta.is_encrypted,
         }
     }
 }

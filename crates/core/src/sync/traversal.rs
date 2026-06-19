@@ -127,6 +127,7 @@ pub async fn list_remote_tree(
 
             if normalized_relative.split('/').any(|s| s == ".noda") {
                 let is_allowed = normalized_relative == ".noda"
+                    || normalized_relative == ".noda/vault_config.json"
                     || normalized_relative.starts_with(".noda/attachments")
                     || normalized_relative.starts_with(".noda/history");
                 if !is_allowed {

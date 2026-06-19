@@ -37,6 +37,12 @@ pub struct Note {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub file_path: String,
+    #[serde(default)]
+    pub is_encrypted: bool,
+    #[serde(default)]
+    pub dek_encrypted: Option<String>,
+    #[serde(default)]
+    pub dek_nonce: Option<String>,
 }
 
 impl Default for Note {
@@ -63,6 +69,9 @@ impl Note {
             created_at: now,
             updated_at: now,
             file_path: format!("{}.md", id.0.to_string()),
+            is_encrypted: false,
+            dek_encrypted: None,
+            dek_nonce: None,
         }
     }
 
@@ -135,6 +144,12 @@ pub struct Frontmatter {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub is_encrypted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dek_encrypted: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dek_nonce: Option<String>,
 }
 
 impl From<&Note> for Frontmatter {
@@ -149,6 +164,9 @@ impl From<&Note> for Frontmatter {
             status: note.status.clone(),
             created_at: note.created_at,
             updated_at: note.updated_at,
+            is_encrypted: note.is_encrypted,
+            dek_encrypted: note.dek_encrypted.clone(),
+            dek_nonce: note.dek_nonce.clone(),
         }
     }
 }
@@ -166,6 +184,8 @@ pub struct NoteMeta {
     pub status: String,
     pub updated_at: DateTime<Utc>,
     pub file_path: String,
+    #[serde(default)]
+    pub is_encrypted: bool,
 }
 
 impl From<&Note> for NoteMeta {
@@ -181,6 +201,7 @@ impl From<&Note> for NoteMeta {
             status: note.status.clone(),
             updated_at: note.updated_at,
             file_path: note.file_path.clone(),
+            is_encrypted: note.is_encrypted,
         }
     }
 }

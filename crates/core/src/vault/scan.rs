@@ -66,6 +66,9 @@ pub async fn parse_or_create_note_from_file(file_path: &Path, vault_root: &Path)
                     created_at: fm.created_at,
                     updated_at: fm.updated_at,
                     file_path: rel_path,
+                    is_encrypted: fm.is_encrypted,
+                    dek_encrypted: fm.dek_encrypted.clone(),
+                    dek_nonce: fm.dek_nonce.clone(),
                 });
             }
         }
@@ -130,6 +133,9 @@ pub async fn parse_or_create_note_from_file(file_path: &Path, vault_root: &Path)
         created_at,
         updated_at,
         file_path: new_rel_path,
+        is_encrypted: frontmatter_opt.as_ref().map(|fm| fm.is_encrypted).unwrap_or(false),
+        dek_encrypted: frontmatter_opt.as_ref().and_then(|fm| fm.dek_encrypted.clone()),
+        dek_nonce: frontmatter_opt.as_ref().and_then(|fm| fm.dek_nonce.clone()),
     };
 
     let frontmatter: Frontmatter = (&note).into();
@@ -145,6 +151,129 @@ pub async fn parse_or_create_note_from_file(file_path: &Path, vault_root: &Path)
         if let Err(e) = fs::remove_file(file_path).await {
             warn!("Failed to delete old file {:?}: {}", file_path, e);
         }
+    }
+
+    Ok(note)
+}
+
+/// Synchronous helper to parse a file or convert it to a standard NodaNote.
+/// Used during cold boot scan when async is not preferred.
+pub fn parse_or_create_note_from_file_sync(file_path: &Path, vault_root: &Path) -> Result<Note, NodaError> {
+    use crate::models::note::NoteId;
+    use chrono::{DateTime, Utc};
+    use std::fs;
+
+    let content = fs::read_to_string(file_path).map_err(NodaError::Io)?;
+    let matter = Matter::<YAML>::new();
+    let parsed = matter.parse(&content);
+
+    let filename_stem = file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let is_filename_valid_ulid = filename_stem.len() == 26 && ulid::Ulid::from_string(filename_stem).is_ok();
+
+    // Check if there is valid frontmatter
+    let frontmatter_opt = if let Some(data) = &parsed.data {
+        data.deserialize::<Frontmatter>().ok()
+    } else {
+        None
+    };
+
+    if is_filename_valid_ulid {
+        if let Some(fm) = frontmatter_opt.clone() {
+            let expected_id = NoteId(ulid::Ulid::from_string(filename_stem).unwrap());
+            if fm.id == expected_id {
+                let rel_path = file_path.strip_prefix(vault_root)
+                    .unwrap_or(file_path)
+                    .to_string_lossy()
+                    .to_string();
+                return Ok(Note {
+                    id: fm.id,
+                    parent_id: fm.parent_id,
+                    title: fm.title,
+                    inline_tags: Note::parse_inline_tags(&parsed.content),
+                    body: parsed.content,
+                    color: fm.color,
+                    pinned: fm.pinned,
+                    tags: fm.tags,
+                    status: fm.status,
+                    created_at: fm.created_at,
+                    updated_at: fm.updated_at,
+                    file_path: rel_path,
+                    is_encrypted: fm.is_encrypted,
+                    dek_encrypted: fm.dek_encrypted.clone(),
+                    dek_nonce: fm.dek_nonce.clone(),
+                });
+            }
+        }
+    }
+
+    // Convert/rewrite flow
+    let note_id = if let Some(fm) = &frontmatter_opt {
+        fm.id
+    } else if is_filename_valid_ulid {
+        NoteId(ulid::Ulid::from_string(filename_stem).unwrap())
+    } else {
+        NoteId::new()
+    };
+
+    let title = if let Some(fm) = &frontmatter_opt {
+        if fm.title.is_empty() {
+            filename_stem.to_string()
+        } else {
+            fm.title.clone()
+        }
+    } else {
+        filename_stem.to_string()
+    };
+
+    let meta = fs::metadata(file_path).ok();
+    let file_created = meta.as_ref().and_then(|m| m.created().ok())
+        .map(|t| DateTime::<Utc>::from(t))
+        .unwrap_or_else(Utc::now);
+    let file_modified = meta.as_ref().and_then(|m| m.modified().ok())
+        .map(|t| DateTime::<Utc>::from(t))
+        .unwrap_or_else(Utc::now);
+
+    let created_at = frontmatter_opt.as_ref().map(|fm| fm.created_at).unwrap_or(file_created);
+    let updated_at = frontmatter_opt.as_ref().map(|fm| fm.updated_at).unwrap_or(file_modified);
+
+    let parent_dir = file_path.parent().ok_or_else(|| {
+        NodaError::Vault("Invalid file path: no parent directory".to_string())
+    })?;
+    let new_filename = format!("{}.md", note_id.0.to_string());
+    let new_path = parent_dir.join(&new_filename);
+
+    let new_rel_path = new_path.strip_prefix(vault_root)
+        .unwrap_or(&new_path)
+        .to_string_lossy()
+        .to_string();
+
+    let note = Note {
+        id: note_id,
+        parent_id: frontmatter_opt.as_ref().and_then(|fm| fm.parent_id),
+        title,
+        inline_tags: Note::parse_inline_tags(&parsed.content),
+        body: parsed.content,
+        color: frontmatter_opt.as_ref().and_then(|fm| fm.color.clone()),
+        pinned: frontmatter_opt.as_ref().map(|fm| fm.pinned).unwrap_or(false),
+        tags: frontmatter_opt.as_ref().map(|fm| fm.tags.clone()).unwrap_or_default(),
+        status: frontmatter_opt.as_ref().map(|fm| fm.status.clone()).unwrap_or_else(|| "active".to_string()),
+        created_at,
+        updated_at,
+        file_path: new_rel_path,
+        is_encrypted: frontmatter_opt.as_ref().map(|fm| fm.is_encrypted).unwrap_or(false),
+        dek_encrypted: frontmatter_opt.as_ref().and_then(|fm| fm.dek_encrypted.clone()),
+        dek_nonce: frontmatter_opt.as_ref().and_then(|fm| fm.dek_nonce.clone()),
+    };
+
+    let frontmatter_serial: Frontmatter = (&note).into();
+    let yaml_string = serde_yaml::to_string(&frontmatter_serial)
+        .map_err(|e| NodaError::Vault(format!("Failed to serialize frontmatter: {}", e)))?;
+    let new_content = format!("---\n{}---\n{}", yaml_string, note.body);
+
+    fs::write(&new_path, new_content).map_err(NodaError::Io)?;
+
+    if new_path != file_path {
+        let _ = fs::remove_file(file_path);
     }
 
     Ok(note)
@@ -253,6 +382,9 @@ pub async fn parse_or_create_note_from_content(
         created_at,
         updated_at,
         file_path: new_rel_path,
+        is_encrypted: frontmatter_opt.as_ref().map(|fm| fm.is_encrypted).unwrap_or(false),
+        dek_encrypted: frontmatter_opt.as_ref().and_then(|fm| fm.dek_encrypted.clone()),
+        dek_nonce: frontmatter_opt.as_ref().and_then(|fm| fm.dek_nonce.clone()),
     };
 
     Ok(note)

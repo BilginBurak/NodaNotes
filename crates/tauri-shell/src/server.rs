@@ -554,6 +554,9 @@ async fn clipper_handler(
             created_at: now,
             updated_at: now,
             file_path,
+            is_encrypted: false,
+            dek_encrypted: None,
+            dek_nonce: None,
         }
     };
 
@@ -776,6 +779,38 @@ struct DeleteOrphanedRemnantsArgs {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SetMasterPasswordArgs {
+    password: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UnlockVaultSessionArgs {
+    password: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ToggleNoteEncryptionArgs {
+    id: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetVaultTimeoutSettingArgs {
+    timeout: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChangeMasterPasswordArgs {
+    old_password: String,
+    new_password: String,
+}
+
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateFolderArgs {
     rel_path: String,
 }
@@ -990,6 +1025,30 @@ async fn handle_rpc_action(
         "approve_device" => rpc_match!(payload, IdArgs, |a: IdArgs| commands::device_commands::approve_device(tauri_state.clone(), a.id)),
         "revoke_device" => rpc_match!(payload, IdArgs, |a: IdArgs| commands::device_commands::revoke_device(tauri_state.clone(), a.id)),
         "regenerate_daemon_token" => rpc_match_no_args!(commands::device_commands::regenerate_daemon_token(tauri_state.clone())),
+
+        // Cryptography and Vault commands
+        "set_master_password" => rpc_match!(payload, SetMasterPasswordArgs, |a: SetMasterPasswordArgs| async move {
+            commands::crypto_commands::set_master_password(tauri_state.clone(), a.password).await
+        }),
+        "unlock_vault_session" => rpc_match!(payload, UnlockVaultSessionArgs, |a: UnlockVaultSessionArgs| async move {
+            commands::crypto_commands::unlock_vault_session(tauri_state.clone(), a.password).await
+        }),
+        "lock_vault_instantly" => rpc_match_no_args!(async move {
+            commands::crypto_commands::lock_vault_instantly().await
+        }),
+        "toggle_note_encryption" => rpc_match!(payload, ToggleNoteEncryptionArgs, |a: ToggleNoteEncryptionArgs| async move {
+            commands::crypto_commands::toggle_note_encryption(tauri_state.clone(), a.id).await
+        }),
+        "is_vault_session_unlocked" => rpc_match_no_args!(commands::crypto_commands::is_vault_session_unlocked()),
+        "is_vault_configured" => rpc_match_no_args!(commands::crypto_commands::is_vault_configured(tauri_state.clone())),
+        "get_vault_timeout_setting" => rpc_match_no_args!(commands::crypto_commands::get_vault_timeout_setting(tauri_state.clone())),
+        "set_vault_timeout_setting" => rpc_match!(payload, SetVaultTimeoutSettingArgs, |a: SetVaultTimeoutSettingArgs| async move {
+            commands::crypto_commands::set_vault_timeout_setting(tauri_state.clone(), a.timeout).await
+        }),
+        "change_master_password" => rpc_match!(payload, ChangeMasterPasswordArgs, |a: ChangeMasterPasswordArgs| async move {
+            commands::crypto_commands::change_master_password(tauri_state.clone(), a.old_password, a.new_password).await
+        }),
+
 
         _ => Err(AppError {
             code: "UNKNOWN_ACTION".to_string(),

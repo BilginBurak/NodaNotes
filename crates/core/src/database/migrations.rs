@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::schema::INIT_SCHEMA;
 use tracing::info;
 
-const CURRENT_SCHEMA_VERSION: i32 = 9;
+const CURRENT_SCHEMA_VERSION: i32 = 10;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     // Check if schema_version table exists
@@ -24,7 +24,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         .unwrap_or(0)
     } else {
         // First run, apply initial schema
-        info!("Applying initial database schema (v8)");
+        info!("Applying initial database schema (v10)");
         conn.execute_batch(INIT_SCHEMA)
             .map_err(|e| NodaError::Database(format!("Failed to apply initial schema: {}", e)))?;
         
@@ -238,6 +238,28 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
 
         current_version = 9;
     }
+
+    if current_version < 10 {
+        info!("Applying database migration v10: adding is_encrypted, dek_encrypted, and dek_nonce to notes");
+        conn.execute_batch(r#"
+            ALTER TABLE notes ADD COLUMN is_encrypted BOOLEAN NOT NULL DEFAULT 0;
+            ALTER TABLE notes ADD COLUMN dek_encrypted TEXT;
+            ALTER TABLE notes ADD COLUMN dek_nonce TEXT;
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v10: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (10)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 10;
+    }
+
+    // Safety fix: attempt to add is_encrypted, dek_encrypted, dek_nonce columns to notes table.
+    // If they already exist, SQLite will return an error which we safely ignore.
+    let _ = conn.execute("ALTER TABLE notes ADD COLUMN is_encrypted BOOLEAN NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE notes ADD COLUMN dek_encrypted TEXT", []);
+    let _ = conn.execute("ALTER TABLE notes ADD COLUMN dek_nonce TEXT", []);
 
     info!("Database is up to date (version {})", current_version);
     Ok(())

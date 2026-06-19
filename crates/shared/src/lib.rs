@@ -26,6 +26,8 @@ pub mod dtos {
         pub created_at: String,
         pub updated_at: String,
         pub file_path: String,
+        #[serde(default)]
+        pub is_encrypted: bool,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,8 @@ pub mod dtos {
         pub inline_tags: Vec<String>,
         pub updated_at: String,
         pub file_path: String,
+        #[serde(default)]
+        pub is_encrypted: bool,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

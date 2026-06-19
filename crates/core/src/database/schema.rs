@@ -13,7 +13,10 @@ CREATE TABLE IF NOT EXISTS notes (
     status    TEXT NOT NULL DEFAULT 'active',
     created   TEXT NOT NULL,                 -- ISO 8601
     updated   TEXT NOT NULL,                 -- ISO 8601
-    file_path TEXT NOT NULL                  -- Relative path from vault root
+    file_path TEXT NOT NULL,                  -- Relative path from vault root
+    is_encrypted BOOLEAN NOT NULL DEFAULT 0,
+    dek_encrypted TEXT,
+    dek_nonce TEXT
 );
 
 -- Full-text search index (external content table)

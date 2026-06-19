@@ -117,7 +117,15 @@
           onblur={commitRename}
         />
       {:else}
-        <span class="note-title">{item.title || 'Untitled'}</span>
+        <div style="display: flex; align-items: center; overflow: hidden; flex: 1; gap: 4px;">
+          {#if item.is_encrypted}
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="title-lock-icon" style="width: 12px; height: 12px; color: var(--accent); flex-shrink: 0;" aria-hidden="true">
+              <rect x="3" y="7" width="10" height="8" rx="1.5"/>
+              <path d="M4.5 7V4.5a3.5 3.5 0 0 1 7 0V7"/>
+            </svg>
+          {/if}
+          <span class="note-title">{item.title || 'Untitled'}</span>
+        </div>
       {/if}
       <span class="note-date">{formatDate(item.updated_at)}</span>
     </div>

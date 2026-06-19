@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { contextMenuStore, closeContextMenu } from '../../stores/contextMenu';
-  import { openPrompt } from '../../stores/prompt';
+  import { openPrompt, closePrompt } from '../../stores/prompt';
   import { 
     createNewNote, 
     createFolder, 
@@ -13,12 +13,77 @@
     activeNote, 
     activeNoteDirty,
     renamingFolder,
-    renamingNote
+    renamingNote,
+    selectNote,
+    notesList
   } from '../../stores/notes';
   import { sendNoteToTrash } from '../../stores/editor';
   import * as ipc from '../../services/ipc';
 
   const menu = $derived($contextMenuStore);
+
+  const targetNote = $derived(
+    menu.type === 'note' 
+      ? ($notesList || []).find(n => n.id === menu.noteId) 
+      : null
+  );
+  const isEncrypted = $derived(targetNote?.is_encrypted || false);
+
+  async function triggerToggleEncryption(noteId: string) {
+    closeContextMenu();
+    try {
+      const configured = await ipc.isVaultConfigured();
+      if (!configured) {
+        openPrompt({
+          title: 'Setup Master Password',
+          placeholder: 'Enter new master password (min 8 chars)',
+          validation: (val) => val.length < 8 ? 'Password must be at least 8 characters' : null,
+          onSubmit: async (password) => {
+            closePrompt();
+            try {
+              await ipc.setMasterPassword(password);
+              await ipc.toggleNoteEncryption(noteId);
+              await loadNotes();
+              await selectNote(noteId);
+            } catch (e: any) {
+              alert(e.message || 'Setup failed');
+            }
+          }
+        });
+        return;
+      }
+
+      const unlocked = await ipc.isVaultSessionUnlocked();
+      if (!unlocked) {
+        openPrompt({
+          title: 'Enter Master Password',
+          placeholder: 'Master password',
+          onSubmit: async (password) => {
+            closePrompt();
+            try {
+              const success = await ipc.unlockVaultSession(password);
+              if (success) {
+                await ipc.toggleNoteEncryption(noteId);
+                await loadNotes();
+                await selectNote(noteId);
+              } else {
+                alert('Invalid master password');
+              }
+            } catch (e: any) {
+              alert(e.message || 'Unlock failed');
+            }
+          }
+        });
+        return;
+      }
+
+      await ipc.toggleNoteEncryption(noteId);
+      await loadNotes();
+      await selectNote(noteId);
+    } catch (e: any) {
+      alert(e.message || 'Action failed');
+    }
+  }
 
   async function triggerNewNote(folderPath: string) {
     closeContextMenu();
@@ -178,6 +243,21 @@
           <line x1="10.5" y1="7.5" x2="6.5" y2="11.5" />
         </svg>
         Show in Finder
+      </button>
+      <button class="ctx-item" role="menuitem" onclick={() => triggerToggleEncryption(menu.noteId)}>
+        {#if isEncrypted}
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="10" height="4" rx="1"/>
+            <path d="M4.5 11V7a3.5 3.5 0 0 1 7 0v4"/>
+          </svg>
+          Decrypt Note (Plaintext)
+        {:else}
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="6" width="10" height="9" rx="1"/>
+            <path d="M4.5 6V4a3.5 3.5 0 0 1 7 0v2"/>
+          </svg>
+          Encrypt Note
+        {/if}
       </button>
       <div class="ctx-sep" role="separator"></div>
       <button class="ctx-item ctx-danger" role="menuitem" onclick={() => triggerTrashNote(menu.noteId)}>

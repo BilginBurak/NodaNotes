@@ -102,6 +102,9 @@ impl VaultService {
             created_at: frontmatter.created_at,
             updated_at: frontmatter.updated_at,
             file_path: rel_path,
+            is_encrypted: frontmatter.is_encrypted,
+            dek_encrypted: frontmatter.dek_encrypted.clone(),
+            dek_nonce: frontmatter.dek_nonce.clone(),
         })
     }
 
@@ -138,6 +141,9 @@ impl VaultService {
             created_at: frontmatter.created_at,
             updated_at: frontmatter.updated_at,
             file_path: rel_path_override.to_string(),
+            is_encrypted: frontmatter.is_encrypted,
+            dek_encrypted: frontmatter.dek_encrypted.clone(),
+            dek_nonce: frontmatter.dek_nonce.clone(),
         })
     }
 

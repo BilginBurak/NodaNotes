@@ -144,6 +144,12 @@
     activeViewMode.set('daily');
   }
 
+  function selectEncryptedNotes() {
+    selectedFolder.set('__encrypted__');
+    selectedTag.set(null);
+    activeViewMode.set('encrypted' as any);
+  }
+
   function selectTag(tagName: string) {
     selectedTag.set(tagName);
     selectedFolder.set(null);
@@ -394,6 +400,18 @@
               <polyline points="8,4 8,8 10,10"/>
             </svg>
             <span>Daily Notes</span>
+          </button>
+
+          <button 
+            class="nav-item nav-btn" 
+            class:active-item={activeViewModeVal === 'encrypted'}
+            onclick={selectEncryptedNotes}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="6" width="10" height="8" rx="1.5" ry="1.5"/>
+              <path d="M5 6V4.5a3 3 0 0 1 6 0V6"/>
+            </svg>
+            <span>Encrypted Notes</span>
           </button>
         </div>
       {/if}

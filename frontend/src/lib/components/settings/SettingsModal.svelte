@@ -25,6 +25,7 @@
   } from '../../services/ipc';
   import type { OrphanedAttachment, DuplicateNoteGroup, OrphanedRemnants, TrustedDevice } from '../../services/ipc';
   import type { AppConfig } from '../../types';
+  import * as ipc from '../../services/ipc';
 
   let {
     isOpen = $bindable(false),
@@ -32,7 +33,7 @@
     onclose
   } = $props<{
     isOpen?: boolean;
-    activeTab?: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' | 'templates' | 'devices';
+    activeTab?: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' | 'templates' | 'devices' | 'security';
     onclose?: () => void;
   }>();
 
@@ -53,6 +54,15 @@
   let historyEmptyTrashDays = $state(30);
   let historySnapshotIntervalMins = $state(5);
   let clipperToken = $state('');
+
+  // Security variables
+  let securityTimeoutSetting = $state('15m');
+  let securityOldPassword = $state('');
+  let securityMasterPassword = $state('');
+  let securityConfirmPassword = $state('');
+  let securitySetupMessage = $state('');
+  let securitySetupError = $state('');
+  let securityConfigured = $state(false);
 
   // Device list and pairing states
   let devices = $state<TrustedDevice[]>([]);
@@ -400,6 +410,13 @@
       historyEmptyTrashDays = config.history.empty_trash_after_days;
       historySnapshotIntervalMins = config.history.snapshot_interval_mins ?? 5;
     }
+    try {
+      const timeout = await ipc.getVaultTimeoutSetting();
+      securityTimeoutSetting = timeout;
+      securityConfigured = await ipc.isVaultConfigured();
+    } catch (e) {
+      console.error('Failed to load vault security settings:', e);
+    }
   }
 
   async function handleVerifySync() {
@@ -418,6 +435,34 @@
     } catch (e: any) {
       validationStatus = 'error';
       validationErrorMessage = e.message || 'Verification failed';
+    }
+  }
+
+  async function handleSetupMasterPassword(e: SubmitEvent) {
+    e.preventDefault();
+    if (securityMasterPassword.length < 4) {
+      securitySetupError = 'Password must be at least 4 characters';
+      return;
+    }
+    if (securityMasterPassword !== securityConfirmPassword) {
+      securitySetupError = 'Passwords do not match';
+      return;
+    }
+    try {
+      if (securityConfigured) {
+        await ipc.changeMasterPassword(securityOldPassword, securityMasterPassword);
+        securitySetupMessage = 'Master password successfully changed!';
+      } else {
+        await ipc.setMasterPassword(securityMasterPassword);
+        securitySetupMessage = 'Master password successfully set!';
+      }
+      securitySetupError = '';
+      securityConfigured = true;
+      securityOldPassword = '';
+      securityMasterPassword = '';
+      securityConfirmPassword = '';
+    } catch (err: any) {
+      securitySetupError = err.message || 'Setup failed';
     }
   }
 
@@ -447,6 +492,9 @@
         }
       };
       await saveSettings(config);
+
+      // Save security timeout setting
+      await ipc.setVaultTimeoutSetting(securityTimeoutSetting);
       
       // Apply theme changes to document attribute if needed
       document.documentElement.setAttribute('data-theme', appearanceTheme);
@@ -528,6 +576,14 @@
             <line x1="5" y1="4" x2="11" y2="4"/>
           </svg>
           Vaults
+        </button>
+
+        <button class="nav-tab" class:active={activeTab === 'security'} onclick={() => activeTab = 'security'}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="6" width="10" height="9" rx="1"/>
+            <path d="M4.5 6V4a3.5 3.5 0 0 1 7 0v2"/>
+          </svg>
+          Security & Encryption
         </button>
 
         <button class="nav-tab" class:active={activeTab === 'templates'} onclick={() => activeTab = 'templates'}>
@@ -1330,6 +1386,92 @@
               <span>No templates found in the <code>.templates/</code> folder. Create a folder named <code>.templates</code> and add markdown notes to define templates.</span>
             </div>
           {/if}
+        </div>
+      {:else if activeTab === 'security'}
+        <div class="content-header">
+          <h2>Security & Encryption</h2>
+          <p>Protect your vault with zero-knowledge envelope encryption.</p>
+        </div>
+
+        <div class="settings-section">
+          <!-- Setup Master Password -->
+          <div class="maintenance-group" style="margin-bottom: 24px;">
+            <div class="group-title-row">
+              <span class="group-title">Master Password</span>
+              <span class="group-subtitle">
+                {#if securityConfigured}
+                  Master password is set. You can change your password here.
+                {:else}
+                  Set a master password to encrypt individual notes securely.
+                {/if}
+              </span>
+            </div>
+
+            <form onsubmit={handleSetupMasterPassword} style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+              {#if securityConfigured}
+                <div class="form-group">
+                  <label for="old-password-val">Old Password</label>
+                  <input 
+                    id="old-password-val" 
+                    type="password" 
+                    placeholder="Enter old password" 
+                    bind:value={securityOldPassword} 
+                    required 
+                  />
+                </div>
+              {/if}
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="master-password-val">New Password</label>
+                  <input 
+                    id="master-password-val" 
+                    type="password" 
+                    placeholder="Min 4 characters" 
+                    bind:value={securityMasterPassword} 
+                    required 
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="confirm-password-val">Confirm Password</label>
+                  <input 
+                    id="confirm-password-val" 
+                    type="password" 
+                    placeholder="Confirm password" 
+                    bind:value={securityConfirmPassword} 
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 6px;">
+                <button type="submit" class="btn btn-primary" style="height: 36px;">
+                  {securityConfigured ? 'Change Password' : 'Set Master Password'}
+                </button>
+                
+                {#if securitySetupMessage}
+                  <span style="color: var(--color-green); font-size: 12px; font-weight: 500;">{securitySetupMessage}</span>
+                {:else}
+                  <span style="color: var(--color-red); font-size: 12px; font-weight: 500;">{securitySetupError}</span>
+                {/if}
+              </div>
+            </form>
+          </div>
+
+          <!-- Session Auto-lock timeout -->
+          <div class="form-group">
+            <label for="security-auto-lock">Session Auto-Lock Timeout</label>
+            <select id="security-auto-lock" bind:value={securityTimeoutSetting} class="select-control">
+              <option value="1m">1 minute</option>
+              <option value="5m">5 minutes</option>
+              <option value="15m">15 minutes</option>
+              <option value="1h">1 hour</option>
+              <option value="Until App Closes">Until App Closes</option>
+              <option value="Every Time">Every Time (Always Lock)</option>
+            </select>
+            <span class="input-desc">
+              How long the volatile memory session KEK keys remain active after inactivity.
+            </span>
+          </div>
         </div>
       {/if}
     </div>

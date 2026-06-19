@@ -54,6 +54,9 @@ pub async fn soft_delete<P: AsRef<Path>, P2: AsRef<Path>>(
         created_at: frontmatter.created_at,
         updated_at: frontmatter.updated_at,
         file_path: relative_note_path.to_string_lossy().to_string(),
+        is_encrypted: frontmatter.is_encrypted,
+        dek_encrypted: frontmatter.dek_encrypted.clone(),
+        dek_nonce: frontmatter.dek_nonce.clone(),
     };
     
     // 1. Take a snapshot

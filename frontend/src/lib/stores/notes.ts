@@ -8,6 +8,7 @@ export const activeNote     = writable<NoteDto | null>(null);
 export const loadingNote    = writable<boolean>(false);
 export const activeNoteDirty = writable<boolean>(false);
 export const activeNoteSessionModified = writable<boolean>(false);
+export const activeNoteLocked = writable<boolean>(false);
 export const selectedFolder  = writable<string | null>(null);
 export const selectedTag     = writable<string | null>(null);
 export const tagsList        = writable<TagWithCountDto[]>([]);
@@ -75,6 +76,7 @@ export async function selectNote(id: string) {
 
   loadingNote.set(true);
   notesError.set(null);
+  activeNoteLocked.set(false);
   try {
     const note = await ipc.getNote(id);
     activeNote.set(note);
@@ -88,8 +90,29 @@ export async function selectNote(id: string) {
       await loadNoteSnapshots(id);
     }
   } catch (e: any) {
-    notesError.set(e.message || 'Failed to load note content');
-    activeNote.set(null);
+    if (e.code === 'VAULT_LOCKED') {
+      activeNoteLocked.set(true);
+      const noteListItem = get(notesList).find(n => n.id === id);
+      if (noteListItem) {
+        activeNote.set({
+          id: noteListItem.id,
+          parent_id: noteListItem.parent_id,
+          title: noteListItem.title,
+          body: '',
+          color: noteListItem.color,
+          pinned: noteListItem.pinned,
+          tags: noteListItem.tags,
+          inline_tags: noteListItem.inline_tags,
+          created_at: '',
+          updated_at: noteListItem.updated_at,
+          file_path: noteListItem.file_path,
+          is_encrypted: true
+        });
+      }
+    } else {
+      notesError.set(e.message || 'Failed to load note content');
+      activeNote.set(null);
+    }
   } finally {
     loadingNote.set(false);
   }

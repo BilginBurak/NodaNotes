@@ -58,6 +58,9 @@ pub async fn create_note(
         created_at: now,
         updated_at: now,
         file_path: format!("{}.md", id.0.to_string()),
+        is_encrypted: false,
+        dek_encrypted: None,
+        dek_nonce: None,
     };
 
     // 1. Write to local disk
@@ -94,7 +97,7 @@ pub async fn get_note(
         message: format!("Invalid NoteId: {}", e),
     })?);
 
-    let note = {
+    let mut note = {
         let conn = db.conn.lock();
         queries::get_note(&conn, note_id)
             .map_err(AppError::from)?
@@ -103,6 +106,18 @@ pub async fn get_note(
                 message: format!("Note not found in DB: {}", id),
             })?
     };
+
+    if note.is_encrypted {
+        // Record interaction to refresh background timeout
+        noda_core::crypto::record_interaction().await;
+        // Attempt decryption at the IPC boundary
+        if let Err(e) = noda_core::crypto::decrypt_note_in_place(&mut note).await {
+            return Err(AppError {
+                code: "VAULT_LOCKED".to_string(),
+                message: e.to_string(),
+            });
+        }
+    }
 
     *state.active_note_id.write() = Some(note_id);
 
@@ -167,7 +182,7 @@ pub async fn update_note(
         }
     };
 
-    let note = Note {
+    let mut note = Note {
         id: note_id,
         parent_id: parsed_parent,
         title,
@@ -180,19 +195,43 @@ pub async fn update_note(
         created_at: existing_note_full.created_at,
         updated_at: now,
         file_path: existing_note_full.file_path.clone(),
+        is_encrypted: existing_note_full.is_encrypted,
+        dek_encrypted: existing_note_full.dek_encrypted.clone(),
+        dek_nonce: existing_note_full.dek_nonce.clone(),
     };
 
     // Check if content actually changed
-    let _content_changed = existing_note_full.title != note.title || existing_note_full.body != note.body || existing_note_full.color != note.color || existing_note_full.pinned != note.pinned || existing_note_full.tags != note.tags;
+    // We compare body with decrypted version if it was encrypted
+    let mut decrypted_existing = existing_note_full.clone();
+    if decrypted_existing.is_encrypted {
+        if let Err(e) = noda_core::crypto::decrypt_note_in_place(&mut decrypted_existing).await {
+            return Err(AppError {
+                code: "VAULT_LOCKED".to_string(),
+                message: format!("Vault is locked, cannot update encrypted note: {}", e),
+            });
+        }
+    }
+    
+    let _content_changed = decrypted_existing.title != note.title 
+        || decrypted_existing.body != note.body 
+        || decrypted_existing.color != note.color 
+        || decrypted_existing.pinned != note.pinned 
+        || decrypted_existing.tags != note.tags;
 
     if !_content_changed {
-        return Ok(NoteDto::from(existing_note_full));
+        return Ok(NoteDto::from(decrypted_existing));
     }
 
     if trigger_snapshot {
         // Take a snapshot of the PREVIOUS state before we overwrite it
         let reason = snapshot_reason.as_deref().unwrap_or("Unknown");
-        let _ = history::snapshot(&vault_path, &existing_note_full, reason).await;
+        let _ = history::snapshot(&vault_path, &decrypted_existing, reason).await;
+    }
+
+    // If the note was encrypted, re-encrypt the new body
+    if note.is_encrypted {
+        noda_core::crypto::record_interaction().await;
+        noda_core::crypto::encrypt_note_in_place(&mut note).await.map_err(AppError::from)?;
     }
 
     // 1. Write to local disk
@@ -206,7 +245,13 @@ pub async fn update_note(
             .map_err(AppError::from)?;
     }
 
-    Ok(NoteDto::from(note))
+    // Return the decrypted representation back to the frontend
+    let mut return_note = note;
+    if return_note.is_encrypted {
+        noda_core::crypto::decrypt_note_in_place(&mut return_note).await.map_err(AppError::from)?;
+    }
+
+    Ok(NoteDto::from(return_note))
 }
 
 #[tauri::command]
@@ -655,6 +700,9 @@ pub async fn trigger_daily_note(
             created_at: now,
             updated_at: now,
             file_path: relative_path.clone(),
+            is_encrypted: false,
+            dek_encrypted: None,
+            dek_nonce: None,
         };
         
         service.write_note(&note).await.map_err(AppError::from)?;

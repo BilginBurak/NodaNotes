@@ -55,13 +55,14 @@
     viewMode === 'conflicts' ? 'Sync Conflicts' :
     viewMode === 'attachments' ? 'Attachments' :
     viewMode === 'daily' ? 'Daily Notes' :
+    viewMode === 'encrypted' ? 'Encrypted Notes' :
     $selectedTag ? `Tag: #${$selectedTag}` :
     currentFolder === '' ? (info?.name ?? 'Vault Root') :
     currentFolder ? currentFolder.split('/').pop() ?? 'Folder' : 'All Notes'
   );
 
-  // Filtered notes only used in normal or daily mode
-  const filteredNotes = $derived(viewMode !== 'normal' && viewMode !== 'daily' ? [] : notes.filter((n) => {
+  // Filtered notes only used in normal, daily or encrypted mode
+  const filteredNotes = $derived(viewMode !== 'normal' && viewMode !== 'daily' && viewMode !== 'encrypted' ? [] : notes.filter((n) => {
     if ($selectedTag) {
       const hasYamlTag = n.tags && n.tags.includes($selectedTag);
       const hasInlineTag = n.inline_tags && n.inline_tags.includes($selectedTag);
@@ -74,9 +75,13 @@
       if (!n.file_path.startsWith('Daily Notes/')) {
         return false;
       }
+    } else if (viewMode === 'encrypted') {
+      if (!n.is_encrypted) {
+        return false;
+      }
     } else if (!$selectedTag) {
       // Normal folder filter only if not viewing all notes for a tag
-      if (currentFolder !== null && currentFolder !== '__trash__' && currentFolder !== '__conflicts__') {
+      if (currentFolder !== null && currentFolder !== '__trash__' && currentFolder !== '__conflicts__' && currentFolder !== '__encrypted__') {
         const lastSlash = n.file_path.lastIndexOf('/');
         const noteDir = lastSlash !== -1 ? n.file_path.substring(0, lastSlash) : '';
         if (noteDir !== currentFolder && !noteDir.startsWith(currentFolder + '/')) {

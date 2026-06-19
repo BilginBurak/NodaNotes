@@ -94,6 +94,15 @@ fn main() {
             commands::device_commands::approve_device,
             commands::device_commands::revoke_device,
             commands::device_commands::regenerate_daemon_token,
+            commands::crypto_commands::set_master_password,
+            commands::crypto_commands::unlock_vault_session,
+            commands::crypto_commands::lock_vault_instantly,
+            commands::crypto_commands::toggle_note_encryption,
+            commands::crypto_commands::is_vault_session_unlocked,
+            commands::crypto_commands::is_vault_configured,
+            commands::crypto_commands::get_vault_timeout_setting,
+            commands::crypto_commands::set_vault_timeout_setting,
+            commands::crypto_commands::change_master_password,
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

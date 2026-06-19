@@ -1238,6 +1238,9 @@ async fn execute_single_action_sequential(
                             created_at: frontmatter.created_at,
                             updated_at: frontmatter.updated_at,
                             file_path: relative_path.clone(),
+                            is_encrypted: frontmatter.is_encrypted,
+                            dek_encrypted: frontmatter.dek_encrypted.clone(),
+                            dek_nonce: frontmatter.dek_nonce.clone(),
                         };
 
                         vault_service.write_note(&note).await?;

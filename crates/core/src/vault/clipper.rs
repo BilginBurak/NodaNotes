@@ -209,6 +209,9 @@ pub async fn clip_url(
             created_at: now,
             updated_at: now,
             file_path: final_relative_path.clone(),
+            is_encrypted: false,
+            dek_encrypted: None,
+            dek_nonce: None,
         };
 
         service.write_note(&note).await?;

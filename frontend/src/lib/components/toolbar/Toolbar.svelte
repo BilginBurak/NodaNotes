@@ -1,15 +1,47 @@
 <script lang="ts">
-  import { createNewNote, activeNote, selectedFolder } from '../../stores/notes';
+  import { createNewNote, activeNote, selectedFolder, selectNote, activeNoteLocked } from '../../stores/notes';
   import { editorViewMode, showAttachments, loadAttachments } from '../../stores/editor';
   import { vaultInfo } from '../../stores/vault';
   import { get } from 'svelte/store';
   import SyncStatus from '../sync/SyncStatus.svelte';
   import SearchBar from '../search/SearchBar.svelte';
+  import * as ipc from '../../services/ipc';
+  import { onMount } from 'svelte';
 
-  $: info = $vaultInfo;
-  $: viewMode = $editorViewMode;
-  $: attachmentsVisible = $showAttachments;
-  $: hasActiveNote = $activeNote !== null;
+  const info = $derived($vaultInfo);
+  const viewMode = $derived($editorViewMode);
+  const attachmentsVisible = $derived($showAttachments);
+  const hasActiveNote = $derived($activeNote !== null);
+
+  let isVaultUnlocked = $state(false);
+  let isConfigured = $state(false);
+
+  async function checkLockStatus() {
+    try {
+      isConfigured = await ipc.isVaultConfigured();
+      if (isConfigured) {
+        const unlocked = await ipc.isVaultSessionUnlocked();
+        isVaultUnlocked = unlocked;
+        
+        // If session is locked, and we have an encrypted note currently displayed as unlocked, auto-lock it!
+        if (!unlocked) {
+          const active = get(activeNote);
+          if (active && active.is_encrypted && !get(activeNoteLocked)) {
+            activeNoteLocked.set(true);
+            activeNote.update(n => n ? { ...n, body: '' } : null);
+          }
+        }
+      } else {
+        isVaultUnlocked = false;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  onMount(() => {
+    checkLockStatus();
+  });
 
   async function handleNewNote() {
     try {
@@ -24,7 +56,18 @@
     editorViewMode.set(mode);
   }
 
-
+  async function handleQuickLock() {
+    try {
+      await ipc.lockVaultInstantly();
+      await checkLockStatus();
+      const active = get(activeNote);
+      if (active) {
+        await selectNote(active.id);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   function toggleAttachments() {
     showAttachments.update(v => {
@@ -127,12 +170,61 @@
 
       {/if}
 
+      {#if isConfigured}
+        <button 
+          class="btn-quick-lock"
+          class:unlocked={isVaultUnlocked}
+          class:locked={!isVaultUnlocked}
+          onclick={handleQuickLock}
+          title={isVaultUnlocked ? "Lock Vault Session" : "Vault Session Locked"}
+        >
+          {#if isVaultUnlocked}
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="7" width="10" height="8" rx="1.5"/>
+              <path d="M4.5 7V4.5a3.5 3.5 0 0 1 5.5 -2.8"/>
+            </svg>
+          {:else}
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="locked-icon">
+              <rect x="3" y="7" width="10" height="8" rx="1.5"/>
+              <path d="M4.5 7V4.5a3.5 3.5 0 0 1 7 0V7"/>
+            </svg>
+          {/if}
+        </button>
+      {/if}
+
       <SyncStatus />
     {/if}
   </div>
 </header>
 
 <style>
+  .btn-quick-lock {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+    margin-right: 2px;
+  }
+  .btn-quick-lock:hover {
+    color: var(--text-secondary);
+    background-color: var(--bg-control-hover);
+  }
+  .btn-quick-lock svg {
+    width: 14px;
+    height: 14px;
+  }
+  .btn-quick-lock.unlocked svg {
+    color: var(--color-green, #10b981);
+  }
+  .btn-quick-lock.locked svg {
+    color: var(--color-red, #ef4444);
+  }
   :global(.platform-darwin) .toolbar {
     padding-left: 80px; /* macOS pencere kontrolleri (traffic lights) için sol boşluk */
   }

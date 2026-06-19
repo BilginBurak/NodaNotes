@@ -1273,3 +1273,34 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
 - **Android Intent Router & Compose UI:**
   - **Task:** Create `ShareClipperActivity.kt` and register it inside `AndroidManifest.xml` to receive shared text and plain media.
   - **Solution:** Designed the clipper activity to capture target URL and webpage title from intent extras, evaluated payload context (Scenario A vs. Scenario B), performed link history JNI handshake, and adapted button labeling (Clip vs. Append) and options (Create New Note dropdown) accordingly. Wrapped the layout inside the application's centralized Jetpack Compose `NodaTheme`, utilizing color tokens dynamically without hardcoded hex strings. Closes activity context with system `Toast` in under 100ms.
+
+---
+
+## 60. Zero-Knowledge Envelope Encryption & Ephemeral Volatile Session Suite (June 2026)
+
+- **Cryptographic Foundations & Envelope Architecture:**
+  - **Task:** Implement secure individual note encryption at the Rust core / SQLite layer using Argon2id and XChaCha20-Poly1305.
+  - **Solution:** 
+    - Designed a secure zero-knowledge envelope encryption flow. Each encrypted note utilizes a random 256-bit Data Encryption Key (DEK) generated via `rand::thread_rng`.
+    - The DEK is encrypted with a Key Encryption Key (KEK) derived from the user's master password using Argon2id with salt. The encrypted DEK and its unique 24-byte nonce are stored in the note metadata (`dek_encrypted`, `dek_nonce`).
+    - The note body is encrypted using XChaCha20-Poly1305 with the plaintext DEK, prepended with a 24-byte nonce, base64-encoded, and saved to disk.
+    - Decryption reverse-maps this process. Plaintext content is never persisted on disk or cached in Svelte stores, adhering to the "Dumb Monitor" design pattern.
+- **In-Memory Volatile Session Key Management:**
+  - **Task:** Manage key memory caching with auto-lock background threads.
+  - **Solution:** 
+    - Created a global once-initialized `SESSION` state container (`RwLock<VolatileSession>`) in Rust.
+    - Implemented a background thread timeout loop that monitors user interactions. It automatically purges the cached KEK and DEKs when the auto-lock duration is reached.
+    - Exposed security configurations to toggle auto-lock settings ("1m", "5m", "15m", "1h", "Until App Closes", "Every Time") and serialize settings to `.noda/vault_config.json`.
+- **UI Ingestion & Interactive Viewports:**
+  - **Task:** Build lock viewport screens, settings panels, and context menu options.
+  - **Solution:**
+    - Modified Svelte's [Editor.svelte](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/frontend/src/lib/components/editor/Editor.svelte) to intercept encrypted notes and replace active viewports with a centered Japandi Zen password prompt.
+    - Added security configuration items inside [SettingsModal.svelte](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/frontend/src/lib/components/settings/SettingsModal.svelte) to facilitate master password registration and auto-lock interval changes.
+    - Exposed context menu items ("Encrypt Note", "Decrypt Note (Plaintext)") in [ContextMenu.svelte](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/frontend/src/lib/components/common/ContextMenu.svelte) and manual lock action buttons in the main navigation [Toolbar.svelte](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/frontend/src/lib/components/toolbar/Toolbar.svelte).
+- **Bug Fixes, Optimizations, and Encryption Suite Improvements (June 2026):**
+  - **Self-Healing DB Migration:** Added a safety check to the schema version check logic inside `migrations.rs`. If the index database has schema version 10 but lacks the encryption-related columns (e.g. `dek_encrypted`, `dek_nonce`, `is_encrypted`), the database automatically alters the `notes` table to inject them, preventing query crashes.
+  - **Master Password Change Verification & Re-encryption:** Updated the master password change flow to verify the old password first. Decrypts all existing note Data Encryption Keys (DEKs) using the KEK derived from the old password, derives a new KEK, and re-encrypts the DEKs with the new KEK so they remain fully readable.
+  - **Cold Boot Database Synchronization:** Added `parse_or_create_note_from_file_sync` to perform synchronous markdown frontmatter parsing. Upon startup, `run_cold_boot_scan` checks and updates database note records for created, modified, or deleted files to prevent index staleness.
+  - **Visual Lock Button States:** Upgraded `btn-quick-lock` in the toolbar to display distinct open (unlocked) and closed (locked) padlock SVGs and color-coded states (red for locked, green/active for unlocked).
+  - **WebDAV configuration syncing:** Allowed `.noda/vault_config.json` to pass remote sync traversal and delta filters, enabling multi-device master password hash and salt synchronization over WebDAV.
+  - **Security Password Input Auto-Clear:** Reactive states added in Svelte's [Editor.svelte](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/frontend/src/lib/components/editor/Editor.svelte) to clear the password input and error fields immediately when the active note changes or decrypts successfully.
