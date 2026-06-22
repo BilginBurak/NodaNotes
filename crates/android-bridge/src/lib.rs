@@ -813,7 +813,11 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getNote(
         };
 
         match note_opt {
-            Some(note) => {
+            Some(mut note) => {
+                if note.is_encrypted {
+                    noda_core::crypto::record_interaction().await;
+                    let _ = noda_core::crypto::decrypt_note_in_place(&mut note).await;
+                }
                 let dto = NoteDto::from(note);
                 serde_json::to_string(&dto).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
             }
@@ -962,7 +966,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
         };
 
         let now = chrono::Utc::now();
-        let note = Note {
+        let mut note = Note {
             id: note_id,
             parent_id: existing_note.parent_id,
             title: params.title,
@@ -981,11 +985,18 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
         };
 
         let trigger_snap = params.trigger_snapshot.unwrap_or(false);
-        if trigger_snap {
+        if trigger_snap && !existing_note.is_encrypted {
             let vault_path = service.base_path();
             let reason = params.snapshot_reason.as_deref().unwrap_or("Android");
             // Snapshot the PREVIOUS state before we overwrite it
             let _ = noda_core::history::snapshot(vault_path, &existing_note, reason).await;
+        }
+
+        if note.is_encrypted {
+            noda_core::crypto::record_interaction().await;
+            if let Err(e) = noda_core::crypto::encrypt_note_in_place(&mut note).await {
+                return format!("{{\"error\":\"Encryption failed: {}\"}}", e);
+            }
         }
 
         // 1. Write to local disk
@@ -1652,7 +1663,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreSnapshot(
         };
 
         if let Some(ref current) = current_note {
-            let _ = noda_core::history::snapshot(&path, current, "Pre-Restore").await;
+            if !current.is_encrypted {
+                let _ = noda_core::history::snapshot(&path, current, "Pre-Restore").await;
+            }
         }
 
         let merged_note = match &current_note {
@@ -3672,4 +3685,289 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_clipUrl(
 
     env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
 }
+
+#[derive(serde::Deserialize)]
+struct SetMasterPasswordParams {
+    password: String,
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_setMasterPassword(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let params: SetMasterPasswordParams = match serde_json::from_str(&input) {
+        Ok(p) => p,
+        Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
+    };
+    let (vault_path, db) = {
+        let state = BRIDGE_STATE.read().unwrap();
+        let path = match &state.vault_path {
+            Some(p) => p.clone(),
+            None => return error_string(&mut env, "Vault not initialized"),
+        };
+        let d = state.database.clone();
+        (path, d)
+    };
+    let result = get_runtime().block_on(async {
+        match noda_core::crypto::register_master_password(&vault_path, &params.password, db.as_ref()).await {
+            Ok(_) => "{\"success\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        }
+    });
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_isVaultConfigured(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let _input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let vault_path = {
+        let state = BRIDGE_STATE.read().unwrap();
+        match &state.vault_path {
+            Some(p) => p.clone(),
+            None => return error_string(&mut env, "Vault not initialized"),
+        }
+    };
+    let configured = noda_core::crypto::is_vault_configured(&vault_path);
+    let result = format!("{{\"configured\":{}}}", configured);
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_checkVaultStatus(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let _input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let result = get_runtime().block_on(async {
+        let status = if noda_core::crypto::is_vault_session_unlocked().await {
+            "Unlocked"
+        } else {
+            "Locked"
+        };
+        format!("{{\"status\":\"{}\"}}", status)
+    });
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[derive(serde::Deserialize)]
+struct UnlockVaultSessionParams {
+    password: String,
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_unlockVaultSession(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let params: UnlockVaultSessionParams = match serde_json::from_str(&input) {
+        Ok(p) => p,
+        Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
+    };
+    let vault_path = {
+        let state = BRIDGE_STATE.read().unwrap();
+        match &state.vault_path {
+            Some(p) => p.clone(),
+            None => return error_string(&mut env, "Vault not initialized"),
+        }
+    };
+    let result = get_runtime().block_on(async {
+        match noda_core::crypto::check_and_unlock_session(&vault_path, &params.password).await {
+            Ok(unlocked) => format!("{{\"unlocked\":{}}}", unlocked),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        }
+    });
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_lockVaultInstantly(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let _input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    get_runtime().block_on(async {
+        noda_core::crypto::lock_session_instantly().await;
+    });
+    let result = "{\"success\":true}".to_string();
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[derive(serde::Deserialize)]
+struct ToggleNoteEncryptionParams {
+    note_id: String,
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_toggleNoteEncryption(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let params: ToggleNoteEncryptionParams = match serde_json::from_str(&input) {
+        Ok(p) => p,
+        Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
+    };
+    let (vault_path, db, vault_service) = {
+        let state = BRIDGE_STATE.read().unwrap();
+        let path = match &state.vault_path {
+            Some(p) => p.clone(),
+            None => return error_string(&mut env, "Vault not initialized"),
+        };
+        let d = match &state.database {
+            Some(db_ref) => db_ref.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        };
+        let s = match &state.vault_service {
+            Some(v) => v.clone(),
+            None => return error_string(&mut env, "Vault service not initialized"),
+        };
+        (path, d, s)
+    };
+    let note_id = match ulid::Ulid::from_string(&params.note_id) {
+        Ok(u) => noda_core::models::note::NoteId(u),
+        Err(e) => return error_string(&mut env, &format!("Invalid NoteId: {}", e)),
+    };
+    let result = get_runtime().block_on(async {
+        match noda_core::crypto::toggle_note_encryption_state(&vault_path, &db, &vault_service, note_id).await {
+            Ok(_) => "{\"success\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        }
+    });
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_getVaultTimeoutSetting(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let _input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let vault_path = {
+        let state = BRIDGE_STATE.read().unwrap();
+        match &state.vault_path {
+            Some(p) => p.clone(),
+            None => return error_string(&mut env, "Vault not initialized"),
+        }
+    };
+    let result = get_runtime().block_on(async {
+        let timeout = noda_core::crypto::get_vault_timeout_setting(&vault_path).await;
+        format!("{{\"timeout\":\"{}\"}}", timeout)
+    });
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[derive(serde::Deserialize)]
+struct SetVaultTimeoutSettingParams {
+    timeout: String,
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_setVaultTimeoutSetting(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let params: SetVaultTimeoutSettingParams = match serde_json::from_str(&input) {
+        Ok(p) => p,
+        Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
+    };
+    let vault_path = {
+        let state = BRIDGE_STATE.read().unwrap();
+        match &state.vault_path {
+            Some(p) => p.clone(),
+            None => return error_string(&mut env, "Vault not initialized"),
+        }
+    };
+    let result = get_runtime().block_on(async {
+        match noda_core::crypto::set_vault_timeout_setting(&vault_path, params.timeout).await {
+            Ok(_) => "{\"success\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        }
+    });
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
+#[derive(serde::Deserialize)]
+struct ChangeMasterPasswordParams {
+    old_password: String,
+    new_password: String,
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_bubi_nodanotes_RustCore_changeMasterPassword(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_json: JString,
+) -> jstring {
+    let input: String = match parse_string(&mut env, &input_json) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let params: ChangeMasterPasswordParams = match serde_json::from_str(&input) {
+        Ok(p) => p,
+        Err(e) => return error_string(&mut env, &format!("Parse error: {}", e)),
+    };
+    let (vault_path, db, vault_service) = {
+        let state = BRIDGE_STATE.read().unwrap();
+        let path = match &state.vault_path {
+            Some(p) => p.clone(),
+            None => return error_string(&mut env, "Vault not initialized"),
+        };
+        let d = match &state.database {
+            Some(db_ref) => db_ref.clone(),
+            None => return error_string(&mut env, "Database not initialized"),
+        };
+        let s = match &state.vault_service {
+            Some(v) => v.clone(),
+            None => return error_string(&mut env, "Vault service not initialized"),
+        };
+        (path, d, s)
+    };
+    let result = get_runtime().block_on(async {
+        match noda_core::crypto::change_master_password(&vault_path, &db, &vault_service, &params.old_password, &params.new_password).await {
+            Ok(_) => "{\"success\":true}".to_string(),
+            Err(e) => format!("{{\"error\":\"{}\"}}", e),
+        }
+    });
+    env.new_string(result).unwrap_or_else(|_| env.new_string("{\"error\":\"JNI string creation failed\"}").unwrap()).into_raw()
+}
+
 

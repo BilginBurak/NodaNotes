@@ -97,6 +97,8 @@ pub struct VaultConfig {
     pub kek_salt: String, // Base64 encoded salt for KEK derivation
     #[serde(default = "default_timeout_setting")]
     pub timeout_setting: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_edited_by: Option<String>,
 }
 
 impl VaultConfig {
@@ -308,7 +310,11 @@ pub async fn toggle_note_encryption_state(
     Ok(())
 }
 
-pub async fn register_master_password(vault_path: &Path, password: &str) -> Result<(), NodaError> {
+pub async fn register_master_password(
+    vault_path: &Path,
+    password: &str,
+    db: Option<&crate::database::connection::Database>,
+) -> Result<(), NodaError> {
     // 1. Generate Argon2id hash of password
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -321,13 +327,25 @@ pub async fn register_master_password(vault_path: &Path, password: &str) -> Resu
     rand::thread_rng().fill_bytes(&mut kek_salt_bytes);
     let kek_salt_base64 = base64::Engine::encode(&base64::prelude::BASE64_STANDARD, &kek_salt_bytes);
 
+    let device_name = match crate::settings::AppConfig::load(vault_path).await {
+        Ok(cfg) => cfg.sync.device_name.clone(),
+        Err(_) => "Unknown Device".to_string(),
+    };
+
     // 3. Save config
     let config = VaultConfig {
         master_password_hash: hash_str,
         kek_salt: kek_salt_base64,
         timeout_setting: "15m".to_string(),
+        last_edited_by: Some(device_name),
     };
     config.save(vault_path)?;
+
+    // Mark vault_config.json as dirty
+    if let Some(db) = db {
+        let conn = db.conn.lock();
+        crate::database::queries::set_file_dirty(&conn, ".noda/vault_config.json", true)?;
+    }
 
     // 4. Derive KEK and initialize session to Unlocked
     let derived = derive_kek(password, &kek_salt_bytes)?;
@@ -371,6 +389,13 @@ pub async fn check_and_unlock_session(vault_path: &Path, password: &str) -> Resu
 pub async fn set_vault_timeout_setting(vault_path: &Path, timeout: String) -> Result<(), NodaError> {
     let mut config = VaultConfig::load(vault_path)?;
     config.timeout_setting = timeout.clone();
+    
+    let device_name = match crate::settings::AppConfig::load(vault_path).await {
+        Ok(cfg) => cfg.sync.device_name.clone(),
+        Err(_) => "Unknown Device".to_string(),
+    };
+    config.last_edited_by = Some(device_name);
+
     config.save(vault_path)?;
 
     let mut session = get_session().write().await;
@@ -462,7 +487,17 @@ pub async fn change_master_password(
         let dek_nonce_bytes = base64::Engine::decode(&base64::prelude::BASE64_STANDARD, dek_nonce_str)
             .map_err(|e| NodaError::Vault(format!("Failed to decode DEK nonce: {}", e)))?;
 
-        let decrypted_dek_bytes = decrypt_bytes(&old_kek, &dek_ciphertext, &dek_nonce_bytes)?;
+        let decrypted_dek_bytes = match decrypt_bytes(&old_kek, &dek_ciphertext, &dek_nonce_bytes) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                // If it already decrypts with the new KEK, it means it has already been migrated (e.g. by another device or sync)
+                if decrypt_bytes(&new_kek, &dek_ciphertext, &dek_nonce_bytes).is_ok() {
+                    continue;
+                }
+                println!("WARNING: Failed to decrypt DEK for note {} with old KEK. Skipping this note to prevent blocking password change. Error: {:?}", id_str, e);
+                continue;
+            }
+        };
         
         let (new_dek_ciphertext, new_dek_nonce_bytes) = encrypt_bytes(&new_kek, &decrypted_dek_bytes)?;
 
@@ -481,12 +516,24 @@ pub async fn change_master_password(
         .map_err(|e| NodaError::Vault(format!("Argon2 hashing failed: {}", e)))?
         .to_string();
 
+    let device_name = match crate::settings::AppConfig::load(vault_path).await {
+        Ok(cfg) => cfg.sync.device_name.clone(),
+        Err(_) => "Unknown Device".to_string(),
+    };
+
     let new_config = VaultConfig {
         master_password_hash: new_hash,
         kek_salt: new_salt_base64,
         timeout_setting: config.timeout_setting,
+        last_edited_by: Some(device_name),
     };
     new_config.save(vault_path)?;
+
+    // Mark vault_config.json as dirty
+    {
+        let conn = db.conn.lock();
+        crate::database::queries::set_file_dirty(&conn, ".noda/vault_config.json", true)?;
+    }
 
     // 7. Update memory session
     let mut session = get_session().write().await;

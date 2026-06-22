@@ -165,7 +165,7 @@ impl AppState {
                                 true
                             };
 
-                            if needs_snapshot {
+                            if needs_snapshot && !note.is_encrypted {
                                 let _ = noda_core::history::snapshot(vault_path, &note, "App-Exit").await;
                             }
                         }

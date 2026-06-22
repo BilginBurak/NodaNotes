@@ -20,6 +20,15 @@ pub async fn snapshot<P: AsRef<Path>>(
     note: &Note,
     reason: &str,
 ) -> Result<Snapshot, NodaError> {
+    if note.is_encrypted {
+        return Ok(Snapshot {
+            note_id: note.id,
+            timestamp: chrono::Utc::now(),
+            absolute_path: std::path::PathBuf::new(),
+            reason: reason.to_string(),
+        });
+    }
+
     let current_markdown = note.to_markdown().map_err(|e| {
         NodaError::Frontmatter(format!("Failed to serialize note to markdown for history: {}", e))
     })?;

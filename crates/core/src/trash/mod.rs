@@ -60,7 +60,9 @@ pub async fn soft_delete<P: AsRef<Path>, P2: AsRef<Path>>(
     };
     
     // 1. Take a snapshot
-    history::snapshot(vault_root, &note, "Trash").await?;
+    if !note.is_encrypted {
+        history::snapshot(vault_root, &note, "Trash").await?;
+    }
     
     // 2. Move to trash
     move_to_trash(vault_root, relative_note_path).await

@@ -8,9 +8,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,6 +30,7 @@ fun NoteCard(
     onNoteClick: (String) -> Unit,
     onPinToggle: (NoteListItemDto) -> Unit,
     onDelete: (NoteListItemDto) -> Unit,
+    onLockToggle: (NoteListItemDto) -> Unit,
     modifier: Modifier = Modifier,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
@@ -36,6 +40,8 @@ fun NoteCard(
     val accentColor = remember(note.color) {
         parseHexColor(note.color, themeColor)
     }
+
+    var showContextMenu by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     val cardPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
 
@@ -61,10 +67,40 @@ fun NoteCard(
                     }
                 },
                 onLongClick = {
-                    onToggleSelection(note)
+                    if (isSelectionMode) {
+                        onToggleSelection(note)
+                    } else {
+                        showContextMenu = true
+                    }
                 }
             )
     ) {
+        DropdownMenu(
+            expanded = showContextMenu,
+            onDismissRequest = { showContextMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (note.is_encrypted) "Unlock Permanently" else "Lock Note") },
+                onClick = {
+                    showContextMenu = false
+                    onLockToggle(note)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(if (note.pinned) "Unpin" else "Pin") },
+                onClick = {
+                    showContextMenu = false
+                    onPinToggle(note)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Delete") },
+                onClick = {
+                    showContextMenu = false
+                    onDelete(note)
+                }
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -141,14 +177,28 @@ fun NoteCard(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 // Title - utilizes editorial titleMedium scale
-                Text(
-                    text = note.title.ifEmpty { "Untitled" },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) {
+                    Text(
+                        text = note.title.ifEmpty { "Untitled" },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (note.is_encrypted) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Encrypted",
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 

@@ -34,7 +34,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableStateOf(0) }
-    val tabTitles = listOf("Appearance", "Editor", "Sync", "History", "Templates", "Vaults", "Maintenance")
+    val tabTitles = listOf("Appearance", "Editor", "Sync", "History", "Templates", "Vaults", "Maintenance", "Security")
 
     Scaffold(
         topBar = {
@@ -90,6 +90,7 @@ fun SettingsScreen(
                             4 -> TemplatesTab(state.settings, viewModel)
                             5 -> VaultsTab(state.recentVaults, state.currentVault, onNavigateToVaultSelector)
                             6 -> MaintenanceTab()
+                            7 -> SecurityTab(viewModel)
                         }
                     }
                     is SettingsUiState.Error -> {
@@ -930,5 +931,276 @@ fun MaintenanceTab(
                 previewFileMime = null
             }
         )
+    }
+}
+
+@Composable
+fun SecurityTab(viewModel: SettingsViewModel) {
+    val scrollState = rememberScrollState()
+    val isPasswordConfigured by viewModel.isPasswordConfigured.collectAsState()
+    val vaultTimeout by viewModel.vaultTimeout.collectAsState()
+
+    var passwordInput by remember { mutableStateOf("") }
+    var confirmPasswordInput by remember { mutableStateOf("") }
+    var oldPasswordInput by remember { mutableStateOf("") }
+    var newPasswordInput by remember { mutableStateOf("") }
+    var confirmNewPasswordInput by remember { mutableStateOf("") }
+    
+    var showPassword by remember { mutableStateOf(false) }
+    var showConfirmPassword by remember { mutableStateOf(false) }
+    var showOldPassword by remember { mutableStateOf(false) }
+    var showNewPassword by remember { mutableStateOf(false) }
+    var showConfirmNewPassword by remember { mutableStateOf(false) }
+
+    var actionMessage by remember { mutableStateOf<String?>(null) }
+    var isError by remember { mutableStateOf(false) }
+
+    var timeoutExpanded by remember { mutableStateOf(false) }
+    val timeoutOptions = listOf(
+        "1m" to "1 Minute",
+        "5m" to "5 Minutes",
+        "15m" to "15 Minutes",
+        "1h" to "1 Hour",
+        "app_close" to "Until App Closes",
+        "always" to "Every Time"
+    )
+    val currentTimeoutLabel = timeoutOptions.find { it.first == vaultTimeout }?.second ?: vaultTimeout
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Text("Vault Security & Encryption", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text("Manage master password settings and lock configuration for zero-knowledge notes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        actionMessage?.let { msg ->
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isError) Icons.Default.Error else Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = msg,
+                        color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        if (!isPasswordConfigured) {
+            // Setup flow
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Setup Master Password", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    Text("Choose a master password to encrypt your sensitive notes. Make sure to keep it safe; it cannot be recovered if lost.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = { passwordInput = it },
+                        label = { Text("Master Password") },
+                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showPassword = !showPassword }) {
+                                Icon(imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = "Toggle password")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = confirmPasswordInput,
+                        onValueChange = { confirmPasswordInput = it },
+                        label = { Text("Confirm Master Password") },
+                        visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) {
+                                Icon(imageVector = if (showConfirmPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = "Toggle password")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Button(
+                        onClick = {
+                            if (passwordInput.isEmpty()) {
+                                isError = true
+                                actionMessage = "Password cannot be empty."
+                                return@Button
+                            }
+                            if (passwordInput != confirmPasswordInput) {
+                                isError = true
+                                actionMessage = "Passwords do not match."
+                                return@Button
+                            }
+                            viewModel.setMasterPassword(
+                                passwordInput,
+                                onSuccess = {
+                                    isError = false
+                                    actionMessage = "Master password setup completed successfully."
+                                    passwordInput = ""
+                                    confirmPasswordInput = ""
+                                },
+                                onFailure = { err ->
+                                    isError = true
+                                    actionMessage = err
+                                }
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Configure Password")
+                    }
+                }
+            }
+        } else {
+            // Change flow
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Change Master Password", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+
+                    OutlinedTextField(
+                        value = oldPasswordInput,
+                        onValueChange = { oldPasswordInput = it },
+                        label = { Text("Current Master Password") },
+                        visualTransformation = if (showOldPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showOldPassword = !showOldPassword }) {
+                                Icon(imageVector = if (showOldPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = "Toggle password")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = newPasswordInput,
+                        onValueChange = { newPasswordInput = it },
+                        label = { Text("New Master Password") },
+                        visualTransformation = if (showNewPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showNewPassword = !showNewPassword }) {
+                                Icon(imageVector = if (showNewPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = "Toggle password")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = confirmNewPasswordInput,
+                        onValueChange = { confirmNewPasswordInput = it },
+                        label = { Text("Confirm New Master Password") },
+                        visualTransformation = if (showConfirmNewPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showConfirmNewPassword = !showConfirmNewPassword }) {
+                                Icon(imageVector = if (showConfirmNewPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = "Toggle password")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Button(
+                        onClick = {
+                            if (oldPasswordInput.isEmpty() || newPasswordInput.isEmpty() || confirmNewPasswordInput.isEmpty()) {
+                                isError = true
+                                actionMessage = "Fields cannot be empty."
+                                return@Button
+                            }
+                            if (newPasswordInput != confirmNewPasswordInput) {
+                                isError = true
+                                actionMessage = "New passwords do not match."
+                                return@Button
+                            }
+                            viewModel.changeMasterPassword(
+                                oldPasswordInput,
+                                newPasswordInput,
+                                onSuccess = {
+                                    isError = false
+                                    actionMessage = "Master password changed successfully."
+                                    oldPasswordInput = ""
+                                    newPasswordInput = ""
+                                    confirmNewPasswordInput = ""
+                                },
+                                onFailure = { err ->
+                                    isError = true
+                                    actionMessage = err
+                                }
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Change Password")
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider()
+
+        // Section 3: Timeout setting
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Session Timeout", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text("Select how long a vault session remains unlocked before requiring a password entry again.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { timeoutExpanded = true }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(currentTimeoutLabel, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = timeoutExpanded,
+                    onDismissRequest = { timeoutExpanded = false }
+                ) {
+                    timeoutOptions.forEach { (option, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                viewModel.updateVaultTimeout(option)
+                                timeoutExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
     }
 }

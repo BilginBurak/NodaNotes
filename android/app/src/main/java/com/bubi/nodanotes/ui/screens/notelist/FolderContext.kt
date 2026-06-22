@@ -11,6 +11,9 @@ object FolderContext {
     private val _selectedTag = MutableStateFlow<String?>(null)
     val selectedTagState: StateFlow<String?> = _selectedTag.asStateFlow()
 
+    private val _showOnlyEncrypted = MutableStateFlow(false)
+    val showOnlyEncryptedState: StateFlow<Boolean> = _showOnlyEncrypted.asStateFlow()
+
     var currentFolder: String?
         get() = _currentFolder.value
         set(value) {
@@ -21,5 +24,11 @@ object FolderContext {
         get() = _selectedTag.value
         set(value) {
             _selectedTag.value = value
+        }
+
+    var showOnlyEncrypted: Boolean
+        get() = _showOnlyEncrypted.value
+        set(value) {
+            _showOnlyEncrypted.value = value
         }
 }

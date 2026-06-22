@@ -50,6 +50,7 @@ fun NoteEditorScreen(
     val saveState by viewModel.saveState.collectAsState()
     val metadata by viewModel.metadata.collectAsState()
     val tagSuggestions by viewModel.tagSuggestions.collectAsState()
+    val vaultStatus by viewModel.vaultStatus.collectAsState()
     var showRecentAttachmentsSheet by remember { mutableStateOf(false) }
 
     var showInfoSheet by remember { mutableStateOf(false) }
@@ -239,7 +240,108 @@ fun NoteEditorScreen(
                 is NoteEditorUiState.Success -> {
                     val note = state.note
 
-                    var textFieldValue by remember { mutableStateOf(TextFieldValue(note.body)) }
+                    if (note.is_encrypted && vaultStatus == "Locked") {
+                        var passwordInput by remember(noteId) { mutableStateOf("") }
+                        var errorMessage by remember(noteId) { mutableStateOf<String?>(null) }
+                        var isUnlocking by remember(noteId) { mutableStateOf(false) }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.widthIn(max = 320.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Locked Note",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(64.dp)
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Text(
+                                    text = "Encrypted Note",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Enter vault password to unlock this note.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                OutlinedTextField(
+                                    value = passwordInput,
+                                    onValueChange = {
+                                        passwordInput = it
+                                        errorMessage = null
+                                    },
+                                    label = { Text("Password") },
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Password
+                                    ),
+                                    singleLine = true,
+                                    isError = errorMessage != null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
+                                    )
+                                )
+                                if (errorMessage != null) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = errorMessage!!,
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Button(
+                                    onClick = {
+                                        if (passwordInput.isNotEmpty() && !isUnlocking) {
+                                            isUnlocking = true
+                                            viewModel.unlockVault(
+                                                password = passwordInput,
+                                                onSuccess = {
+                                                    passwordInput = ""
+                                                    errorMessage = null
+                                                    isUnlocking = false
+                                                },
+                                                onFailure = { error ->
+                                                    errorMessage = error
+                                                    isUnlocking = false
+                                                }
+                                            )
+                                        }
+                                    },
+                                    enabled = passwordInput.isNotEmpty() && !isUnlocking,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    if (isUnlocking) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Text("Unlock Note")
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        var textFieldValue by remember { mutableStateOf(TextFieldValue(note.body)) }
                     val focusRequester = remember { FocusRequester() }
 
                     LaunchedEffect(note.body) {
@@ -739,6 +841,7 @@ fun NoteEditorScreen(
                             mimeType = mimeType,
                             onDismiss = { previewAttachmentName = null }
                         )
+                    }
                     }
                 }
             }

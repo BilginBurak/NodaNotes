@@ -870,7 +870,8 @@ impl SyncEngine {
             ).unwrap_or(0)
         };
 
-        if remaining_dirty_count == 0 {
+        let remote_affected = report.uploads > 0 || report.deletes_remote > 0 || report.conflicts > 0;
+        if remaining_dirty_count == 0 && remote_affected {
             let local_manifest = {
                 let conn = database.conn.lock();
                 let mut stmt = conn

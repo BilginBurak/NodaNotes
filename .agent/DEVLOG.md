@@ -1304,3 +1304,77 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
   - **Visual Lock Button States:** Upgraded `btn-quick-lock` in the toolbar to display distinct open (unlocked) and closed (locked) padlock SVGs and color-coded states (red for locked, green/active for unlocked).
   - **WebDAV configuration syncing:** Allowed `.noda/vault_config.json` to pass remote sync traversal and delta filters, enabling multi-device master password hash and salt synchronization over WebDAV.
   - **Security Password Input Auto-Clear:** Reactive states added in Svelte's [Editor.svelte](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/frontend/src/lib/components/editor/Editor.svelte) to clear the password input and error fields immediately when the active note changes or decrypts successfully.
+
+---
+
+## 61. Android Vault Encryption & Session Parity (June 2026)
+
+- **JNI Cryptographic Proxy & Threading Isolation:**
+  - **Task:** Implement Android JNI bindings and Kotlin proxy structures for zero-knowledge vault operations.
+  - **Solution:**
+    - Expose JNI commands inside `crates/android-bridge/src/lib.rs` for vault session control: `checkVaultStatus`, `unlockVaultSession`, `lockVaultInstantly`, `toggleNoteEncryption`, `isVaultConfigured`, `setMasterPassword`, `changeMasterPassword`, `getVaultTimeoutSetting`, and `setVaultTimeoutSetting`.
+    - Declared corresponding native JNI interfaces in [RustCore.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/RustCore.kt).
+    - Wrapped all JNI methods inside [SecurityRepository.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/data/repository/SecurityRepository.kt), strictly delegating all cryptographic computation and database operations to the Rust background runtime via `Dispatchers.IO` coroutine context to prevent main thread blocking.
+- **In-Editor Zen Password Wall UI:**
+  - **Task:** Intercept locked notes in Jetpack Compose editor screens and display a password prompt.
+  - **Solution:**
+    - Modified [NoteEditorScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/editor/NoteEditorScreen.kt) to monitor the active note's `is_encrypted == 1` flag and JNI volatile session status (`checkVaultStatus()`).
+    - If a note is encrypted and the session is `Locked`, the standard markdown text area is hidden. A minimalist **Zen Password Wall** featuring an SVG padlock icon, a clean password input field, and action buttons is displayed instead.
+    - Added state listeners to ensure password input buffers and local error logs are cleared instantly when changing notes or upon successful decryption.
+- **Note List Badges & Contextual Handshakes:**
+  - **Task:** Add visual indicators to note rows and support context menu lock toggles.
+  - **Solution:**
+    - Integrated inline padlock vector badges adjacent to note titles in [NoteCard.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/components/NoteCard.kt) when a note has `is_encrypted == 1`.
+    - Extended list row long-press options: displays `"Lock Note"` for plaintext items and `"Unlock Permanently"` for encrypted items.
+    - Built an auto-unlock bootstrap checker: selecting "Lock Note" for the first time checks `isVaultConfigured` via Rust JNI. If missing, it redirects to a master password configuration flow before executing encryption.
+- **Toolbar Quick-Lock Button & Security Settings Tab:**
+  - **Task:** Add instant locking controls and settings dropdown options.
+  - **Solution:**
+    - Placed a dynamic padlock button in [NoteListScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/notelist/NoteListScreen.kt)'s TopAppBar immediately to the left of the sync badge. The icon is color-coded using system theme colors: **red** when locked, and **green** when verified unlocked. Clicking it instantly invokes `lockVaultInstantly()`.
+    - Added a dedicated "Security & Encryption" tab (Tab index 7) to [SettingsScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/settings/SettingsScreen.kt) loaded and saved via `SettingsViewModel` from/to Rust configuration.
+    - Embedded master password creation/modification panels and a DropdownMenu selection module for session timeout configuration (1m, 5m, 15m, 1h, Until App Closes, Every Time).
+    - Inherited all surface colors and margins from the central Material 3 theme (`Theme.kt`) to preserve design single-source-of-truth style harmony.
+
+---
+
+## 62. WebDAV Sync Optimization and Master Password Config Synchronization (June 2026)
+
+- **Selective Manifest & .sync Signature Uploads:**
+  - **Problem:** Even when no local notes or metadata were modified (e.g., only downloading remote changes or when no changes existed on either side), the sync engine uploaded the device's `.sync` signature and `manifest_[device_name].json` file at the end of every sync cycle. This triggered unnecessary server ETags updates and caused multi-device sync loops.
+  - **Solution:** Modified `crates/core/src/sync/engine.rs` to track if any remote-modifying action (`Upload`, `DeleteRemote`, `Conflict`) was successfully executed. The sync engine now only uploads/updates the manifest and `.sync` signature files if `remote_affected` is `true` and all dirty items were synchronized.
+- **Vault Config Synchronization Dirty Flag Trigger:**
+  - **Problem:** Creating or changing the master password writes `.noda/vault_config.json` to the filesystem, but the file was never marked as dirty in SQLite's `sync_file_states` table, preventing it from being synchronized via WebDAV to other devices.
+  - **Solution:** 
+    - Updated `register_master_password` in `crates/core/src/crypto/mod.rs` to accept `db: Option<&Database>` and mark `.noda/vault_config.json` as dirty when the master password is set.
+    - Updated `change_master_password` to mark `.noda/vault_config.json` as dirty when the password is changed.
+    - Updated the JNI bridge `Java_com_bubi_nodanotes_RustCore_setMasterPassword` and Tauri command `set_master_password` to extract `db` from their global states and pass it to `register_master_password`.
+
+---
+
+## 63. Master Password Confirm Validation, Encrypted Notes History Protection & Navigation Overhauls (June 2026)
+
+- **History Leak Prevention for Encrypted Notes:**
+  - **Problem:** When an encrypted note is updated, deleted, or restored, it was briefly decrypted in-memory. Because its `is_encrypted` flag was mutated to `false` during memory rendering, the core history system captured the note's plaintext content and wrote it to `.noda/history/`, leaking decrypted data to disk.
+  - **Solution:**
+    - Modified JNI bridges (`updateNote`, `restoreSnapshot`) in `crates/android-bridge/src/lib.rs` and Tauri commands (`update_note`, `restore_snapshot` in `note_commands.rs`/`history_commands.rs`, and Tauri shutdown sequence in `state/mod.rs`) to check the original note's state on disk (`!existing_note.is_encrypted` / `!current.is_encrypted`) before allowing any snapshotting.
+    - Modified `soft_delete` in `crates/core/src/trash/mod.rs` to bypass snapshot creation for encrypted notes.
+    - Modified `snapshot` in `crates/core/src/history/mod.rs` to return early if the note is encrypted.
+
+- **Password Modification Confirmation:**
+  - **Problem:** The Settings page allowed changing the master password with only "Old Password" and "New Password" fields, posing a risk of typos and lockouts.
+  - **Solution:** Upgraded [SettingsScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/settings/SettingsScreen.kt) to include a "Confirm New Password" field. The change button remains disabled until the new password matches the confirmation input.
+
+- **Minimalist Back Navigation to Exit:**
+  - **Problem:** The exit confirmation dialog upon back-pressing on the main screen was visually intrusive.
+  - **Solution:** Replaced the modal dialog in [NoteListScreen.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/notelist/NoteListScreen.kt) with a double-back-press Toast pattern ("Press back again to exit NodaNotes"), terminating the activity only if pressed twice within a 2-second window.
+
+- **Sidebar Encrypted Notes Filter:**
+  - **Problem:** Users could not easily view only their encrypted notes in a single list.
+  - **Solution:**
+    - Added an "Encrypted Notes" navigation item in the Sidebar inside [NodaAppShell.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/components/NodaAppShell.kt) under the Workspace folder accordion.
+    - Bound clicking this item to set `showOnlyEncrypted = true` via [FolderContext.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/notelist/FolderContext.kt).
+    - Updated [NoteListViewModel.kt](file:///Users/burakbilgin/Documents/Kodlar/Rust/NodaNotes/android/app/src/main/java/com/bubi/nodanotes/ui/screens/notelist/NoteListViewModel.kt) to apply the `is_encrypted == 1` filter to the notes list.
+
+- **Theme-Compliant Lock Tinting:**
+  - **Problem:** The lock buttons and indicators were hardcoded to green/red, violating theme consistency.
+  - **Solution:** Replaced hardcoded values with `MaterialTheme.colorScheme.primary` for active unlocked state tinting to maintain Japandi styling consistency.

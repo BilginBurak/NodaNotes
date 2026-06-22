@@ -96,7 +96,9 @@ pub async fn restore_snapshot(
     };
     
     if let Some(ref current_note) = current_note {
-        let _ = core_snapshot(&vault_path, current_note, "Pre-Restore").await;
+        if !current_note.is_encrypted {
+            let _ = core_snapshot(&vault_path, current_note, "Pre-Restore").await;
+        }
     }
 
     // Merge past content with current metadata and set updated_at to Utc::now() to prevent sync issues

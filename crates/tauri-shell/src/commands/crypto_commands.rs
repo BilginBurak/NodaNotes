@@ -9,15 +9,18 @@ pub async fn set_master_password(
     state: State<'_, AppState>,
     password: String,
 ) -> Result<(), AppError> {
-    let vault_path = {
-        let guard = state.vault_path.read();
-        guard.clone().ok_or_else(|| AppError {
+    let (vault_path, db) = {
+        let path_guard = state.vault_path.read();
+        let db_guard = state.database.read();
+        let path = path_guard.clone().ok_or_else(|| AppError {
             code: "VAULT_NOT_OPEN".to_string(),
             message: "No active vault is currently open".to_string(),
-        })?
+        })?;
+        let db = db_guard.clone();
+        (path, db)
     };
 
-    noda_core::crypto::register_master_password(&vault_path, &password)
+    noda_core::crypto::register_master_password(&vault_path, &password, db.as_ref())
         .await
         .map_err(AppError::from)
 }

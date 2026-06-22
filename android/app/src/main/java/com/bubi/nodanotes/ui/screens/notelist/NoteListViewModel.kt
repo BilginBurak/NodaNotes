@@ -23,6 +23,7 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
     private val noteRepository = NoteRepository()
     private val vaultPreferences = VaultPreferences(application)
     private val syncRepository = SyncRepository()
+    private val securityRepository = com.bubi.nodanotes.data.repository.SecurityRepository()
 
     private val _uiState = MutableStateFlow<NoteListUiState>(NoteListUiState.Loading)
     val uiState: StateFlow<NoteListUiState> = _uiState.asStateFlow()
@@ -39,6 +40,9 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
     private val _syncStatus = MutableStateFlow("Sync idle")
     val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
 
+    private val _vaultStatus = MutableStateFlow("Locked")
+    val vaultStatus: StateFlow<String> = _vaultStatus.asStateFlow()
+
     private var recentlyDeletedNote: NoteListItemDto? = null
     private var recentlyDeletedPath: String? = null
 
@@ -46,6 +50,109 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
         val path = vaultPreferences.getVaultPath()
         _vaultName.value = path?.substringAfterLast('/') ?: "NodaNotes"
         updateRelativeSyncStatus()
+        checkVaultStatus()
+    }
+
+    fun checkVaultStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            securityRepository.checkVaultStatus().onSuccess { status ->
+                _vaultStatus.value = status
+            }
+        }
+    }
+
+    fun lockVaultInstantly() {
+        viewModelScope.launch(Dispatchers.IO) {
+            securityRepository.lockVaultInstantly().onSuccess {
+                _vaultStatus.value = "Locked"
+                loadNotes(FolderContext.currentFolder)
+            }
+        }
+    }
+
+    fun isVaultConfigured(callback: (Boolean) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            securityRepository.isVaultConfigured().fold(
+                onSuccess = { configured ->
+                    viewModelScope.launch(Dispatchers.Main) {
+                        callback(configured)
+                    }
+                },
+                onFailure = {
+                    viewModelScope.launch(Dispatchers.Main) {
+                        callback(false)
+                    }
+                }
+            )
+        }
+    }
+
+    fun setMasterPasswordAndLock(password: String, noteId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            securityRepository.setMasterPassword(password).fold(
+                onSuccess = {
+                    securityRepository.toggleNoteEncryption(noteId).fold(
+                        onSuccess = {
+                            _vaultStatus.value = "Unlocked"
+                            loadNotes(FolderContext.currentFolder)
+                        },
+                        onFailure = { error ->
+                            _uiState.value = NoteListUiState.Error(error.message ?: "Failed to encrypt note")
+                        }
+                    )
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteListUiState.Error(error.message ?: "Failed to set master password")
+                }
+            )
+        }
+    }
+
+    fun unlockSessionAndToggle(password: String, noteId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            securityRepository.unlockVaultSession(password).fold(
+                onSuccess = { unlocked ->
+                    if (unlocked) {
+                        _vaultStatus.value = "Unlocked"
+                        securityRepository.toggleNoteEncryption(noteId).fold(
+                            onSuccess = {
+                                loadNotes(FolderContext.currentFolder)
+                                viewModelScope.launch(Dispatchers.Main) {
+                                    onSuccess()
+                                }
+                            },
+                            onFailure = { error ->
+                                viewModelScope.launch(Dispatchers.Main) {
+                                    onFailure(error.message ?: "Toggling encryption failed")
+                                }
+                            }
+                        )
+                    } else {
+                        viewModelScope.launch(Dispatchers.Main) {
+                            onFailure("Incorrect password")
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onFailure(error.message ?: "Unlock failed")
+                    }
+                }
+            )
+        }
+    }
+
+    fun toggleNoteEncryptionDirectly(noteId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            securityRepository.toggleNoteEncryption(noteId).fold(
+                onSuccess = {
+                    loadNotes(FolderContext.currentFolder)
+                },
+                onFailure = { error ->
+                    _uiState.value = NoteListUiState.Error(error.message ?: "Toggling encryption failed")
+                }
+            )
+        }
     }
 
     fun loadNotes(folderPath: String? = null) {
@@ -58,10 +165,14 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
             noteRepository.getAllNotes().fold(
                 onSuccess = { allNotes ->
                     val tagFilter = FolderContext.selectedTag
+                    val onlyEncrypted = FolderContext.showOnlyEncrypted
                     
                     // Filter Daily Notes isolation
                     val dailyNotesPrefix = "Daily Notes/"
-                    val folderFiltered = if (folderPath == null) {
+                    val folderFiltered = if (onlyEncrypted) {
+                        // Show all encrypted notes except daily notes
+                        allNotes.filter { !it.file_path.startsWith(dailyNotesPrefix) && it.is_encrypted }
+                    } else if (folderPath == null) {
                         // All Notes: exclude Daily Notes
                         allNotes.filter { !it.file_path.startsWith(dailyNotesPrefix) }
                     } else if (folderPath == "Daily Notes") {
@@ -308,6 +419,7 @@ class NoteListViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun refreshOnResume() {
+        checkVaultStatus()
         loadNotes(FolderContext.currentFolder)
     }
 }

@@ -96,6 +96,17 @@ object RustCore {
     external fun check_url_history(url: String): String
     external fun clipUrl(inputJson: String): String
 
+    // Cryptographic & Vault Session Functions
+    external fun isVaultConfigured(inputJson: String): String
+    external fun setMasterPassword(inputJson: String): String
+    external fun checkVaultStatus(inputJson: String): String
+    external fun unlockVaultSession(inputJson: String): String
+    external fun lockVaultInstantly(inputJson: String): String
+    external fun toggleNoteEncryption(inputJson: String): String
+    external fun getVaultTimeoutSetting(inputJson: String): String
+    external fun setVaultTimeoutSetting(inputJson: String): String
+    external fun changeMasterPassword(inputJson: String): String
+
     interface SyncProgressListener {
         fun onProgress(json: String)
     }

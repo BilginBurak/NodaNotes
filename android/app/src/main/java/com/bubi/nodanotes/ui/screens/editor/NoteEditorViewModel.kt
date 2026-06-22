@@ -21,11 +21,15 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     private val noteRepository = NoteRepository()
     private val searchRepository = SearchRepository()
+    private val securityRepository = com.bubi.nodanotes.data.repository.SecurityRepository()
 
     private val attachmentRepository = com.bubi.nodanotes.data.repository.AttachmentRepository()
 
     private val _uiState = MutableStateFlow<NoteEditorUiState>(NoteEditorUiState.Loading)
     val uiState: StateFlow<NoteEditorUiState> = _uiState.asStateFlow()
+
+    private val _vaultStatus = MutableStateFlow("Locked")
+    val vaultStatus: StateFlow<String> = _vaultStatus.asStateFlow()
 
     private val _saveState = MutableStateFlow<SaveState>(SaveState.Saved)
     val saveState: StateFlow<SaveState> = _saveState.asStateFlow()
@@ -65,6 +69,9 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
         lastSnapshotTime = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = NoteEditorUiState.Loading
+            securityRepository.checkVaultStatus().onSuccess { status ->
+                _vaultStatus.value = status
+            }
             noteRepository.getNote(noteId).fold(
                 onSuccess = { note ->
                     currentNoteDto = note
@@ -73,6 +80,35 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
                 },
                 onFailure = { error ->
                     _uiState.value = NoteEditorUiState.Error(error.message ?: "Failed to load note")
+                }
+            )
+        }
+    }
+
+    fun unlockVault(password: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            securityRepository.unlockVaultSession(password).fold(
+                onSuccess = { unlocked ->
+                    if (unlocked) {
+                        _vaultStatus.value = "Unlocked"
+                        noteRepository.getNote(activeNoteId).onSuccess { note ->
+                            currentNoteDto = note
+                            _uiState.value = NoteEditorUiState.Success(note)
+                            loadMetadata(activeNoteId)
+                        }
+                        viewModelScope.launch(Dispatchers.Main) {
+                            onSuccess()
+                        }
+                    } else {
+                        viewModelScope.launch(Dispatchers.Main) {
+                            onFailure("Incorrect password")
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onFailure(error.message ?: "Unlock failed")
+                    }
                 }
             )
         }

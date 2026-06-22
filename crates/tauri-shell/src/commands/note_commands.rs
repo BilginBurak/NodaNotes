@@ -222,7 +222,7 @@ pub async fn update_note(
         return Ok(NoteDto::from(decrypted_existing));
     }
 
-    if trigger_snapshot {
+    if trigger_snapshot && !existing_note_full.is_encrypted {
         // Take a snapshot of the PREVIOUS state before we overwrite it
         let reason = snapshot_reason.as_deref().unwrap_or("Unknown");
         let _ = history::snapshot(&vault_path, &decrypted_existing, reason).await;

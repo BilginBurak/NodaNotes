@@ -25,6 +25,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val syncRepository = SyncRepository()
     private val preferences = VaultPreferences(application)
     private val noteRepository = com.bubi.nodanotes.data.repository.NoteRepository()
+    private val securityRepository = com.bubi.nodanotes.data.repository.SecurityRepository()
 
     private val _uiState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -38,9 +39,63 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _isTestingConnection = MutableStateFlow(false)
     val isTestingConnection: StateFlow<Boolean> = _isTestingConnection.asStateFlow()
 
+    private val _vaultTimeout = MutableStateFlow("15m")
+    val vaultTimeout: StateFlow<String> = _vaultTimeout.asStateFlow()
+
+    private val _isPasswordConfigured = MutableStateFlow(false)
+    val isPasswordConfigured: StateFlow<Boolean> = _isPasswordConfigured.asStateFlow()
+
     init {
         loadSettings()
         loadTemplates()
+        loadSecuritySettings()
+    }
+
+    fun loadSecuritySettings() {
+        viewModelScope.launch {
+            securityRepository.getVaultTimeoutSetting().onSuccess { timeout ->
+                _vaultTimeout.value = timeout
+            }
+            securityRepository.isVaultConfigured().onSuccess { configured ->
+                _isPasswordConfigured.value = configured
+            }
+        }
+    }
+
+    fun updateVaultTimeout(timeout: String) {
+        viewModelScope.launch {
+            securityRepository.setVaultTimeoutSetting(timeout).onSuccess {
+                _vaultTimeout.value = timeout
+            }
+        }
+    }
+
+    fun changeMasterPassword(oldPass: String, newPass: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        viewModelScope.launch {
+            securityRepository.changeMasterPassword(oldPass, newPass).fold(
+                onSuccess = {
+                    _isPasswordConfigured.value = true
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    onFailure(error.message ?: "Failed to change master password")
+                }
+            )
+        }
+    }
+
+    fun setMasterPassword(password: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        viewModelScope.launch {
+            securityRepository.setMasterPassword(password).fold(
+                onSuccess = {
+                    _isPasswordConfigured.value = true
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    onFailure(error.message ?: "Failed to set master password")
+                }
+            )
+        }
     }
 
     fun loadTemplates() {

@@ -105,6 +105,7 @@ fun NodaAppShell(
 
         val currentFolder by com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolderState.collectAsState()
         val selectedTag by com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTagState.collectAsState()
+        val showOnlyEncrypted by com.bubi.nodanotes.ui.screens.notelist.FolderContext.showOnlyEncryptedState.collectAsState()
 
         ModalDrawerSheet(
             modifier = Modifier.width(280.dp),
@@ -179,11 +180,12 @@ fun NodaAppShell(
                             NavigationDrawerItem(
                                 icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 label = { Text("All Notes", fontWeight = FontWeight.SemiBold, fontSize = 15.sp) },
-                                selected = currentRoute == Screen.NoteList.route && currentFolder == null && selectedTag == null,
+                                selected = currentRoute == Screen.NoteList.route && currentFolder == null && selectedTag == null && !showOnlyEncrypted,
                                 onClick = {
                                     scope.launch { drawerState.close() }
                                     com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
                                     com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.showOnlyEncrypted = false
                                     navController.navigate(Screen.NoteList.route) {
                                         popUpTo(Screen.NoteList.route) { inclusive = true }
                                     }
@@ -197,11 +199,31 @@ fun NodaAppShell(
                             NavigationDrawerItem(
                                 icon = { Icon(Icons.Default.Today, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 label = { Text("Daily Notes", fontWeight = FontWeight.SemiBold, fontSize = 15.sp) },
-                                selected = currentRoute == Screen.NoteList.route && currentFolder == "Daily Notes" && selectedTag == null,
+                                selected = currentRoute == Screen.NoteList.route && currentFolder == "Daily Notes" && selectedTag == null && !showOnlyEncrypted,
                                 onClick = {
                                     scope.launch { drawerState.close() }
                                     com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = "Daily Notes"
                                     com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.showOnlyEncrypted = false
+                                    navController.navigate(Screen.NoteList.route) {
+                                        popUpTo(Screen.NoteList.route) { inclusive = true }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp, vertical = 1.dp)
+                                    .height(30.dp)
+                            )
+
+                            // Encrypted Notes
+                            NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                label = { Text("Encrypted Notes", fontWeight = FontWeight.SemiBold, fontSize = 15.sp) },
+                                selected = currentRoute == Screen.NoteList.route && showOnlyEncrypted && selectedTag == null,
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
+                                    com.bubi.nodanotes.ui.screens.notelist.FolderContext.showOnlyEncrypted = true
                                     navController.navigate(Screen.NoteList.route) {
                                         popUpTo(Screen.NoteList.route) { inclusive = true }
                                     }
@@ -288,6 +310,7 @@ fun NodaAppShell(
                                             onFolderClick = { path ->
                                                 scope.launch { drawerState.close() }
                                                 com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = null
+                                                com.bubi.nodanotes.ui.screens.notelist.FolderContext.showOnlyEncrypted = false
                                                 com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = path
                                                 navController.navigate(Screen.NoteList.route) {
                                                     popUpTo(Screen.NoteList.route) { inclusive = true }
@@ -399,6 +422,7 @@ fun NodaAppShell(
                                                 scope.launch { drawerState.close() }
                                                 com.bubi.nodanotes.ui.screens.notelist.FolderContext.currentFolder = null
                                                 com.bubi.nodanotes.ui.screens.notelist.FolderContext.selectedTag = tagDto.name
+                                                com.bubi.nodanotes.ui.screens.notelist.FolderContext.showOnlyEncrypted = false
                                                 navController.navigate(Screen.NoteList.route) {
                                                     popUpTo(Screen.NoteList.route) { inclusive = true }
                                                 }

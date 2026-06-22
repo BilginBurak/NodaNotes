@@ -90,55 +90,40 @@ fun NoteListScreen(
     var showCalendarDialog by remember { mutableStateOf(false) }
     var dailyNoteDates by remember { mutableStateOf(setOf<String>()) }
 
-    var showExitDialog by remember { mutableStateOf(false) }
+    val vaultStatus by viewModel.vaultStatus.collectAsState()
 
-    BackHandler(enabled = true) {
-        showExitDialog = true
+    var activeNoteForLockAction by remember { mutableStateOf<NoteListItemDto?>(null) }
+    var showLockDialog by remember { mutableStateOf(false) }
+    var showPasswordCreationDialog by remember { mutableStateOf(false) }
+
+    val onLockToggle: (NoteListItemDto) -> Unit = { note ->
+        activeNoteForLockAction = note
+        viewModel.isVaultConfigured { configured ->
+            if (configured) {
+                scope.launch {
+                    val status = viewModel.vaultStatus.value
+                    if (status == "Unlocked") {
+                        viewModel.toggleNoteEncryptionDirectly(note.id)
+                    } else {
+                        showLockDialog = true
+                    }
+                }
+            } else {
+                showPasswordCreationDialog = true
+            }
+        }
     }
 
-    if (showExitDialog) {
-        val context = androidx.compose.ui.platform.LocalContext.current
-        AlertDialog(
-            onDismissRequest = { showExitDialog = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            },
-            title = {
-                Text(
-                    text = "Exit App",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-            },
-            text = {
-                Text(
-                    text = "Are you sure you want to exit NodaNotes?",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showExitDialog = false
-                        (context as? android.app.Activity)?.finish()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text("Exit")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
+    var lastBackPressTime by remember { mutableStateOf(0L) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    BackHandler(enabled = true) {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastBackPressTime < 2000) {
+            (context as? android.app.Activity)?.finish()
+        } else {
+            lastBackPressTime = currentTime
+            android.widget.Toast.makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     if (showCalendarDialog) {
@@ -330,7 +315,9 @@ fun NoteListScreen(
     // Observe syncStatus but do not show toast anymore as it is removed by the user requirement.
     // LaunchedEffect(syncStatus) logic removed completely.
 
-    LaunchedEffect(currentFolder, selectedTag) {
+    val showOnlyEncrypted by FolderContext.showOnlyEncryptedState.collectAsState()
+
+    LaunchedEffect(currentFolder, selectedTag, showOnlyEncrypted) {
         viewModel.loadNotes(currentFolder)
         isSelectionMode = false
         selectedNotes.clear()
@@ -439,8 +426,12 @@ fun NoteListScreen(
                 TopAppBar(
                     title = {
                         Column {
+                            val titleText = when {
+                                showOnlyEncrypted -> "Encrypted Notes"
+                                else -> currentFolder ?: "All Notes"
+                            } + (if (selectedTag != null) " • #$selectedTag" else "")
                             Text(
-                                text = (currentFolder ?: "All Notes") + (if (selectedTag != null) " • #$selectedTag" else ""),
+                                text = titleText,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 17.sp
                             )
@@ -464,6 +455,13 @@ fun NoteListScreen(
                         }
                         IconButton(onClick = onSearchClick) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                        IconButton(onClick = { viewModel.lockVaultInstantly() }) {
+                            Icon(
+                                imageVector = if (vaultStatus == "Unlocked") Icons.Default.LockOpen else Icons.Default.Lock,
+                                contentDescription = "Lock Vault",
+                                tint = if (vaultStatus == "Unlocked") MaterialTheme.colorScheme.primary else androidx.compose.material3.LocalContentColor.current
+                            )
                         }
                         IconButton(onClick = { viewModel.triggerSync() }) {
                             Icon(Icons.Default.Sync, contentDescription = "Sync Now")
@@ -752,6 +750,7 @@ fun NoteListScreen(
                                                     }
                                                 }
                                             },
+                                            onLockToggle = onLockToggle,
                                             isSelectionMode = isSelectionMode,
                                             isSelected = selectedNotes.contains(note),
                                             onToggleSelection = { toggledNote ->
@@ -801,6 +800,7 @@ fun NoteListScreen(
                                                     }
                                                 }
                                             },
+                                            onLockToggle = onLockToggle,
                                             isSelectionMode = isSelectionMode,
                                             isSelected = selectedNotes.contains(note),
                                             onToggleSelection = { toggledNote ->
@@ -823,6 +823,160 @@ fun NoteListScreen(
                 }
             }
         }
+    }
+
+    if (showLockDialog && activeNoteForLockAction != null) {
+        var passwordInput by remember { mutableStateOf("") }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+        var isUnlocking by remember { mutableStateOf(false) }
+        
+        AlertDialog(
+            onDismissRequest = { 
+                showLockDialog = false
+                activeNoteForLockAction = null
+            },
+            title = { Text(if (activeNoteForLockAction!!.is_encrypted) "Unlock Note Permanently" else "Lock Note") },
+            text = {
+                Column {
+                    Text("Enter vault password to confirm.")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = {
+                            passwordInput = it
+                            errorMessage = null
+                        },
+                        label = { Text("Password") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Password
+                        ),
+                        singleLine = true,
+                        isError = errorMessage != null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (errorMessage != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(errorMessage!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isUnlocking = true
+                        viewModel.unlockSessionAndToggle(
+                            password = passwordInput,
+                            noteId = activeNoteForLockAction!!.id,
+                            onSuccess = {
+                                showLockDialog = false
+                                activeNoteForLockAction = null
+                                isUnlocking = false
+                            },
+                            onFailure = { err ->
+                                errorMessage = err
+                                isUnlocking = false
+                            }
+                        )
+                    },
+                    enabled = passwordInput.isNotEmpty() && !isUnlocking
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showLockDialog = false
+                    activeNoteForLockAction = null
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showPasswordCreationDialog && activeNoteForLockAction != null) {
+        var passwordInput by remember { mutableStateOf("") }
+        var confirmPasswordInput by remember { mutableStateOf("") }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+        var isCreating by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = {
+                showPasswordCreationDialog = false
+                activeNoteForLockAction = null
+            },
+            title = { Text("Set Master Password") },
+            text = {
+                Column {
+                    Text("This is the first time you are locking a note. Create a master password to secure your vault. Keep it safe; it cannot be recovered.")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = {
+                            passwordInput = it
+                            errorMessage = null
+                        },
+                        label = { Text("Password") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Password
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = confirmPasswordInput,
+                        onValueChange = {
+                            confirmPasswordInput = it
+                            errorMessage = null
+                        },
+                        label = { Text("Confirm Password") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Password
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (errorMessage != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(errorMessage!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (passwordInput != confirmPasswordInput) {
+                            errorMessage = "Passwords do not match"
+                            return@Button
+                        }
+                        if (passwordInput.length < 4) {
+                            errorMessage = "Password too short"
+                            return@Button
+                        }
+                        isCreating = true
+                        viewModel.setMasterPasswordAndLock(passwordInput, activeNoteForLockAction!!.id)
+                        showPasswordCreationDialog = false
+                        activeNoteForLockAction = null
+                        isCreating = false
+                    },
+                    enabled = passwordInput.isNotEmpty() && confirmPasswordInput.isNotEmpty() && !isCreating
+                ) {
+                    Text("Create & Lock")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showPasswordCreationDialog = false
+                    activeNoteForLockAction = null
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 }

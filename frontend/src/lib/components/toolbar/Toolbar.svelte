@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createNewNote, activeNote, selectedFolder, selectNote, activeNoteLocked } from '../../stores/notes';
   import { editorViewMode, showAttachments, loadAttachments } from '../../stores/editor';
-  import { vaultInfo } from '../../stores/vault';
+  import { vaultInfo, vaultUnlocked } from '../../stores/vault';
   import { get } from 'svelte/store';
   import SyncStatus from '../sync/SyncStatus.svelte';
   import SearchBar from '../search/SearchBar.svelte';
@@ -13,7 +13,7 @@
   const attachmentsVisible = $derived($showAttachments);
   const hasActiveNote = $derived($activeNote !== null);
 
-  let isVaultUnlocked = $state(false);
+  const isVaultUnlocked = $derived($vaultUnlocked);
   let isConfigured = $state(false);
 
   async function checkLockStatus() {
@@ -21,7 +21,7 @@
       isConfigured = await ipc.isVaultConfigured();
       if (isConfigured) {
         const unlocked = await ipc.isVaultSessionUnlocked();
-        isVaultUnlocked = unlocked;
+        vaultUnlocked.set(unlocked);
         
         // If session is locked, and we have an encrypted note currently displayed as unlocked, auto-lock it!
         if (!unlocked) {
@@ -32,7 +32,7 @@
           }
         }
       } else {
-        isVaultUnlocked = false;
+        vaultUnlocked.set(false);
       }
     } catch (e) {
       console.error(e);
@@ -41,6 +41,8 @@
 
   onMount(() => {
     checkLockStatus();
+    const interval = setInterval(checkLockStatus, 3000);
+    return () => clearInterval(interval);
   });
 
   async function handleNewNote() {
@@ -220,10 +222,10 @@
     height: 14px;
   }
   .btn-quick-lock.unlocked svg {
-    color: var(--color-green, #10b981);
+    color: var(--color-green);
   }
   .btn-quick-lock.locked svg {
-    color: var(--color-red, #ef4444);
+    color: inherit;
   }
   :global(.platform-darwin) .toolbar {
     padding-left: 80px; /* macOS pencere kontrolleri (traffic lights) için sol boşluk */

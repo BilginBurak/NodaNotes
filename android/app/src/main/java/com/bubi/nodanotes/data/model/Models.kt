@@ -15,6 +15,7 @@ data class NoteDto(
     val created_at: String,
     val updated_at: String,
     val file_path: String,
+    val is_encrypted: Boolean = false,
 )
 
 @Serializable
@@ -28,6 +29,7 @@ data class NoteListItemDto(
     val inline_tags: List<String> = emptyList(),
     val updated_at: String,
     val file_path: String,
+    val is_encrypted: Boolean = false,
 )
 
 @Serializable
