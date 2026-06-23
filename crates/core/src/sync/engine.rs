@@ -423,6 +423,10 @@ impl SyncEngine {
                     let mut rows = stmt.query([&other_device]).map_err(|e| NodaError::Database(e.to_string()))?;
                     while let Some(row) = rows.next().map_err(|e| NodaError::Database(e.to_string()))? {
                         let path: String = row.get(0).map_err(|e| NodaError::Database(e.to_string()))?;
+                        let path_lower = path.to_lowercase();
+                        if path_lower.ends_with(".ds_store") || path_lower.contains("/.") {
+                            continue;
+                        }
                         if !new_manifest.files.contains_key(&path) {
                             deleted_paths.push(path);
                         }
@@ -457,6 +461,10 @@ impl SyncEngine {
                     let rows = stmt.query_map([&other_device], |row| row.get::<_, String>(0)).map_err(|e| NodaError::Database(e.to_string()))?;
                     for r in rows {
                         if let Ok(p) = r {
+                            let p_lower = p.to_lowercase();
+                            if p_lower.ends_with(".ds_store") || p_lower.contains("/.") {
+                                continue;
+                            }
                             paths.push(p);
                         }
                     }

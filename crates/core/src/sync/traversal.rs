@@ -120,16 +120,17 @@ pub async fn list_remote_tree(
             
             // Exclude hidden files or folders, EXCEPT allowing .noda and .templates itself
             let mut parts = normalized_relative.split('/');
-            let has_hidden = parts.any(|part| part.starts_with('.') && part != ".noda" && part != ".templates");
+            let has_hidden = parts.any(|part| (part.starts_with('.') && part != ".noda" && part != ".templates") || part == ".DS_Store");
             if has_hidden {
                 continue;
             }
 
             if normalized_relative.split('/').any(|s| s == ".noda") {
-                let is_allowed = normalized_relative == ".noda"
+                let is_allowed = (normalized_relative == ".noda"
                     || normalized_relative == ".noda/vault_config.json"
                     || normalized_relative.starts_with(".noda/attachments")
-                    || normalized_relative.starts_with(".noda/history");
+                    || normalized_relative.starts_with(".noda/history"))
+                    && !normalized_relative.ends_with(".DS_Store");
                 if !is_allowed {
                     continue;
                 }

@@ -1378,3 +1378,17 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
 - **Theme-Compliant Lock Tinting:**
   - **Problem:** The lock buttons and indicators were hardcoded to green/red, violating theme consistency.
   - **Solution:** Replaced hardcoded values with `MaterialTheme.colorScheme.primary` for active unlocked state tinting to maintain Japandi styling consistency.
+
+---
+
+## 64. History Snapshot Renaming Bug Fix & .DS_Store Sync Exclusion (June 2026)
+
+- **History Snapshot Flat Folder Conversion Fix:**
+  - **Problem:** When `run_cold_boot_scan` detected mismatches in `.noda/history/` snapshots, it mistakenly treated the snapshot files ending in `.md` or `.markdown` as standard notes. It would parse their contents, re-serialize them with parent directories mapped directly inside history, and rename/save them strictly under raw note ID format (e.g. `.noda/history/[note_id].md` instead of `[note_id]_[timestamp]_[reason].md`), polluting the history folder and creating duplicate ghost notes in the active Svelte/Android views.
+  - **Solution:** Modified `run_cold_boot_scan` in `crates/core/src/database/queries.rs` to inspect if the mismatched file path starts with `.noda/`. If it does, the scan bypasses the note parsing and SQLite active notes upsert sequences, calling `set_file_dirty(conn, &rel_path, true)` directly. This preserves the original files and keeps history snapshots completely isolated from active notes.
+- **Mac OS `.DS_Store` Sync Exclusion:**
+  - **Problem:** System files like `.DS_Store` created in history or attachments directories were scanned during startup, indexed in local sync tables, and continuously uploaded to the WebDAV remote server on every application startup.
+  - **Solution:**
+    - Modified directory scan loops for attachments and history inside `run_cold_boot_scan` in `crates/core/src/database/queries.rs` to skip files starting with `.`.
+    - Added an automatic purge step in the deleted local files section of the cold boot scan to execute a `DELETE FROM sync_file_states WHERE path = ?1` whenever it encounters any database entry matching `.DS_Store` or containing `/.`, instantly removing existing system clutter from the local DB.
+    - Updated `crates/core/src/sync/engine.rs` to ignore `.DS_Store` and hidden files from both `deleted_paths` and `changed_paths` when resolving remote sync actions derived from peer manifests. This completely prevents background sync threads from downloading or uploading `.DS_Store` files.

@@ -685,7 +685,7 @@ pub fn run_cold_boot_scan(conn: &Connection, vault_path: &Path) -> Result<(), No
             let is_mismatch = check_file_mismatch(conn, &rel_path, size, mtime)?;
             if is_mismatch {
                 tracing::info!("Cold Boot Scan: Mismatch detected for {}, syncing with DB", rel_path);
-                if rel_path.ends_with(".md") || rel_path.ends_with(".markdown") {
+                if (rel_path.ends_with(".md") || rel_path.ends_with(".markdown")) && !rel_path.starts_with(".noda/") {
                     match crate::vault::scan::parse_or_create_note_from_file_sync(full_path, vault_path) {
                         Ok(note) => {
                             upsert_note(conn, &note, &note.file_path, true)?;
@@ -742,6 +742,11 @@ pub fn run_cold_boot_scan(conn: &Connection, vault_path: &Path) -> Result<(), No
         if let Ok(entries) = std::fs::read_dir(&attachments_dir) {
             for entry in entries.flatten() {
                 if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if name_str.starts_with('.') {
+                        continue;
+                    }
                     let path = entry.path();
                     if let Ok(rel) = path.strip_prefix(vault_path) {
                         let rel_str = rel.to_string_lossy().to_string();
@@ -758,6 +763,11 @@ pub fn run_cold_boot_scan(conn: &Connection, vault_path: &Path) -> Result<(), No
         if let Ok(entries) = std::fs::read_dir(&history_dir) {
             for entry in entries.flatten() {
                 if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if name_str.starts_with('.') {
+                        continue;
+                    }
                     let path = entry.path();
                     if let Ok(rel) = path.strip_prefix(vault_path) {
                         let rel_str = rel.to_string_lossy().to_string();
@@ -776,6 +786,11 @@ pub fn run_cold_boot_scan(conn: &Connection, vault_path: &Path) -> Result<(), No
 
     for path_res in rows {
         if let Ok(path) = path_res {
+            let path_lower = path.to_lowercase();
+            if path_lower.ends_with(".ds_store") || path_lower.contains("/.") {
+                let _ = conn.execute("DELETE FROM sync_file_states WHERE path = ?1", [&path]);
+                continue;
+            }
             if path.starts_with(".noda/sync/") {
                 continue;
             }
