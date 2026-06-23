@@ -1392,3 +1392,17 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
     - Modified directory scan loops for attachments and history inside `run_cold_boot_scan` in `crates/core/src/database/queries.rs` to skip files starting with `.`.
     - Added an automatic purge step in the deleted local files section of the cold boot scan to execute a `DELETE FROM sync_file_states WHERE path = ?1` whenever it encounters any database entry matching `.DS_Store` or containing `/.`, instantly removing existing system clutter from the local DB.
     - Updated `crates/core/src/sync/engine.rs` to ignore `.DS_Store` and hidden files from both `deleted_paths` and `changed_paths` when resolving remote sync actions derived from peer manifests. This completely prevents background sync threads from downloading or uploading `.DS_Store` files.
+
+---
+
+## 65. NodaNotes High-Performance Landing Page Creation (June 2026)
+
+- **Landing Page Mapped to Svelte Kit static adapter:**
+  - **Problem:** The user requested a highly professional, visually rich, and modern landing page for NodaNotes that can be hosted for free on Netlify/Vercel.
+  - **Solution:**
+    - Scaffolded a new Svelte 5 application under `landing/` using Vite and `@sveltejs/adapter-static` for optimal performance.
+    - Set up a robust layout configuration `landing/src/routes/+layout.ts` to prerender all pages statically (`prerender = true`, `ssr = false`).
+    - Crafted a dark-mode first design system in `landing/src/routes/index.css` using modern typography (Google Fonts Outfit & JetBrains Mono), smooth transition curves, CAM-morphy layouts, and vibrant gradient/glow aesthetics.
+    - Implemented a fully responsive layout in `landing/src/routes/+page.svelte` featuring a hero mockup displaying a simplified version of Noda's workspace, file listing, and markdown editor, a features grid, an interactive architecture viewer simulating Rust Core logic blocks (Fast-Check, Filesystem-first, encryption, history), a screenshot listing specification, and responsive download controls.
+    - Exported the official logo from the root repository (`noda_new_logo.png` renamed to `landing/static/logo.png`) to be utilized across the page header and footers.
+    - Created `netlify.toml` in the root workspace directory with pre-configured build command `bun run build` and publish directory `landing/build` to provide seamless zero-config Netlify deployments.
