@@ -60,8 +60,28 @@ tags: ["rust", "architecture"]
 </script>
 
 <svelte:head>
-	<title>NodaNotes — High Performance Markdown Vault</title>
-	<meta name="description" content="Local-first markdown notes application powered by a standalone Rust core engine." />
+	<title>NodaNotes — High Performance Local-First Markdown Note Application</title>
+	<meta name="description" content="NodaNotes is a secure, local-first markdown note-taking application powered by a standalone Rust core engine. Synced via WebDAV in 0.1s with hardware-level encryption." />
+	<meta name="keywords" content="NodaNotes, markdown notes, local first note app, WebDAV sync, Rust notes app, Tauri notes application, private markdown editor, offline notes tool" />
+	
+	<!-- Canonical Link -->
+	<link rel="canonical" href="https://nodanotes.netlify.app/" />
+
+	<!-- Open Graph / Facebook -->
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content="https://nodanotes.netlify.app/" />
+	<meta property="og:title" content="NodaNotes — High Performance Local-First Markdown Note Application" />
+	<meta property="og:description" content="Secure, local-first markdown note-taking powered by a standalone Rust core engine. Synced via WebDAV in 0.1s with hardware-level encryption." />
+	<meta property="og:image" content="https://nodanotes.netlify.app/logo.png" />
+
+	<!-- Twitter -->
+	<meta property="twitter:card" content="summary_large_image" />
+	<meta property="twitter:url" content="https://nodanotes.netlify.app/" />
+	<meta property="twitter:title" content="NodaNotes — High Performance Local-First Markdown Note Application" />
+	<meta property="twitter:description" content="Secure, local-first markdown note-taking powered by a standalone Rust core engine. Synced via WebDAV in 0.1s with hardware-level encryption." />
+	<meta property="twitter:image" content="https://nodanotes.netlify.app/logo.png" />
+
+	<meta name="robots" content="index, follow" />
 </svelte:head>
 
 <!-- Premium Editorial Navbar -->
