@@ -45,6 +45,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _isPasswordConfigured = MutableStateFlow(false)
     val isPasswordConfigured: StateFlow<Boolean> = _isPasswordConfigured.asStateFlow()
 
+    private val _updateInterval = MutableStateFlow(preferences.getUpdateInterval())
+    val updateInterval: StateFlow<String> = _updateInterval.asStateFlow()
+
+    private val _isCheckingUpdate = MutableStateFlow(false)
+    val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
+
+    fun updateUpdateInterval(interval: String) {
+        preferences.saveUpdateInterval(interval)
+        _updateInterval.value = interval
+    }
+
+    fun triggerManualUpdateCheck(onComplete: (com.bubi.nodanotes.data.model.UpdateState) -> Unit) {
+        viewModelScope.launch {
+            _isCheckingUpdate.value = true
+            val result = com.bubi.nodanotes.data.repository.UpdateManager.checkForUpdates(getApplication(), force = true)
+            _isCheckingUpdate.value = false
+            onComplete(result)
+        }
+    }
+
     init {
         loadSettings()
         loadTemplates()

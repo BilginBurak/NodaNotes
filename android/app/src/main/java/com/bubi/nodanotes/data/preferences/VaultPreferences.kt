@@ -41,6 +41,24 @@ class VaultPreferences(private val context: Context) {
         private const val KEY_WEBDAV_PASSWORD = "webdav_password"
         private const val KEY_RECENT_VAULTS = "recent_vaults"
         private const val KEY_RECENT_SEARCHES = "recent_searches"
+        private const val KEY_UPDATE_INTERVAL = "update_interval"
+        private const val KEY_LAST_UPDATE_CHECK_TIME = "last_update_check_time"
+    }
+
+    fun getUpdateInterval(): String {
+        return sharedPrefs.getString(KEY_UPDATE_INTERVAL, "Daily") ?: "Daily"
+    }
+
+    fun saveUpdateInterval(interval: String) {
+        sharedPrefs.edit().putString(KEY_UPDATE_INTERVAL, interval).apply()
+    }
+
+    fun getLastUpdateCheckTime(): Long {
+        return sharedPrefs.getLong(KEY_LAST_UPDATE_CHECK_TIME, 0L)
+    }
+
+    fun saveLastUpdateCheckTime(timestampMs: Long) {
+        sharedPrefs.edit().putLong(KEY_LAST_UPDATE_CHECK_TIME, timestampMs).apply()
     }
 
     fun saveLastSyncTime(timestampMs: Long) {

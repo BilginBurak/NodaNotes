@@ -7,6 +7,12 @@
 
 # Handle fallback routing for SPA redirects if needed
 [[redirects]]
+  from = "/api/update"
+  to = "https://api.github.com/repos/BilginBurak/NodaNotes/releases/latest"
+  status = 302
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

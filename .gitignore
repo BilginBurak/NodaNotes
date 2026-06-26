@@ -14,5 +14,6 @@ Icon
 /frontend/node_modules
 /frontend/.svelte-kit
 /target
+/.agent
 
 

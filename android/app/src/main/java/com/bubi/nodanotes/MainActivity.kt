@@ -8,10 +8,8 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.bubi.nodanotes.data.preferences.VaultPreferences
@@ -22,15 +20,23 @@ import java.io.File
 
 import com.bubi.nodanotes.ui.components.NodaAppShell
 import androidx.lifecycle.lifecycleScope
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.*
 import android.content.SharedPreferences
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
+import com.bubi.nodanotes.data.repository.UpdateManager
+import com.bubi.nodanotes.data.model.UpdateState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 class MainActivity : ComponentActivity() {
 
@@ -41,6 +47,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         vaultPreferences = VaultPreferences(this)
+
+        // Initialize UpdateManager and trigger update check on startup
+        UpdateManager.init(this)
+        lifecycleScope.launch(Dispatchers.IO) {
+            UpdateManager.checkForUpdates(this@MainActivity)
+        }
 
         // Request "All Files Access" if not already granted (required for vault access)
         if (!Environment.isExternalStorageManager()) {
@@ -92,13 +104,26 @@ class MainActivity : ComponentActivity() {
                 "light" -> false
                 else -> androidx.compose.foundation.isSystemInDarkTheme()
             }
+            
+            val updateState by UpdateManager.updateState.collectAsState()
+
             NodaTheme(darkTheme = darkTheme) {
-                val navController = rememberNavController()
-                NodaAppShell(
-                    navController = navController,
-                    startDestination = startDestination,
-                    vaultPreferences = vaultPreferences
-                )
+                when (val state = updateState) {
+                    is UpdateState.MandatoryUpdate -> {
+                        ZenUpdateScreen(
+                            tagName = state.tagName,
+                            apkUrl = state.apkUrl
+                        )
+                    }
+                    else -> {
+                        val navController = rememberNavController()
+                        NodaAppShell(
+                            navController = navController,
+                            startDestination = startDestination,
+                            vaultPreferences = vaultPreferences
+                        )
+                    }
+                }
             }
         }
     }
@@ -165,5 +190,102 @@ class MainActivity : ComponentActivity() {
     private fun stopAutoSyncLoop() {
         autoSyncJob?.cancel()
         autoSyncJob = null
+    }
+
+    @Composable
+    private fun ZenUpdateScreen(tagName: String, apkUrl: String) {
+        // Completely disable back button navigation
+        BackHandler(enabled = true) {}
+
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val scope = rememberCoroutineScope()
+        var isDownloading by remember { mutableStateOf(false) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SystemUpdate,
+                        contentDescription = "Security Update Required",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(72.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Text(
+                        text = "A mandatory security update is required to preserve local data integrity. Please update NodaNotes to continue.",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 24.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Button(
+                        onClick = {
+                            if (!isDownloading) {
+                                isDownloading = true
+                                errorMessage = null
+                                scope.launch {
+                                    val file = UpdateManager.downloadApk(context, apkUrl)
+                                    isDownloading = false
+                                    if (file != null) {
+                                        UpdateManager.installApk(context, file)
+                                    } else {
+                                        errorMessage = "Download failed. Please check your network connection."
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isDownloading,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.8f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        if (isDownloading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Downloading Update...", fontSize = 15.sp)
+                        } else {
+                            Text("Download and Install Update", fontSize = 15.sp)
+                        }
+                    }
+
+                    errorMessage?.let { error ->
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
     }
 }

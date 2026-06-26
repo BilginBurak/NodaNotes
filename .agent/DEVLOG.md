@@ -1406,3 +1406,23 @@ To move NodaNotes Android away from standard Material 3 boilerplate, we executed
     - Implemented a fully responsive layout in `landing/src/routes/+page.svelte` featuring a hero mockup displaying a simplified version of Noda's workspace, file listing, and markdown editor, a features grid, an interactive architecture viewer simulating Rust Core logic blocks (Fast-Check, Filesystem-first, encryption, history), a screenshot listing specification, and responsive download controls.
     - Exported the official logo from the root repository (`noda_new_logo.png` renamed to `landing/static/logo.png`) to be utilized across the page header and footers.
     - Created `netlify.toml` in the root workspace directory with pre-configured build command `bun run build` and publish directory `landing/build` to provide seamless zero-config Netlify deployments.
+
+---
+
+## 66. Dynamic Versioning & Zen Installer Engine (June 2026)
+
+- **Version Validation & Enforcement Triage Matrix:**
+  - **Problem:** Static version files required manual code edits and site redeployments for every release, and there was no way to represent `min_required` version rules directly on GitHub Releases.
+  - **Solution:**
+    - Configured SvelteKit static site redirects in `landing/netlify.toml` to dynamically proxy `/api/update` via a 302 redirect directly to the GitHub Releases API (`https://api.github.com/repos/BilginBurak/NodaNotes/releases/latest`).
+    - Adapted Kotlin data models to parse the official GitHub API response (`GitHubReleaseResponse` and `GitHubAsset`).
+    - Added a User-Agent request header `"NodaNotes-Android"` to ensure API request authenticity and prevent GitHub from rejecting/blocking updates.
+    - Implemented regex extraction in `UpdateManager.kt` using `"<!--\\s*min_required:\\s*\"?([^\"]+?)\"?\\s*-->"` to parse mandatory updates (`min_required`) dynamically from the release body comments.
+- **Japandi Zen UI Guard & Theme Tokens Compliance:**
+  - **Problem:** Writing hardcoded color tokens (`#1A1A1A`) in the Compose layer violated theme rules and caused visibility issues in dark mode.
+  - **Solution:** Removed all hardcoded hex tokens from `MainActivity.kt`. Re-wired text rendering to utilize `MaterialTheme.colorScheme.onBackground` to cleanly support light and dark theme transitions automatically.
+- **Background Stream Installer & Cache Cleanup:**
+  - **Problem:** Leftover update packages occupied storage volume, and hardcoding index selections (`assets[0]`) risked installing wrong CPU architecture payloads.
+  - **Solution:**
+    - Structured automatic cache purges of `.apk` assets during cold boot scans and prior to any new download, while using secure `FileProvider` pointers to execute the platform PackageInstaller.
+    - Implemented a 4-tier asset selector (`selectBestAsset` in `UpdateManager.kt`) utilizing `Build.SUPPORTED_ABIS` at runtime to match device CPU architecture priorities against target release filenames. Falls back to `"universal"` APK payloads, raw `.apk` suffix filters, or the first available download asset url to prevent installation failures.

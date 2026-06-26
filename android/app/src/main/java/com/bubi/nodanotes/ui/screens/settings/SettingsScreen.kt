@@ -22,8 +22,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bubi.nodanotes.data.model.SettingsDto
+import com.bubi.nodanotes.data.repository.UpdateManager
+import com.bubi.nodanotes.data.model.UpdateState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,7 +37,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableStateOf(0) }
-    val tabTitles = listOf("Appearance", "Editor", "Sync", "History", "Templates", "Vaults", "Maintenance", "Security")
+    val tabTitles = listOf("Appearance", "Editor", "Sync", "History", "Templates", "Vaults", "Maintenance", "Security", "Updates")
 
     Scaffold(
         topBar = {
@@ -91,6 +94,7 @@ fun SettingsScreen(
                             5 -> VaultsTab(state.recentVaults, state.currentVault, onNavigateToVaultSelector)
                             6 -> MaintenanceTab()
                             7 -> SecurityTab(viewModel)
+                            8 -> UpdatesTab(viewModel)
                         }
                     }
                     is SettingsUiState.Error -> {
@@ -1198,6 +1202,193 @@ fun SecurityTab(viewModel: SettingsViewModel) {
                                 timeoutExpanded = false
                             }
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UpdatesTab(viewModel: SettingsViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
+
+    val updateInterval by viewModel.updateInterval.collectAsState()
+    val isChecking by viewModel.isCheckingUpdate.collectAsState()
+    val globalUpdateState by UpdateManager.updateState.collectAsState()
+
+    var checkResultMessage by remember { mutableStateOf<String?>(null) }
+    var isDownloading by remember { mutableStateOf(false) }
+
+    val intervalOptions = listOf("Every Entry", "Hourly", "Daily", "Weekly")
+    var intervalExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "App Update Settings",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        // Interval Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Update Validation Interval",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Configure how often the application checks for updates automatically.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Box {
+                    OutlinedCard(
+                        onClick = { intervalExpanded = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(updateInterval, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = intervalExpanded,
+                        onDismissRequest = { intervalExpanded = false }
+                    ) {
+                        intervalOptions.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = {
+                                    viewModel.updateUpdateInterval(option)
+                                    intervalExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Manual Check Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Check for Updates",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Manually query the server proxy to verify if a newer application package is available.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        checkResultMessage = null
+                        viewModel.triggerManualUpdateCheck { result ->
+                            checkResultMessage = when (result) {
+                                is UpdateState.NoUpdate -> "NodaNotes is up to date."
+                                is UpdateState.FlexibleUpdate -> "Optional update available: Version ${result.tagName}"
+                                is UpdateState.MandatoryUpdate -> "Mandatory update required: Version ${result.tagName}"
+                            }
+                        }
+                    },
+                    enabled = !isChecking && !isDownloading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isChecking) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Checking...")
+                    } else {
+                        Text("Check for Updates")
+                    }
+                }
+
+                checkResultMessage?.let { msg ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = msg,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // If flexible update is available, offer direct download in Settings grid
+                if (globalUpdateState is UpdateState.FlexibleUpdate) {
+                    val flexState = globalUpdateState as UpdateState.FlexibleUpdate
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "New Optional Version: ${flexState.tagName}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        onClick = {
+                            isDownloading = true
+                            scope.launch {
+                                val file = UpdateManager.downloadApk(context, flexState.apkUrl)
+                                isDownloading = false
+                                if (file != null) {
+                                    UpdateManager.installApk(context, file)
+                                } else {
+                                    checkResultMessage = "Failed to download update APK."
+                                }
+                            }
+                        },
+                        enabled = !isDownloading,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isDownloading) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Downloading...")
+                        } else {
+                            Text("Download and Install Now")
+                        }
                     }
                 }
             }

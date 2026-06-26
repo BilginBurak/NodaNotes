@@ -29,6 +29,8 @@ import com.bubi.nodanotes.data.preferences.VaultPreferences
 import com.bubi.nodanotes.ui.navigation.NodaNavGraph
 import com.bubi.nodanotes.ui.navigation.Screen
 import kotlinx.coroutines.launch
+import com.bubi.nodanotes.data.repository.UpdateManager
+import com.bubi.nodanotes.data.model.UpdateState
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.graphicsLayer
@@ -554,9 +556,21 @@ fun NodaAppShell(
                             )
 
                             // Settings
+                            val updateState by UpdateManager.updateState.collectAsState()
+                            val isUpdateAvailable = updateState is UpdateState.FlexibleUpdate
                             NavigationDrawerItem(
                                 icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 label = { Text("Settings", fontSize = 15.sp) },
+                                badge = {
+                                    if (isUpdateAvailable) {
+                                        Badge(
+                                            containerColor = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.padding(end = 4.dp)
+                                        ) {
+                                            Text("!", color = MaterialTheme.colorScheme.onError, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                },
                                 selected = currentRoute == Screen.Settings.route,
                                 onClick = {
                                     scope.launch { drawerState.close() }
