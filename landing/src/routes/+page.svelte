@@ -50,6 +50,8 @@ tags: ["rust", "architecture"]
 		}
 	];
 
+	let activeScreenshotTab = $state('desktop');
+
 	onMount(() => {
 		const handleScroll = () => {
 			scrolled = window.scrollY > 40;
@@ -221,53 +223,127 @@ tags: ["rust", "architecture"]
 	</div>
 </section>
 
-<!-- High Quality Product Shots Mockup list (Sober design, no decoration) -->
+<!-- Interactive Screenshot Showcases Section -->
 <section id="specs" class="section-container border-top">
 	<div class="editorial-row">
 		<div class="col-title">
-			<span class="section-label">03 / INTERFACE SPECIFICATIONS</span>
-			<h2>Documented Layouts</h2>
+			<span class="section-label">03 / INTERFACE SHOWCASES</span>
+			<h2>Visualizing NodaNotes</h2>
 		</div>
 		<div class="col-content">
-			<p>To finalize the website design, prepare the following high-contrast screenshots of the active codebase:</p>
+			<p>Explore the premium, highly-polished user interface of NodaNotes across desktop, mobile, and browser extensions.</p>
 		</div>
 	</div>
 
-	<div class="specs-grid">
-		<div class="spec-item">
-			<div class="spec-header-meta">
-				<span class="meta-label">SCREENSHOT 1</span>
-				<span class="meta-platform">macOS Desktop</span>
-			</div>
-			<h4>CodeMirror 6 Editor Layout</h4>
-			<p>A full view of the three-panel layout showing the Markdown editor, syntax highlighting, and live rendering preview.</p>
-		</div>
-		
-		<div class="spec-item">
-			<div class="spec-header-meta">
-				<span class="meta-label">SCREENSHOT 2</span>
-				<span class="meta-platform">Android Mobile</span>
-			</div>
-			<h4>Jetpack Compose Interface</h4>
-			<p>The mobile note editor running in dark mode, showing the system-integrated Monet primary color tinting.</p>
+	<div class="screenshot-gallery-container">
+		<div class="gallery-tabs">
+			<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'desktop'} onclick={() => activeScreenshotTab = 'desktop'}>macOS Desktop</button>
+			<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'mobile'} onclick={() => activeScreenshotTab = 'mobile'}>Android Mobile</button>
+			<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'clipper'} onclick={() => activeScreenshotTab = 'clipper'}>Web Clipper</button>
 		</div>
 
-		<div class="spec-item">
-			<div class="spec-header-meta">
-				<span class="meta-label">SCREENSHOT 3</span>
-				<span class="meta-platform">Shared UI</span>
-			</div>
-			<h4>Calendar Dialogue and Daily Notes</h4>
-			<p>The monthly calendar grid UI, illustrating days marked with existing daily note indicators.</p>
-		</div>
-
-		<div class="spec-item">
-			<div class="spec-header-meta">
-				<span class="meta-label">SCREENSHOT 4</span>
-				<span class="meta-platform">Shared UI</span>
-			</div>
-			<h4>Visual Version Comparison (Diff)</h4>
-			<p>The difference layout displaying deleted (red) and inserted (green) lines of code from historic snapshots.</p>
+		<div class="gallery-content">
+			{#if activeScreenshotTab === 'desktop'}
+				<div class="desktop-gallery-grid">
+					<div class="gallery-item large-item">
+						<img src="/assets/screenshots/desktop/desktop_main.png" alt="Desktop Main Interface" />
+						<div class="gallery-item-info">
+							<h4>Dual-Panel Workspace</h4>
+							<p>Clean layout containing files sidebar, note lists, and the core distraction-free editor.</p>
+						</div>
+					</div>
+					<div class="gallery-item">
+						<img src="/assets/screenshots/desktop/desktop_livePreviewEditor.png" alt="Live Preview Markdown Editor" />
+						<div class="gallery-item-info">
+							<h4>CodeMirror 6 Editor</h4>
+							<p>Rich syntax highlighting alongside live side-by-side preview rendering.</p>
+						</div>
+					</div>
+					<div class="gallery-item">
+						<img src="/assets/screenshots/desktop/desktop_versionHistoryDiff.png" alt="Visual Diff History" />
+						<div class="gallery-item-info">
+							<h4>Git-Style Diff Viewer</h4>
+							<p>Visually compare line changes between different snapshots in note history.</p>
+						</div>
+					</div>
+					<div class="gallery-item">
+						<img src="/assets/screenshots/desktop/desktop_syncSettings.png" alt="WebDAV Sync Settings" />
+						<div class="gallery-item-info">
+							<h4>Cloud Synchronization</h4>
+							<p>Fast WebDAV connection setup using hardware-level keychain tokens.</p>
+						</div>
+					</div>
+					<div class="gallery-item">
+						<img src="/assets/screenshots/desktop/desktop_readingMode.png" alt="Reading Mode Preview" />
+						<div class="gallery-item-info">
+							<h4>Pure Reading Mode</h4>
+							<p>Hides editing interfaces entirely for a premium publication-like viewing experience.</p>
+						</div>
+					</div>
+				</div>
+			{:else if activeScreenshotTab === 'mobile'}
+				<div class="mobile-gallery-grid">
+					<div class="gallery-item mobile-item">
+						<img src="/assets/screenshots/mobile/mobile_Main.jpg" alt="Mobile Main Notes List" />
+						<div class="gallery-item-info">
+							<h4>Main Workspace</h4>
+							<p>Clean dashboard with instant search, pinning, and folder hierarchy navigation.</p>
+						</div>
+					</div>
+					<div class="gallery-item mobile-item">
+						<img src="/assets/screenshots/mobile/mobile_writeMode.jpg" alt="Jetpack Compose Editor" />
+						<div class="gallery-item-info">
+							<h4>Distraction-Free Editor</h4>
+							<p>Writing mode with system-integrated Monet primary color themes.</p>
+						</div>
+					</div>
+					<div class="gallery-item mobile-item">
+						<img src="/assets/screenshots/mobile/mobile_calendar.jpg" alt="Interactive Calendar Dialogue" />
+						<div class="gallery-item-info">
+							<h4>Interactive Calendar</h4>
+							<p>View daily logs and reflections directly mapped onto a calendar interface.</p>
+						</div>
+					</div>
+					<div class="gallery-item mobile-item">
+						<img src="/assets/screenshots/mobile/mobile_syncReport.jpg" alt="Sync Diagnostics" />
+						<div class="gallery-item-info">
+							<h4>Sync Diagnostics</h4>
+							<p>Detailed performance report of zero-byte WebDAV sync operations.</p>
+						</div>
+					</div>
+					<div class="gallery-item mobile-item">
+						<img src="/assets/screenshots/mobile/mobile_versionHistory.jpg" alt="Mobile Version History" />
+						<div class="gallery-item-info">
+							<h4>Flat History Logs</h4>
+							<p>Review and restore from physical snapshots saved in the local history folder.</p>
+						</div>
+					</div>
+					<div class="gallery-item mobile-item">
+						<img src="/assets/screenshots/mobile/mobile_sidebar_detailed.jpg" alt="Mobile Sidebar" />
+						<div class="gallery-item-info">
+							<h4>Sidebar Navigation</h4>
+							<p>Quick access to tags, folders, trash bin, and settings pages.</p>
+						</div>
+					</div>
+				</div>
+			{:else if activeScreenshotTab === 'clipper'}
+				<div class="clipper-gallery-grid">
+					<div class="gallery-item large-item">
+						<img src="/assets/screenshots/clipper/clipper_clippingAllPage.png" alt="Safari Web Clipper Parsing" />
+						<div class="gallery-item-info">
+							<h4>Full DOM Parsing</h4>
+							<p>Select, filter, and extract whole web pages into optimized markdown content.</p>
+						</div>
+					</div>
+					<div class="gallery-item large-item">
+						<img src="/assets/screenshots/clipper/clipper_clippedNote.png" alt="Parsed Markdown Preview" />
+						<div class="gallery-item-info">
+							<h4>Formatted Markdown Output</h4>
+							<p>Clean rendering preview of parsed links, images, tables, and frontmatter metadata.</p>
+						</div>
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 </section>
@@ -768,36 +844,100 @@ tags: ["rust", "architecture"]
 		white-space: pre;
 	}
 
-	/* Specs Grid */
-	.specs-grid {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 40px;
+	/* Screenshot Gallery */
+	.screenshot-gallery-container {
+		display: flex;
+		flex-direction: column;
+		gap: 30px;
+		margin-top: 40px;
 	}
-	.spec-item {
+	.gallery-tabs {
+		display: flex;
+		gap: 12px;
+		border-bottom: 1px solid var(--border-color);
+		padding-bottom: 16px;
+	}
+	.gallery-tab-btn {
+		background: transparent;
+		border: 1px solid var(--border-color);
+		color: var(--text-secondary);
+		padding: 10px 20px;
+		border-radius: 4px;
+		font-weight: 500;
+		font-size: 0.9rem;
+		cursor: pointer;
+		transition: var(--transition-minimal);
+	}
+	.gallery-tab-btn:hover {
+		color: var(--text-primary);
+		border-color: var(--border-focus);
+	}
+	.gallery-tab-btn.active {
+		background: var(--text-primary);
+		color: var(--bg-base);
+		border-color: var(--text-primary);
+		font-weight: 600;
+	}
+	.gallery-content {
+		width: 100%;
+	}
+	.desktop-gallery-grid, .clipper-gallery-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 30px;
+	}
+	.mobile-gallery-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 30px;
+	}
+	.gallery-item.large-item {
+		grid-column: span 2;
+	}
+	.gallery-item {
 		background: var(--bg-surface);
 		border: 1px solid var(--border-color);
-		padding: 30px;
-		border-radius: 6px;
-	}
-	.spec-header-meta {
+		border-radius: 8px;
+		overflow: hidden;
+		transition: var(--transition-minimal);
 		display: flex;
-		justify-content: space-between;
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		margin-bottom: 20px;
-		color: var(--text-muted);
+		flex-direction: column;
+		height: 100%;
 	}
-	.meta-label {
-		color: var(--accent-orange);
+	.gallery-item:hover {
+		border-color: var(--border-focus);
+		transform: translateY(-2px);
+		box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
 	}
-	.spec-item h4 {
-		font-size: 1.15rem;
+	.gallery-item img {
+		width: 100%;
+		height: auto;
+		object-fit: cover;
+		border-bottom: 1px solid var(--border-color);
+		background: #000;
+	}
+	/* Limit portrait mobile images from being excessively tall */
+	.mobile-gallery-grid .gallery-item img {
+		max-height: 520px;
+		object-position: top;
+	}
+	.gallery-item-info {
+		padding: 20px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.gallery-item-info h4 {
+		font-size: 1.1rem;
 		font-weight: 700;
-		margin-bottom: 10px;
+		color: var(--text-primary);
+		margin: 0;
 	}
-	.spec-item p {
-		font-size: 0.9rem;
+	.gallery-item-info p {
+		font-size: 0.85rem;
+		color: var(--text-secondary);
+		line-height: 1.5;
+		margin: 0;
 	}
 
 	/* Download Block */
