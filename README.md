@@ -24,7 +24,7 @@ A premium, local-first, markdown-based note-taking application designed for abso
 ### 📱 Android Mobile App (Native Kotlin + Jetpack Compose)
 <p align="center">
   <img src="landing/static/assets/screenshots/mobile/mobile_Main.webp" width="32%" alt="Mobile Main Feed" loading="lazy" />
-  <img src="landing/static/assets/screenshots/mobile/mobile_writeMode.webp" width="32%" alt="Monet Editor Dark Mode" loading="lazy" />
+  <img src="landing/static/assets/screenshots/mobile/mobile_readMode.webp" width="32%" alt="Monet Editor Dark Mode" loading="lazy" />
   <img src="landing/static/assets/screenshots/mobile/mobile_calendar.webp" width="32%" alt="Interactive Calendar Daily Notes" loading="lazy" />
 </p>
 <p align="center">
