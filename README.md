@@ -13,30 +13,30 @@ A premium, local-first, markdown-based note-taking application designed for abso
 
 ### 💻 macOS & Desktop Client (Tauri + SvelteKit)
 <p align="center">
-  <img src="landing/static/assets/screenshots/desktop/desktop_main.png" width="49%" alt="Desktop Main Shell" />
-  <img src="landing/static/assets/screenshots/desktop/desktop_livePreviewEditor.png" width="49%" alt="Live Preview Markdown Editor" />
+  <img src="landing/static/assets/screenshots/desktop/desktop_main.webp" width="49%" alt="Desktop Main Shell" loading="lazy" />
+  <img src="landing/static/assets/screenshots/desktop/desktop_livePreviewEditor.webp" width="49%" alt="Live Preview Markdown Editor" loading="lazy" />
 </p>
 <p align="center">
-  <img src="landing/static/assets/screenshots/desktop/desktop_versionHistoryDiff.png" width="49%" alt="Visual Git-like Diff Version History" />
-  <img src="landing/static/assets/screenshots/desktop/desktop_syncSettings.png" width="49%" alt="WebDAV Sync Configuration" />
+  <img src="landing/static/assets/screenshots/desktop/desktop_versionHistoryDiff.webp" width="49%" alt="Visual Git-like Diff Version History" loading="lazy" />
+  <img src="landing/static/assets/screenshots/desktop/desktop_syncSettings.webp" width="49%" alt="WebDAV Sync Configuration" loading="lazy" />
 </p>
 
 ### 📱 Android Mobile App (Native Kotlin + Jetpack Compose)
 <p align="center">
-  <img src="landing/static/assets/screenshots/mobile/mobile_Main.jpg" width="32%" alt="Mobile Main Feed" />
-  <img src="landing/static/assets/screenshots/mobile/mobile_writeMode.jpg" width="32%" alt="Monet Editor Dark Mode" />
-  <img src="landing/static/assets/screenshots/mobile/mobile_calendar.jpg" width="32%" alt="Interactive Calendar Daily Notes" />
+  <img src="landing/static/assets/screenshots/mobile/mobile_Main.webp" width="32%" alt="Mobile Main Feed" loading="lazy" />
+  <img src="landing/static/assets/screenshots/mobile/mobile_writeMode.webp" width="32%" alt="Monet Editor Dark Mode" loading="lazy" />
+  <img src="landing/static/assets/screenshots/mobile/mobile_calendar.webp" width="32%" alt="Interactive Calendar Daily Notes" loading="lazy" />
 </p>
 <p align="center">
-  <img src="landing/static/assets/screenshots/mobile/mobile_sidebar_detailed.jpg" width="32%" alt="Navigation Drawer" />
-  <img src="landing/static/assets/screenshots/mobile/mobile_syncReport.jpg" width="32%" alt="Detailed Synchronization Report" />
-  <img src="landing/static/assets/screenshots/mobile/mobile_versionHistory.jpg" width="32%" alt="Flat Snapshot History Viewer" />
+  <img src="landing/static/assets/screenshots/mobile/mobile_sidebar_detailed.webp" width="32%" alt="Navigation Drawer" loading="lazy" />
+  <img src="landing/static/assets/screenshots/mobile/mobile_syncReport.webp" width="32%" alt="Detailed Synchronization Report" loading="lazy" />
+  <img src="landing/static/assets/screenshots/mobile/mobile_versionHistory.webp" width="32%" alt="Flat Snapshot History Viewer" loading="lazy" />
 </p>
 
 ### 🧭 Safari Native Web Clipper Extension
 <p align="center">
-  <img src="landing/static/assets/screenshots/clipper/clipper_clippingAllPage.png" width="49%" alt="Clipper Parsing Full DOM" />
-  <img src="landing/static/assets/screenshots/clipper/clipper_clippedNote.png" width="49%" alt="Parsed Markdown Preview" />
+  <img src="landing/static/assets/screenshots/clipper/clipper_clippingAllPage.webp" width="49%" alt="Clipper Parsing Full DOM" loading="lazy" />
+  <img src="landing/static/assets/screenshots/clipper/clipper_clippedNote.webp" width="49%" alt="Parsed Markdown Preview" loading="lazy" />
 </p>
 
 ---

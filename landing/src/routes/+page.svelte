@@ -97,6 +97,7 @@ tags: ["rust", "architecture"]
 			<a href="#features">Features</a>
 			<a href="#architecture">Architecture</a>
 			<a href="#specs">Specifications</a>
+			<a href="/gallery">Gallery</a>
 			<a href="#download" class="nav-cta">Download</a>
 		</nav>
 	</div>
@@ -237,44 +238,47 @@ tags: ["rust", "architecture"]
 
 	<div class="screenshot-gallery-container">
 		<div class="gallery-tabs">
-			<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'desktop'} onclick={() => activeScreenshotTab = 'desktop'}>macOS Desktop</button>
-			<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'mobile'} onclick={() => activeScreenshotTab = 'mobile'}>Android Mobile</button>
-			<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'clipper'} onclick={() => activeScreenshotTab = 'clipper'}>Web Clipper</button>
+			<div class="tabs-left">
+				<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'desktop'} onclick={() => activeScreenshotTab = 'desktop'}>macOS Desktop</button>
+				<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'mobile'} onclick={() => activeScreenshotTab = 'mobile'}>Android Mobile</button>
+				<button class="gallery-tab-btn" class:active={activeScreenshotTab === 'clipper'} onclick={() => activeScreenshotTab = 'clipper'}>Web Clipper</button>
+			</div>
+			<a href="/gallery" class="view-all-link">View All 36 Screenshots →</a>
 		</div>
 
 		<div class="gallery-content">
 			{#if activeScreenshotTab === 'desktop'}
 				<div class="desktop-gallery-grid">
 					<div class="gallery-item large-item">
-						<img src="/assets/screenshots/desktop/desktop_main.png" alt="Desktop Main Interface" />
+						<img src="/assets/screenshots/desktop/desktop_main.webp" alt="Desktop Main Interface" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Dual-Panel Workspace</h4>
 							<p>Clean layout containing files sidebar, note lists, and the core distraction-free editor.</p>
 						</div>
 					</div>
 					<div class="gallery-item">
-						<img src="/assets/screenshots/desktop/desktop_livePreviewEditor.png" alt="Live Preview Markdown Editor" />
+						<img src="/assets/screenshots/desktop/desktop_livePreviewEditor.webp" alt="Live Preview Markdown Editor" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>CodeMirror 6 Editor</h4>
 							<p>Rich syntax highlighting alongside live side-by-side preview rendering.</p>
 						</div>
 					</div>
 					<div class="gallery-item">
-						<img src="/assets/screenshots/desktop/desktop_versionHistoryDiff.png" alt="Visual Diff History" />
+						<img src="/assets/screenshots/desktop/desktop_versionHistoryDiff.webp" alt="Visual Diff History" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Git-Style Diff Viewer</h4>
 							<p>Visually compare line changes between different snapshots in note history.</p>
 						</div>
 					</div>
 					<div class="gallery-item">
-						<img src="/assets/screenshots/desktop/desktop_syncSettings.png" alt="WebDAV Sync Settings" />
+						<img src="/assets/screenshots/desktop/desktop_syncSettings.webp" alt="WebDAV Sync Settings" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Cloud Synchronization</h4>
 							<p>Fast WebDAV connection setup using hardware-level keychain tokens.</p>
 						</div>
 					</div>
 					<div class="gallery-item">
-						<img src="/assets/screenshots/desktop/desktop_readingMode.png" alt="Reading Mode Preview" />
+						<img src="/assets/screenshots/desktop/desktop_readingMode.webp" alt="Reading Mode Preview" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Pure Reading Mode</h4>
 							<p>Hides editing interfaces entirely for a premium publication-like viewing experience.</p>
@@ -284,42 +288,42 @@ tags: ["rust", "architecture"]
 			{:else if activeScreenshotTab === 'mobile'}
 				<div class="mobile-gallery-grid">
 					<div class="gallery-item mobile-item">
-						<img src="/assets/screenshots/mobile/mobile_Main.jpg" alt="Mobile Main Notes List" />
+						<img src="/assets/screenshots/mobile/mobile_Main.webp" alt="Mobile Main Notes List" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Main Workspace</h4>
 							<p>Clean dashboard with instant search, pinning, and folder hierarchy navigation.</p>
 						</div>
 					</div>
 					<div class="gallery-item mobile-item">
-						<img src="/assets/screenshots/mobile/mobile_writeMode.jpg" alt="Jetpack Compose Editor" />
+						<img src="/assets/screenshots/mobile/mobile_writeMode.webp" alt="Jetpack Compose Editor" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Distraction-Free Editor</h4>
 							<p>Writing mode with system-integrated Monet primary color themes.</p>
 						</div>
 					</div>
 					<div class="gallery-item mobile-item">
-						<img src="/assets/screenshots/mobile/mobile_calendar.jpg" alt="Interactive Calendar Dialogue" />
+						<img src="/assets/screenshots/mobile/mobile_calendar.webp" alt="Interactive Calendar Dialogue" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Interactive Calendar</h4>
 							<p>View daily logs and reflections directly mapped onto a calendar interface.</p>
 						</div>
 					</div>
 					<div class="gallery-item mobile-item">
-						<img src="/assets/screenshots/mobile/mobile_syncReport.jpg" alt="Sync Diagnostics" />
+						<img src="/assets/screenshots/mobile/mobile_syncReport.webp" alt="Sync Diagnostics" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Sync Diagnostics</h4>
 							<p>Detailed performance report of zero-byte WebDAV sync operations.</p>
 						</div>
 					</div>
 					<div class="gallery-item mobile-item">
-						<img src="/assets/screenshots/mobile/mobile_versionHistory.jpg" alt="Mobile Version History" />
+						<img src="/assets/screenshots/mobile/mobile_versionHistory.webp" alt="Mobile Version History" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Flat History Logs</h4>
 							<p>Review and restore from physical snapshots saved in the local history folder.</p>
 						</div>
 					</div>
 					<div class="gallery-item mobile-item">
-						<img src="/assets/screenshots/mobile/mobile_sidebar_detailed.jpg" alt="Mobile Sidebar" />
+						<img src="/assets/screenshots/mobile/mobile_sidebar_detailed.webp" alt="Mobile Sidebar" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Sidebar Navigation</h4>
 							<p>Quick access to tags, folders, trash bin, and settings pages.</p>
@@ -329,14 +333,14 @@ tags: ["rust", "architecture"]
 			{:else if activeScreenshotTab === 'clipper'}
 				<div class="clipper-gallery-grid">
 					<div class="gallery-item large-item">
-						<img src="/assets/screenshots/clipper/clipper_clippingAllPage.png" alt="Safari Web Clipper Parsing" />
+						<img src="/assets/screenshots/clipper/clipper_clippingAllPage.webp" alt="Safari Web Clipper Parsing" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Full DOM Parsing</h4>
 							<p>Select, filter, and extract whole web pages into optimized markdown content.</p>
 						</div>
 					</div>
 					<div class="gallery-item large-item">
-						<img src="/assets/screenshots/clipper/clipper_clippedNote.png" alt="Parsed Markdown Preview" />
+						<img src="/assets/screenshots/clipper/clipper_clippedNote.webp" alt="Parsed Markdown Preview" loading="lazy" />
 						<div class="gallery-item-info">
 							<h4>Formatted Markdown Output</h4>
 							<p>Clean rendering preview of parsed links, images, tables, and frontmatter metadata.</p>
@@ -853,9 +857,28 @@ tags: ["rust", "architecture"]
 	}
 	.gallery-tabs {
 		display: flex;
-		gap: 12px;
+		justify-content: space-between;
+		align-items: center;
 		border-bottom: 1px solid var(--border-color);
 		padding-bottom: 16px;
+		flex-wrap: wrap;
+		gap: 16px;
+	}
+	.tabs-left {
+		display: flex;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	.view-all-link {
+		font-size: 0.95rem;
+		color: var(--accent-orange);
+		text-decoration: none;
+		font-weight: 600;
+		transition: var(--transition-minimal);
+	}
+	.view-all-link:hover {
+		color: var(--text-primary);
+		text-decoration: underline;
 	}
 	.gallery-tab-btn {
 		background: transparent;
