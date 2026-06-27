@@ -1,6 +1,7 @@
 package com.bubi.nodanotes.ui.screens.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -36,6 +37,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val globalUpdateState by UpdateManager.updateState.collectAsState()
+    val isUpdateAvailable = globalUpdateState is UpdateState.FlexibleUpdate
     var selectedTab by remember { mutableStateOf(0) }
     val tabTitles = listOf("Appearance", "Editor", "Sync", "History", "Templates", "Vaults", "Maintenance", "Security", "Updates")
 
@@ -67,7 +70,19 @@ fun SettingsScreen(
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
-                        text = { Text(title, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) }
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(title, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal)
+                                if (title == "Updates" && isUpdateAvailable) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(MaterialTheme.colorScheme.error, shape = androidx.compose.foundation.shape.CircleShape)
+                                    )
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -1226,6 +1241,15 @@ fun UpdatesTab(viewModel: SettingsViewModel) {
     val intervalOptions = listOf("Every Entry", "Hourly", "Daily", "Weekly")
     var intervalExpanded by remember { mutableStateOf(false) }
 
+    val pInfo = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        } catch (e: Exception) {
+            null
+        }
+    }
+    val currentVersion = pInfo?.versionName ?: "Unknown"
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1233,12 +1257,19 @@ fun UpdatesTab(viewModel: SettingsViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "App Update Settings",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
+        Column {
+            Text(
+                text = "App Update Settings",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "Installed Version: $currentVersion",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         // Interval Card
         Card(
