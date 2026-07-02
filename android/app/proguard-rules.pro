@@ -24,3 +24,21 @@
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn javax.annotation.**
 -dontwarn com.google.crypto.tink.**
+
+# Keep the Rust JNI Bridge
+-keep class com.bubi.nodanotes.RustCore { *; }
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Keep all serialization DTO models so JSON mapping doesn't break
+-keep class com.bubi.nodanotes.data.model.** { *; }
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+
+# Keep kotlinx.serialization Companion objects and annotated classes
+-keepclassmembers class * {
+    @kotlinx.serialization.Serializable *;
+}
+-keepclassmembers class * {
+    *** Companion;
+}
