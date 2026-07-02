@@ -36,6 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 class MainActivity : ComponentActivity() {
@@ -112,7 +115,8 @@ class MainActivity : ComponentActivity() {
                     is UpdateState.MandatoryUpdate -> {
                         ZenUpdateScreen(
                             tagName = state.tagName,
-                            apkUrl = state.apkUrl
+                            apkUrl = state.apkUrl,
+                            releaseNotes = state.releaseNotes
                         )
                     }
                     else -> {
@@ -193,14 +197,19 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun ZenUpdateScreen(tagName: String, apkUrl: String) {
+    private fun ZenUpdateScreen(tagName: String, apkUrl: String, releaseNotes: String) {
         // Completely disable back button navigation
         BackHandler(enabled = true) {}
 
         val context = androidx.compose.ui.platform.LocalContext.current
         val scope = rememberCoroutineScope()
         var isDownloading by remember { mutableStateOf(false) }
+        var downloadProgress by remember { mutableStateOf(0f) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
+
+        val cleanNotes = remember(releaseNotes) {
+            releaseNotes.replace("<!--[\\s\\S]*?-->".toRegex(), "").trim()
+        }
 
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -209,40 +218,103 @@ class MainActivity : ComponentActivity() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(32.dp),
+                    .padding(24.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(
                         imageVector = Icons.Default.SystemUpdate,
-                        contentDescription = "Security Update Required",
+                        contentDescription = "Update Available",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(72.dp)
+                        modifier = Modifier.size(64.dp)
                     )
-
-                    Spacer(modifier = Modifier.height(24.dp))
 
                     Text(
-                        text = "A mandatory security update is required to preserve local data integrity. Please update NodaNotes to continue.",
+                        text = "New Update Available: $tagName",
                         color = MaterialTheme.colorScheme.onBackground,
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Medium,
-                        lineHeight = 24.sp
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Text(
+                        text = "A new version of NodaNotes is ready to install. Please update to preserve vault security and access the latest features.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
 
-                    Button(
-                        onClick = {
-                            if (!isDownloading) {
+                    if (cleanNotes.isNotEmpty()) {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 200.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = "What's New in this Version:",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = cleanNotes,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (isDownloading) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth(0.85f)
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { downloadProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp)),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val pct = (downloadProgress * 100).toInt()
+                            Text(
+                                text = "Downloading: $pct%",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = {
                                 isDownloading = true
                                 errorMessage = null
+                                downloadProgress = 0f
                                 scope.launch {
-                                    val file = UpdateManager.downloadApk(context, apkUrl)
+                                    val file = UpdateManager.downloadApk(context, apkUrl) { progress ->
+                                        downloadProgress = progress
+                                    }
                                     isDownloading = false
                                     if (file != null) {
                                         UpdateManager.installApk(context, file)
@@ -250,33 +322,22 @@ class MainActivity : ComponentActivity() {
                                         errorMessage = "Download failed. Please check your network connection."
                                     }
                                 }
-                            }
-                        },
-                        enabled = !isDownloading,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth(0.8f)
-                            .height(48.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        if (isDownloading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Downloading Update...", fontSize = 15.sp)
-                        } else {
-                            Text("Download and Install Update", fontSize = 15.sp)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(50.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Download and Install Update", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     errorMessage?.let { error ->
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = error,
                             color = MaterialTheme.colorScheme.error,

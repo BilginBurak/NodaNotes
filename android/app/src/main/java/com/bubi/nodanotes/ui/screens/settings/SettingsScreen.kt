@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -1237,6 +1238,7 @@ fun UpdatesTab(viewModel: SettingsViewModel) {
 
     var checkResultMessage by remember { mutableStateOf<String?>(null) }
     var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0f) }
 
     val intervalOptions = listOf("Every Entry", "Hourly", "Daily", "Weekly")
     var intervalExpanded by remember { mutableStateOf(false) }
@@ -1382,43 +1384,93 @@ fun UpdatesTab(viewModel: SettingsViewModel) {
                 // If flexible update is available, offer direct download in Settings grid
                 if (globalUpdateState is UpdateState.FlexibleUpdate) {
                     val flexState = globalUpdateState as UpdateState.FlexibleUpdate
+                    val cleanNotes = remember(flexState.releaseNotes) {
+                        flexState.releaseNotes.replace("<!--[\\s\\S]*?-->".toRegex(), "").trim()
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                     HorizontalDivider()
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
                         text = "New Optional Version: ${flexState.tagName}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Button(
-                        onClick = {
-                            isDownloading = true
-                            scope.launch {
-                                val file = UpdateManager.downloadApk(context, flexState.apkUrl)
-                                isDownloading = false
-                                if (file != null) {
-                                    UpdateManager.installApk(context, file)
-                                } else {
-                                    checkResultMessage = "Failed to download update APK."
-                                }
+                    
+                    if (cleanNotes.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 120.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = cleanNotes,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             }
-                        },
-                        enabled = !isDownloading,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (isDownloading) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Downloading...")
-                        } else {
-                            Text("Download and Install Now")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (isDownloading) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { downloadProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val pct = (downloadProgress * 100).toInt()
+                            Text(
+                                text = "Downloading: $pct%",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                isDownloading = true
+                                downloadProgress = 0f
+                                scope.launch {
+                                    val file = UpdateManager.downloadApk(context, flexState.apkUrl) { progress ->
+                                        downloadProgress = progress
+                                    }
+                                    isDownloading = false
+                                    if (file != null) {
+                                        UpdateManager.installApk(context, file)
+                                    } else {
+                                        checkResultMessage = "Failed to download update APK."
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Download and Install Now", fontWeight = FontWeight.Bold)
                         }
                     }
                 }

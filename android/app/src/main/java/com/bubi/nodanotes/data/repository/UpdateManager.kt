@@ -99,10 +99,10 @@ object UpdateManager {
 
                 val state = when {
                     isVersionLessThan(currentVersion, minRequired) -> {
-                        UpdateState.MandatoryUpdate(response.tag_name, apkUrl)
+                        UpdateState.MandatoryUpdate(response.tag_name, apkUrl, response.body)
                     }
                     isVersionLessThan(currentVersion, response.tag_name) -> {
-                        UpdateState.FlexibleUpdate(response.tag_name, apkUrl)
+                        UpdateState.FlexibleUpdate(response.tag_name, apkUrl, response.body)
                     }
                     else -> {
                         UpdateState.NoUpdate
@@ -119,7 +119,7 @@ object UpdateManager {
         return@withContext _updateState.value
     }
 
-    suspend fun downloadApk(context: Context, apkUrl: String): File? = withContext(Dispatchers.IO) {
+    suspend fun downloadApk(context: Context, apkUrl: String, onProgress: ((Float) -> Unit)? = null): File? = withContext(Dispatchers.IO) {
         cleanCacheApks(context)
 
         try {
@@ -131,10 +131,21 @@ object UpdateManager {
             connection.connect()
 
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                val contentLength = connection.contentLength.toLong()
                 val cacheFile = File(context.cacheDir, "update_${System.currentTimeMillis()}.apk")
                 connection.inputStream.use { input ->
                     cacheFile.outputStream().use { output ->
-                        input.copyTo(output)
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        var totalBytesRead = 0L
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            totalBytesRead += bytesRead
+                            if (contentLength > 0 && onProgress != null) {
+                                val progress = totalBytesRead.toFloat() / contentLength
+                                onProgress(progress)
+                            }
+                        }
                     }
                 }
                 return@withContext cacheFile

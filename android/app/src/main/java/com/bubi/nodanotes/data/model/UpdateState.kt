@@ -4,8 +4,8 @@ import kotlinx.serialization.Serializable
 
 sealed class UpdateState {
     object NoUpdate : UpdateState()
-    data class FlexibleUpdate(val tagName: String, val apkUrl: String) : UpdateState()
-    data class MandatoryUpdate(val tagName: String, val apkUrl: String) : UpdateState()
+    data class FlexibleUpdate(val tagName: String, val apkUrl: String, val releaseNotes: String = "") : UpdateState()
+    data class MandatoryUpdate(val tagName: String, val apkUrl: String, val releaseNotes: String = "") : UpdateState()
 }
 
 @Serializable
