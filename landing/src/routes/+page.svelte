@@ -511,11 +511,11 @@ tags: ["rust", "architecture"]
 	<p>Open-source, local-first note environment.</p>
 	
 	<div class="download-grid">
-		<a href="https://github.com" class="download-link-card">
+		<a href="https://github.com/BilginBurak/NodaNotes/releases" class="download-link-card">
 			<span class="download-platform">macOS App Bundle</span>
 			<span class="download-meta">Requires macOS 14+ / Intel or Apple Silicon</span>
 		</a>
-		<a href="https://github.com" class="download-link-card">
+		<a href="https://github.com/BilginBurak/NodaNotes/releases" class="download-link-card">
 			<span class="download-platform">Android APK Bundle</span>
 			<span class="download-meta">Requires Android API 36+ (arm64-v8a target)</span>
 		</a>
