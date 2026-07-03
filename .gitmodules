@@ -1,0 +1,3 @@
+[submodule ".settings-dev"]
+	path = .settings-dev
+	url = https://github.com/BilginBurak/NodaNotes-Agent.git
