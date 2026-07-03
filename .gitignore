@@ -16,4 +16,6 @@ Icon
 /target
 
 # Symlink pointer tracking
+/.agent
+/.scripts
 
