@@ -60,6 +60,18 @@ Landing sayfasının Netlify üzerindeki dağıtımı (deployment) doğrudan `la
   publish = "build"
 ```
 
+### 6. Otomatik Yayınlama ve Dağıtım Kanalları (Automated Publishing & Deployment Tracks)
+Uygulama ve tarayıcı eklentisi sürümlerini otomatik olarak derleyip yayınlamak için kullanılır (Bu betikler özel alt modülümüz içerisinde korunur).
+- **Dizin:** Proje Kök Dizini (`/`)
+- **Clipper Eklentisi WebDAV Yayınlama (Clipper Publisher):**
+  ```bash
+  bun .scripts/publish_clipper.js
+  ```
+- **Android Sürüm Güncellemesi Yayınlama (Android Publisher):**
+  ```bash
+  bun .scripts/publish_android.js
+  ```
+
 ---
 
 ## Part 2: Storage Clean & Pruning Suite (Temizleme ve Disk Boşaltma Komutları)
