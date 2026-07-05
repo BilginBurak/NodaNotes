@@ -41,7 +41,8 @@
 
   onMount(() => {
     checkLockStatus();
-    const interval = setInterval(checkLockStatus, 3000);
+    // Vault kilit/şifreleme durumunu 3 saniye yerine 15 saniyede bir (15000ms) kontrol ederek gereksiz istekleri %80 oranında azaltıyoruz.
+    const interval = setInterval(checkLockStatus, 15000);
     return () => clearInterval(interval);
   });
 
