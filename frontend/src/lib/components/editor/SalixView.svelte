@@ -25,6 +25,12 @@
   let d3Root: any = null;
   let collapsedPaths = $state<Set<string>>(new Set());
 
+  // Physics Control Variables (Obsidian-Style)
+  let forceGravity = $state(-150);
+  let forceLinkDistance = $state(50);
+  let forceCollisionRadius = $state(12);
+  let showPhysicsPanel = $state(false);
+
   // Mouse interaction
   let transform = $state({ x: 0, y: 0, k: 1 });
   let draggedNode = $state<any | null>(null);
@@ -32,7 +38,9 @@
   let dragStartNodePos = { x: 0, y: 0 };
   let hoveredNode = $state<any | null>(null);
   let rightClickedNode = $state<any | null>(null);
-  let deleteHoveredNode = $state<any | null>(null);
+  
+  // Snap Target for Drag & Drop
+  let snappedTarget = $state<any | null>(null);
 
   // Particles for AI telemetry
   let particles: any[] = [];
@@ -114,19 +122,41 @@
   // Setup simulation
   function initSimulation() {
     simulation = d3Force.forceSimulation(nodes)
-      .force("link", d3Force.forceLink(links).distance(50).strength(0.8))
-      .force("charge", d3Force.forceManyBody().strength(-150))
-      .force("collide", d3Force.forceCollide().radius((d: any) => d.data.is_folder ? 22 : 12))
+      .force("link", d3Force.forceLink(links).distance(forceLinkDistance).strength(0.8))
+      .force("charge", d3Force.forceManyBody().strength(forceGravity))
+      .force("collide", d3Force.forceCollide().radius((d: any) => {
+        // Incorporating the 35% scaling reduction into collision parameters
+        const baseRadius = d.data.is_folder ? 22 : 12;
+        return baseRadius * 0.65;
+      }))
       .force("x", d3Force.forceX((d: any) => d.targetX).strength(0.4))
       .force("y", d3Force.forceY((d: any) => d.targetY).strength(0.4))
       .on("tick", draw);
   }
+
+  // Reactively bind physics control variables to forces
+  $effect(() => {
+    if (simulation) {
+      simulation.force("charge", d3Force.forceManyBody().strength(forceGravity));
+      simulation.force("link").distance(forceLinkDistance);
+      simulation.force("collide", d3Force.forceCollide().radius((d: any) => {
+        return d.data.is_folder ? forceCollisionRadius * 1.83 * 0.65 : forceCollisionRadius * 0.65;
+      }));
+      simulation.alpha(0.1).restart();
+    }
+  });
 
   // Draw loop
   function draw() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // Dynamic CSS Variable Extraction
+    const style = window.getComputedStyle(canvas);
+    const themeAccent = style.getPropertyValue("--accent") || "#0a84ff";
+    const themeText = style.getPropertyValue("--text-primary") || "#ffffff";
+    const themeTextSecondary = style.getPropertyValue("--text-secondary") || "rgba(255, 255, 255, 0.75)";
 
     ctx.save();
     ctx.clearRect(0, 0, width, height);
@@ -150,11 +180,13 @@
         opacity = (sourceMatch || targetMatch) ? 0.9 : 0.15;
       }
       ctx.beginPath();
-      ctx.strokeStyle = `rgba(10, 132, 255, ${opacity})`;
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = themeAccent;
+      ctx.globalAlpha = opacity;
+      ctx.lineWidth = 1.2;
       ctx.moveTo(l.source.x, l.source.y);
       ctx.lineTo(l.target.x, l.target.y);
       ctx.stroke();
+      ctx.globalAlpha = 1.0;
     });
 
     // Draw Nodes
@@ -179,13 +211,13 @@
         ctx.shadowColor = "#30d158";
       }
 
-      // Draw node shape
+      // Draw node shape (downscaled by 35%)
       ctx.beginPath();
-      const radius = isFolder ? 14 : 7;
+      const radius = isFolder ? (14 * 0.65) : (7 * 0.65);
       ctx.arc(n.x, n.y, radius, 0, 2 * Math.PI);
 
       if (isFolder) {
-        ctx.fillStyle = collapsedPaths.has(n.data.file_path) ? "#ff9f0a" : "#0a84ff";
+        ctx.fillStyle = collapsedPaths.has(n.data.file_path) ? "#ff9f0a" : themeAccent;
       } else if (isEncrypted) {
         ctx.fillStyle = "#ff453a"; // Locked fruits (crimson-neon)
       } else {
@@ -194,34 +226,47 @@
 
       ctx.fill();
       ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.0;
       ctx.stroke();
 
       // Render Lock Glyph overlay for encrypted notes
       if (isEncrypted) {
         ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 9px system-ui";
+        ctx.font = "bold 6px system-ui";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("🔒", n.x, n.y);
       }
 
-      // Node label
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = hoveredNode === n ? "#ffffff" : "rgba(255, 255, 255, 0.75)";
-      ctx.font = "10px var(--font-sans, system-ui)";
-      ctx.textAlign = "center";
-      ctx.fillText(n.data.name, n.x, n.y + radius + 14);
+      // Node label - Zoom Dependent LOD Text Blackout Clause (k < 0.6)
+      if (transform.k >= 0.6) {
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = hoveredNode === n ? themeText : themeTextSecondary;
+        ctx.font = "10px var(--font-sans, system-ui)";
+        ctx.textAlign = "center";
+        ctx.fillText(n.data.name, n.x, n.y + radius + 11);
+      }
 
       ctx.restore();
     });
 
-    // Draw active drag indicator connection line
-    if (draggedNode && hoveredNode && hoveredNode !== draggedNode && hoveredNode.data.is_folder) {
+    // Snapping logic visual overlay during drag
+    if (draggedNode && snappedTarget) {
+      ctx.save();
       ctx.beginPath();
-      ctx.strokeStyle = "rgba(48, 209, 88, 0.8)";
+      ctx.arc(snappedTarget.x, snappedTarget.y, 14 * 0.65 + 6, 0, 2 * Math.PI);
+      ctx.strokeStyle = "#00ffff";
       ctx.lineWidth = 2.0;
-      ctx.setLineDash([5, 5]);
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = "#00ffff";
+      ctx.stroke();
+      ctx.restore();
+    } else if (draggedNode && hoveredNode && hoveredNode !== draggedNode && hoveredNode.data.is_folder) {
+      // Free drag connection indicator (non-snapped)
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.lineWidth = 1.0;
+      ctx.setLineDash([3, 3]);
       ctx.moveTo(draggedNode.x, draggedNode.y);
       ctx.lineTo(hoveredNode.x, hoveredNode.y);
       ctx.stroke();
@@ -235,14 +280,13 @@
   }
 
   function drawGrid(ctx: CanvasRenderingContext2D) {
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
     ctx.lineWidth = 1;
     const size = 40;
     
     const startX = -transform.x - (width / 2);
     const startY = -transform.y - (height / 2);
     
-    // Draw grid lines relative to window dimensions
     for (let x = startX - (startX % size); x < width + size; x += size) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -260,13 +304,8 @@
   function updateAndDrawParticles(ctx: CanvasRenderingContext2D) {
     const activeParticles: any[] = [];
     particles.forEach(p => {
-      p.progress += 0.015; // Particle speed
+      p.progress += 0.02; // Slightly higher velocity
       if (p.progress < 1.0) {
-        // Interpolate along links path to root
-        let currentPos = p.startNode;
-        let nextPos = p.path[Math.floor(p.progress * p.path.length)];
-        if (!nextPos) nextPos = p.startNode;
-
         const pathIndex = Math.min(
           p.path.length - 1,
           Math.floor(p.progress * p.path.length)
@@ -280,13 +319,15 @@
           const x = nodeA.x + (nodeB.x - nodeA.x) * segmentProgress;
           const y = nodeA.y + (nodeB.y - nodeA.y) * segmentProgress;
           
+          // High-intensity neon particle glow arrays
+          ctx.save();
           ctx.beginPath();
-          ctx.arc(x, y, 4, 0, 2 * Math.PI);
-          ctx.fillStyle = "#007aff";
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = "#007aff";
+          ctx.arc(x, y, 4.5, 0, 2 * Math.PI);
+          ctx.fillStyle = "#00ffff";
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = "#00ffff";
           ctx.fill();
-          ctx.shadowBlur = 0;
+          ctx.restore();
         }
         activeParticles.push(p);
       }
@@ -294,16 +335,15 @@
     particles = activeParticles;
   }
 
-  // Triggers telemetry trace particle flowing down path to root
-  function triggerTraceParticle(noteId: string) {
+  // Triggers telemetry trace particle flowing based on action routing directions
+  function triggerTraceParticle(noteId: string, action: string) {
     const startNode = nodes.find(n => n.id === noteId);
     if (!startNode) return;
 
-    // Find path to root (/Vault)
+    // Find hierarchical path to root
     const path: any[] = [];
     let current = startNode;
     
-    // Gather path of nodes in hierarchy
     let nextParent = links.find(l => l.target === current)?.source;
     while (nextParent) {
       path.push(nextParent);
@@ -312,11 +352,25 @@
     }
 
     if (path.length > 0) {
-      particles.push({
-        startNode,
-        path,
-        progress: 0
-      });
+      // READ transactions travel inward (leaf -> root)
+      // WRITE/EDIT transactions travel outward (root -> leaf)
+      if (action === "read") {
+        particles.push({
+          startNode,
+          path,
+          progress: 0
+        });
+      } else {
+        // Reverse trace path: start at root, travel to startNode
+        const reversedPath = [...path].reverse();
+        const first = reversedPath[0];
+        const rest = [...reversedPath.slice(1), startNode];
+        particles.push({
+          startNode: first,
+          path: rest,
+          progress: 0
+        });
+      }
     }
   }
 
@@ -342,19 +396,22 @@
     };
   }
 
-  // Interact events
+  // Absolute Event Segregation
+  let isDraggingNode = false;
+
   function onMouseDown(e: MouseEvent) {
-    if (e.button === 2) return; // Right click handled separately
+    if (e.button === 2) return; // Context menu
     const coords = getMouseCoords(e);
     
-    // Check if clicked node
+    // Check if clicked node (incorporating 35% scaling reduction)
     const clicked = nodes.find(n => {
       const dist = Math.hypot(n.x - coords.x, n.y - coords.y);
-      return dist <= (n.data.is_folder ? 14 : 7);
+      return dist <= (n.data.is_folder ? (14 * 0.65) : (7 * 0.65));
     });
 
     if (clicked) {
       draggedNode = clicked;
+      isDraggingNode = false; // Reset drag state guard
       dragStartMouse = { x: e.clientX, y: e.clientY };
       dragStartNodePos = { x: clicked.x, y: clicked.y };
       if (simulation) simulation.alphaTarget(0.3).restart();
@@ -366,21 +423,43 @@
   function onMouseMove(e: MouseEvent) {
     const coords = getMouseCoords(e);
 
-    // Hover check
+    // Hover check (incorporating 35% scaling reduction)
     hoveredNode = nodes.find(n => {
       const dist = Math.hypot(n.x - coords.x, n.y - coords.y);
-      return dist <= (n.data.is_folder ? 14 : 7);
+      return dist <= (n.data.is_folder ? (14 * 0.65) : (7 * 0.65));
     }) || null;
 
     if (draggedNode) {
-      // Manual positioning during drag
+      isDraggingNode = true; // Block click triggers
+      
       const dx = (e.clientX - dragStartMouse.x) / transform.k;
       const dy = (e.clientY - dragStartMouse.y) / transform.k;
-      draggedNode.x = dragStartNodePos.x + dx;
-      draggedNode.y = dragStartNodePos.y + dy;
+      const proposedX = dragStartNodePos.x + dx;
+      const proposedY = dragStartNodePos.y + dy;
+
+      // Magnetic snapping anchor mechanism (Distance < 25px)
+      snappedTarget = null;
+      for (const n of nodes) {
+        if (n !== draggedNode && n.data.is_folder) {
+          const dist = Math.hypot(n.x - proposedX, n.y - proposedY);
+          if (dist < 25) {
+            snappedTarget = n;
+            break;
+          }
+        }
+      }
+
+      if (snappedTarget) {
+        draggedNode.x = snappedTarget.x;
+        draggedNode.y = snappedTarget.y;
+      } else {
+        draggedNode.x = proposedX;
+        draggedNode.y = proposedY;
+      }
+
       if (simulation) simulation.alpha(0.3).restart();
     } else if (e.buttons === 1) {
-      // Pan
+      // Pan canvas
       transform.x += e.clientX - dragStartMouse.x;
       transform.y += e.clientY - dragStartMouse.y;
       dragStartMouse = { x: e.clientX, y: e.clientY };
@@ -391,10 +470,10 @@
 
   async function onMouseUp(e: MouseEvent) {
     if (draggedNode) {
-      if (hoveredNode && hoveredNode !== draggedNode && hoveredNode.data.is_folder) {
-        // Grafting: safe rename transaction
+      // Only trigger grafting if snapped target is active on termination
+      if (snappedTarget && snappedTarget !== draggedNode) {
         const oldPath = draggedNode.data.file_path;
-        const parentFolder = hoveredNode.data.file_path;
+        const parentFolder = snappedTarget.data.file_path;
         
         let newPath = "";
         const parts = oldPath.split('/');
@@ -406,7 +485,7 @@
           newPath = `${parentFolder}/${fileName}`;
         }
 
-        if (confirm(`Move "${draggedNode.data.name}" to "${hoveredNode.data.name}"?`)) {
+        if (confirm(`Move "${draggedNode.data.name}" to "${snappedTarget.data.name}"?`)) {
           try {
             await ipc.graftNode(oldPath, newPath);
             await reloadGraph();
@@ -418,6 +497,8 @@
       }
       
       draggedNode = null;
+      snappedTarget = null;
+      isDraggingNode = false;
       if (simulation) simulation.alphaTarget(0);
     }
   }
@@ -431,12 +512,15 @@
     draw();
   }
 
-  // Double click collapses / expands children
+  // Double click collapses / expands folders (isolated via stopPropagation)
   function onDoubleClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (isDraggingNode) return; // Prevent collapse during drag cycles
+
     const coords = getMouseCoords(e);
     const clicked = nodes.find(n => {
       const dist = Math.hypot(n.x - coords.x, n.y - coords.y);
-      return dist <= (n.data.is_folder ? 14 : 7);
+      return dist <= (n.data.is_folder ? (14 * 0.65) : (7 * 0.65));
     });
 
     if (clicked && clicked.data.is_folder) {
@@ -456,7 +540,7 @@
     const coords = getMouseCoords(e);
     const clicked = nodes.find(n => {
       const dist = Math.hypot(n.x - coords.x, n.y - coords.y);
-      return dist <= (n.data.is_folder ? 14 : 7);
+      return dist <= (n.data.is_folder ? (14 * 0.65) : (7 * 0.65));
     });
 
     if (clicked && clicked.data.is_folder) {
@@ -482,11 +566,12 @@
     }
   }
 
-  // Pruning / Deleting note
+  // Pruning note command mapping cleanly to soft delete
   async function triggerPrune(node: any) {
     if (confirm(`Are you sure you want to delete and trash "${node.data.name}"?`)) {
       try {
         await ipc.pruneNode(node.data.file_path);
+        hoveredNode = null;
         await reloadGraph();
         await loadNotes();
       } catch (err: any) {
@@ -543,26 +628,23 @@
     }
   }
 
+  // Close split view and expand the canvas back to full screen
   function handleEditorClose() {
     activeSplitNote = null;
   }
 
-  // Lifecycle listeners
   let unlistenTrace: any = null;
 
   onMount(async () => {
-    // 1. Initial reload
     await reloadGraph();
     initSimulation();
     handleResize();
 
-    // 2. Telemetry event listener
     unlistenTrace = await listen("mcp_trace", (event: any) => {
       const payload = event.payload as { note_id: string; action: string };
-      triggerTraceParticle(payload.note_id);
+      triggerTraceParticle(payload.note_id, payload.action);
     });
 
-    // 3. Observers and listener setups
     window.addEventListener("keydown", handleKeyDown);
     if (canvas && canvas.parentElement) {
       observer = new ResizeObserver(() => {
@@ -571,8 +653,6 @@
       observer.observe(canvas.parentElement);
     }
 
-    // 4. Zen-Mode Animation Guard
-    // When salixActive transitions, we stop simulation during transition to guarantee 60 FPS
     const unsubscribe = salixActive.subscribe((val) => {
       if (val) {
         if (simulation) simulation.stop();
@@ -581,7 +661,7 @@
           isZenTransitioning = false;
           handleResize();
           if (simulation) simulation.alpha(0.3).restart();
-        }, 300); // Concurrently halts forces during Svelte transitions
+        }, 300);
       }
     });
 
@@ -600,6 +680,29 @@
 
 <div class="salix-layout">
   <div class="salix-pane" style="flex: {activeSplitNote ? '60%' : '100%'}">
+    <!-- Obsidian-Style Minimalist Floating Control Overlay -->
+    <div class="obsidian-physics-panel" class:expanded={showPhysicsPanel}>
+      <button class="panel-toggle" onclick={() => showPhysicsPanel = !showPhysicsPanel}>
+        ⚙️ Physics Controls {showPhysicsPanel ? '▼' : '▲'}
+      </button>
+      {#if showPhysicsPanel}
+        <div class="panel-body">
+          <div class="control-row">
+            <label for="gravity">Gravity / Repulsion ({forceGravity})</label>
+            <input id="gravity" type="range" min="-500" max="-10" bind:value={forceGravity} />
+          </div>
+          <div class="control-row">
+            <label for="link-dist">Link Distance ({forceLinkDistance})</label>
+            <input id="link-dist" type="range" min="20" max="200" bind:value={forceLinkDistance} />
+          </div>
+          <div class="control-row">
+            <label for="collide-rad">Collision Radius ({forceCollisionRadius})</label>
+            <input id="collide-rad" type="range" min="5" max="50" bind:value={forceCollisionRadius} />
+          </div>
+        </div>
+      {/if}
+    </div>
+
     <canvas
       bind:this={canvas}
       onmousedown={onMouseDown}
@@ -655,9 +758,9 @@
       </div>
     {/if}
 
-    <!-- Hover details and Pruning Scissors HUD -->
+    <!-- Hover details and Pruning Scissors HUD (Non-blocking layout) -->
     {#if hoveredNode}
-      <div class="node-hover-details" style="position: absolute; bottom: 12px; left: 12px;">
+      <div class="node-hover-details">
         <div class="hover-head">
           <span class="name">{hoveredNode.data.name}</span>
           {#if hoveredNode.data.is_folder}
@@ -726,11 +829,68 @@
     cursor: grabbing;
   }
 
+  /* Obsidian-Style Minimalist Floating Control Overlay */
+  .obsidian-physics-panel {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 100;
+    background: rgba(28, 28, 30, 0.85);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 8px;
+    width: 200px;
+    color: #e1e1e6;
+    font-family: system-ui;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+  }
+
+  .panel-toggle {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #0a84ff;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .panel-body {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-row label {
+    font-size: 10px;
+    color: #aeaeae;
+  }
+
+  .control-row input[type="range"] {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    outline: none;
+  }
+
   /* HUD Tip */
   .salix-hud {
     position: absolute;
     top: 12px;
-    left: 12px;
+    right: 230px; /* Offset to clear micro-search and physics panel */
     background: rgba(0, 0, 0, 0.65);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -854,8 +1014,12 @@
     color: #d1d1d6;
   }
 
-  /* Node Hover details */
+  /* Node Hover details - Non-blocking bottom-left layout */
   .node-hover-details {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    z-index: 90;
     background: rgba(28, 28, 30, 0.9);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -867,6 +1031,7 @@
     flex-direction: column;
     gap: 8px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
   }
 
   .hover-head {
