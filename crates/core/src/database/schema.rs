@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS notes (
     file_path TEXT NOT NULL,                  -- Relative path from vault root
     is_encrypted BOOLEAN NOT NULL DEFAULT 0,
     dek_encrypted TEXT,
-    dek_nonce TEXT
+    dek_nonce TEXT,
+    outline TEXT
 );
 
 -- Full-text search index (external content table)
@@ -112,5 +113,18 @@ CREATE TABLE IF NOT EXISTS trusted_devices (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_trusted_devices_token ON trusted_devices(device_token);
+
+-- MCP Vault View for zero-copy streaming
+CREATE VIEW IF NOT EXISTS mcp_vault_view AS
+SELECT 
+    n.id AS note_id,
+    n.file_path AS relative_path,
+    n.title AS title,
+    s.last_modified AS last_modified,
+    s.size AS char_size,
+    n.outline AS outline
+FROM notes n
+LEFT JOIN sync_file_states s ON n.file_path = s.path
+WHERE n.status = 'active' AND n.is_encrypted = 0;
 "#;
 

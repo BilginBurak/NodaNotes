@@ -25,6 +25,7 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
     let is_encrypted: bool = row.get("is_encrypted")?;
     let dek_encrypted: Option<String> = row.get("dek_encrypted")?;
     let dek_nonce: Option<String> = row.get("dek_nonce")?;
+    let outline: Option<String> = row.get("outline").ok();
     
     let created_at = DateTime::parse_from_rfc3339(&created_str)
         .map(|d| d.with_timezone(&Utc))
@@ -56,6 +57,7 @@ fn row_to_note(row: &Row) -> Result<Note, rusqlite::Error> {
         is_encrypted,
         dek_encrypted,
         dek_nonce,
+        outline,
     })
 }
 
@@ -120,7 +122,8 @@ pub fn get_note(conn: &Connection, id: NoteId) -> Result<Option<Note>, NodaError
             file_path,
             is_encrypted,
             dek_encrypted,
-            dek_nonce
+            dek_nonce,
+            outline
         FROM notes 
         WHERE id = ?1
     "#)
@@ -138,10 +141,11 @@ pub fn insert_note(conn: &Connection, note: &Note, file_path: &str) -> Result<()
     
     let created_str = note.created_at.to_rfc3339();
     let updated_str = note.updated_at.to_rfc3339();
+    let outline_str = Note::parse_outline(&note.body);
 
     conn.execute(
-        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path, is_encrypted, dek_encrypted, dek_nonce) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path, is_encrypted, dek_encrypted, dek_nonce, outline) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             note.id.0.to_string(),
             parent_id_str,
@@ -155,7 +159,8 @@ pub fn insert_note(conn: &Connection, note: &Note, file_path: &str) -> Result<()
             file_path,
             note.is_encrypted,
             note.dek_encrypted,
-            note.dek_nonce
+            note.dek_nonce,
+            outline_str
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to insert note: {}", e)))?;
     
@@ -169,11 +174,12 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str) -> Result<()
     
     let created_str = note.created_at.to_rfc3339();
     let updated_str = note.updated_at.to_rfc3339();
+    let outline_str = Note::parse_outline(&note.body);
 
     conn.execute(
         "UPDATE notes SET 
             parent_id = ?2, title = ?3, body = ?4, color = ?5, pinned = ?6, status = ?7, created = ?8, updated = ?9, file_path = ?10,
-            is_encrypted = ?11, dek_encrypted = ?12, dek_nonce = ?13
+            is_encrypted = ?11, dek_encrypted = ?12, dek_nonce = ?13, outline = ?14
          WHERE id = ?1",
         params![
             note.id.0.to_string(),
@@ -188,7 +194,8 @@ pub fn update_note(conn: &Connection, note: &Note, file_path: &str) -> Result<()
             file_path,
             note.is_encrypted,
             note.dek_encrypted,
-            note.dek_nonce
+            note.dek_nonce,
+            outline_str
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to update note: {}", e)))?;
     
@@ -202,10 +209,11 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, mark_dirty: 
     
     let created_str = note.created_at.to_rfc3339();
     let updated_str = note.updated_at.to_rfc3339();
+    let outline_str = Note::parse_outline(&note.body);
 
     conn.execute(
-        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path, is_encrypted, dek_encrypted, dek_nonce) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+        "INSERT INTO notes (id, parent_id, title, body, color, pinned, status, created, updated, file_path, is_encrypted, dek_encrypted, dek_nonce, outline) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(id) DO UPDATE SET
             parent_id = excluded.parent_id,
             title = excluded.title,
@@ -218,7 +226,8 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, mark_dirty: 
             file_path = excluded.file_path,
             is_encrypted = excluded.is_encrypted,
             dek_encrypted = excluded.dek_encrypted,
-            dek_nonce = excluded.dek_nonce",
+            dek_nonce = excluded.dek_nonce,
+            outline = excluded.outline",
         params![
             note.id.0.to_string(),
             parent_id_str,
@@ -232,7 +241,8 @@ pub fn upsert_note(conn: &Connection, note: &Note, file_path: &str, mark_dirty: 
             file_path,
             note.is_encrypted,
             note.dek_encrypted,
-            note.dek_nonce
+            note.dek_nonce,
+            outline_str
         ],
     ).map_err(|e| NodaError::Database(format!("Failed to upsert note: {}", e)))?;
     
@@ -840,7 +850,8 @@ pub fn list_full_notes(conn: &Connection) -> Result<Vec<Note>, NodaError> {
             file_path,
             is_encrypted,
             dek_encrypted,
-            dek_nonce
+            dek_nonce,
+            outline
         FROM notes
     "#).map_err(|e| NodaError::Database(format!("Prepare list_full_notes failed: {}", e)))?;
 

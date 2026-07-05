@@ -53,6 +53,7 @@ pub async fn parse_or_create_note_from_file(file_path: &Path, vault_root: &Path)
                     .unwrap_or(file_path)
                     .to_string_lossy()
                     .to_string();
+                let outline = Some(Note::parse_outline(&parsed.content));
                 return Ok(Note {
                     id: fm.id,
                     parent_id: fm.parent_id,
@@ -69,6 +70,7 @@ pub async fn parse_or_create_note_from_file(file_path: &Path, vault_root: &Path)
                     is_encrypted: fm.is_encrypted,
                     dek_encrypted: fm.dek_encrypted.clone(),
                     dek_nonce: fm.dek_nonce.clone(),
+                    outline,
                 });
             }
         }
@@ -119,6 +121,7 @@ pub async fn parse_or_create_note_from_file(file_path: &Path, vault_root: &Path)
         .to_string_lossy()
         .to_string();
 
+    let outline = Some(Note::parse_outline(&parsed.content));
     // 4. Build Note object
     let note = Note {
         id: note_id,
@@ -136,6 +139,7 @@ pub async fn parse_or_create_note_from_file(file_path: &Path, vault_root: &Path)
         is_encrypted: frontmatter_opt.as_ref().map(|fm| fm.is_encrypted).unwrap_or(false),
         dek_encrypted: frontmatter_opt.as_ref().and_then(|fm| fm.dek_encrypted.clone()),
         dek_nonce: frontmatter_opt.as_ref().and_then(|fm| fm.dek_nonce.clone()),
+        outline,
     };
 
     let frontmatter: Frontmatter = (&note).into();
@@ -185,6 +189,7 @@ pub fn parse_or_create_note_from_file_sync(file_path: &Path, vault_root: &Path) 
                     .unwrap_or(file_path)
                     .to_string_lossy()
                     .to_string();
+                let outline = Some(Note::parse_outline(&parsed.content));
                 return Ok(Note {
                     id: fm.id,
                     parent_id: fm.parent_id,
@@ -201,6 +206,7 @@ pub fn parse_or_create_note_from_file_sync(file_path: &Path, vault_root: &Path) 
                     is_encrypted: fm.is_encrypted,
                     dek_encrypted: fm.dek_encrypted.clone(),
                     dek_nonce: fm.dek_nonce.clone(),
+                    outline,
                 });
             }
         }
@@ -247,6 +253,7 @@ pub fn parse_or_create_note_from_file_sync(file_path: &Path, vault_root: &Path) 
         .to_string_lossy()
         .to_string();
 
+    let outline = Some(Note::parse_outline(&parsed.content));
     let note = Note {
         id: note_id,
         parent_id: frontmatter_opt.as_ref().and_then(|fm| fm.parent_id),
@@ -263,6 +270,7 @@ pub fn parse_or_create_note_from_file_sync(file_path: &Path, vault_root: &Path) 
         is_encrypted: frontmatter_opt.as_ref().map(|fm| fm.is_encrypted).unwrap_or(false),
         dek_encrypted: frontmatter_opt.as_ref().and_then(|fm| fm.dek_encrypted.clone()),
         dek_nonce: frontmatter_opt.as_ref().and_then(|fm| fm.dek_nonce.clone()),
+        outline,
     };
 
     let frontmatter_serial: Frontmatter = (&note).into();
@@ -369,6 +377,7 @@ pub async fn parse_or_create_note_from_content(
         format!("{}/{}", relative_path.trim_end_matches('/'), filename)
     };
 
+    let outline = Some(Note::parse_outline(&parsed.content));
     let note = Note {
         id: note_id,
         parent_id: None,
@@ -385,6 +394,7 @@ pub async fn parse_or_create_note_from_content(
         is_encrypted: frontmatter_opt.as_ref().map(|fm| fm.is_encrypted).unwrap_or(false),
         dek_encrypted: frontmatter_opt.as_ref().and_then(|fm| fm.dek_encrypted.clone()),
         dek_nonce: frontmatter_opt.as_ref().and_then(|fm| fm.dek_nonce.clone()),
+        outline,
     };
 
     Ok(note)

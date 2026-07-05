@@ -1234,6 +1234,7 @@ async fn execute_single_action_sequential(
                     if let Some(data) = parsed.data {
                         let frontmatter = data.deserialize::<crate::models::note::Frontmatter>()
                             .map_err(|e| NodaError::Sync(format!("Failed to deserialize frontmatter: {}", e)))?;
+                        let outline = Some(Note::parse_outline(&parsed.content));
                         let note = Note {
                             id: frontmatter.id,
                             parent_id: frontmatter.parent_id,
@@ -1250,6 +1251,7 @@ async fn execute_single_action_sequential(
                             is_encrypted: frontmatter.is_encrypted,
                             dek_encrypted: frontmatter.dek_encrypted.clone(),
                             dek_nonce: frontmatter.dek_nonce.clone(),
+                            outline,
                         };
 
                         vault_service.write_note(&note).await?;

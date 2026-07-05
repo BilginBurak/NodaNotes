@@ -75,6 +75,7 @@ pub async fn restore<P: AsRef<Path>>(
         .deserialize()
         .map_err(|e| NodaError::Frontmatter(format!("Failed to parse YAML from snapshot: {}", e)))?;
         
+    let outline = Some(Note::parse_outline(&parsed.content));
     Ok(Note {
         id: frontmatter.id,
         parent_id: frontmatter.parent_id,
@@ -91,6 +92,7 @@ pub async fn restore<P: AsRef<Path>>(
         is_encrypted: frontmatter.is_encrypted,
         dek_encrypted: frontmatter.dek_encrypted.clone(),
         dek_nonce: frontmatter.dek_nonce.clone(),
+        outline,
     })
 }
 

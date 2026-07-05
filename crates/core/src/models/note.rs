@@ -43,6 +43,8 @@ pub struct Note {
     pub dek_encrypted: Option<String>,
     #[serde(default)]
     pub dek_nonce: Option<String>,
+    #[serde(default)]
+    pub outline: Option<String>,
 }
 
 impl Default for Note {
@@ -72,7 +74,31 @@ impl Note {
             is_encrypted: false,
             dek_encrypted: None,
             dek_nonce: None,
+            outline: None,
         }
+    }
+
+    pub fn parse_outline(body: &str) -> String {
+        let mut outline = Vec::new();
+        let mut in_code_block = false;
+        for line in body.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("```") {
+                in_code_block = !in_code_block;
+                continue;
+            }
+            if in_code_block {
+                continue;
+            }
+            if trimmed.starts_with("# ") {
+                outline.push(serde_json::json!({ "level": 1, "text": trimmed[2..].trim() }));
+            } else if trimmed.starts_with("## ") {
+                outline.push(serde_json::json!({ "level": 2, "text": trimmed[3..].trim() }));
+            } else if trimmed.starts_with("### ") {
+                outline.push(serde_json::json!({ "level": 3, "text": trimmed[4..].trim() }));
+            }
+        }
+        serde_json::to_string(&outline).unwrap_or_else(|_| "[]".to_string())
     }
 
     pub fn parse_inline_tags(body: &str) -> Vec<String> {

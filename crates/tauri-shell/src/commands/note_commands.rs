@@ -61,6 +61,7 @@ pub async fn create_note(
         is_encrypted: false,
         dek_encrypted: None,
         dek_nonce: None,
+        outline: Some(Note::parse_outline(&body)),
     };
 
     // 1. Write to local disk
@@ -198,6 +199,7 @@ pub async fn update_note(
         is_encrypted: existing_note_full.is_encrypted,
         dek_encrypted: existing_note_full.dek_encrypted.clone(),
         dek_nonce: existing_note_full.dek_nonce.clone(),
+        outline: Some(Note::parse_outline(&body)),
     };
 
     // Check if content actually changed
@@ -703,6 +705,7 @@ pub async fn trigger_daily_note(
             is_encrypted: false,
             dek_encrypted: None,
             dek_nonce: None,
+            outline: Some(Note::parse_outline(&body)),
         };
         
         service.write_note(&note).await.map_err(AppError::from)?;

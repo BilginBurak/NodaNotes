@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::schema::INIT_SCHEMA;
 use tracing::info;
 
-const CURRENT_SCHEMA_VERSION: i32 = 10;
+const CURRENT_SCHEMA_VERSION: i32 = 11;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     // Check if schema_version table exists
@@ -255,11 +255,50 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         current_version = 10;
     }
 
-    // Safety fix: attempt to add is_encrypted, dek_encrypted, dek_nonce columns to notes table.
+    if current_version < 11 {
+        info!("Applying database migration v11: adding outline column to notes and creating mcp_vault_view");
+        let _ = conn.execute("ALTER TABLE notes ADD COLUMN outline TEXT", []);
+        conn.execute_batch(r#"
+            CREATE VIEW IF NOT EXISTS mcp_vault_view AS
+            SELECT 
+                n.id AS note_id,
+                n.file_path AS relative_path,
+                n.title AS title,
+                s.last_modified AS last_modified,
+                s.size AS char_size,
+                n.outline AS outline
+            FROM notes n
+            LEFT JOIN sync_file_states s ON n.file_path = s.path
+            WHERE n.status = 'active' AND n.is_encrypted = 0;
+        "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v11: {}", e)))?;
+
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (11)",
+            [],
+        ).map_err(|e| NodaError::Database(format!("Failed to update schema version: {}", e)))?;
+
+        current_version = 11;
+    }
+
+    // Safety fix: attempt to add is_encrypted, dek_encrypted, dek_nonce, outline columns to notes table.
     // If they already exist, SQLite will return an error which we safely ignore.
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN is_encrypted BOOLEAN NOT NULL DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN dek_encrypted TEXT", []);
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN dek_nonce TEXT", []);
+    let _ = conn.execute("ALTER TABLE notes ADD COLUMN outline TEXT", []);
+    let _ = conn.execute_batch(r#"
+        CREATE VIEW IF NOT EXISTS mcp_vault_view AS
+        SELECT 
+            n.id AS note_id,
+            n.file_path AS relative_path,
+            n.title AS title,
+            s.last_modified AS last_modified,
+            s.size AS char_size,
+            n.outline AS outline
+        FROM notes n
+        LEFT JOIN sync_file_states s ON n.file_path = s.path
+        WHERE n.status = 'active' AND n.is_encrypted = 0;
+    "#);
 
     info!("Database is up to date (version {})", current_version);
     Ok(())

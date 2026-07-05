@@ -8,6 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
+    response::sse::{Event, Sse},
 };
 use rust_embed::RustEmbed;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -29,6 +30,7 @@ struct Asset;
 pub struct ServerState {
     pub app_handle: AppHandle,
     pub token: Arc<parking_lot::RwLock<String>>,
+    pub mcp_sessions: Arc<tokio::sync::RwLock<std::collections::HashMap<String, tokio::sync::mpsc::UnboundedSender<axum::response::sse::Event>>>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -110,9 +112,11 @@ async fn auth_status_handler(
 
 /// Start the Axum server on localhost:4040.
 pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Arc<parking_lot::RwLock<String>>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mcp_sessions = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
     let state = ServerState {
         app_handle,
         token: token.clone(),
+        mcp_sessions,
     };
 
     let cors = CorsLayer::new()
@@ -146,6 +150,8 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Arc<
         .layer(axum::extract::DefaultBodyLimit::disable())
         .route("/rpc", post(rpc_handler))
         .route("/validate", get(validate_token_handler))
+        .route("/mcp/sse", get(mcp_sse_handler).post(mcp_post_handler))
+        .route("/mcp/message", post(mcp_message_handler))
         .route_layer(middleware::from_fn(move |req, next| {
             let state = state_for_middleware.clone();
             async move {
@@ -545,7 +551,7 @@ async fn clipper_handler(
             id,
             parent_id: None,
             title: payload.title,
-            body,
+            body: body.clone(),
             color: None,
             pinned: false,
             tags: payload.tags,
@@ -557,6 +563,7 @@ async fn clipper_handler(
             is_encrypted: false,
             dek_encrypted: None,
             dek_nonce: None,
+            outline: Some(Note::parse_outline(&body)),
         }
     };
 
@@ -1054,5 +1061,532 @@ async fn handle_rpc_action(
             code: "UNKNOWN_ACTION".to_string(),
             message: format!("The action '{}' is not supported via browser RPC", action),
         }),
+    }
+}
+
+// ==========================================
+// MCP (Model Context Protocol) Integration
+// ==========================================
+
+#[derive(serde::Serialize, Debug)]
+pub struct McpNoteRow {
+    pub note_id: String,
+    pub relative_path: String,
+    pub title: String,
+    pub last_modified: Option<i64>,
+    pub char_size: Option<i64>,
+    pub outline: Option<String>,
+}
+
+pub struct McpStream {
+    pub session_id: String,
+    pub sessions: Arc<tokio::sync::RwLock<std::collections::HashMap<String, tokio::sync::mpsc::UnboundedSender<axum::response::sse::Event>>>>,
+    pub rx: tokio_stream::wrappers::UnboundedReceiverStream<axum::response::sse::Event>,
+}
+
+impl futures_util::stream::Stream for McpStream {
+    type Item = Result<axum::response::sse::Event, std::convert::Infallible>;
+
+    fn poll_next(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+        std::pin::Pin::new(&mut self.rx).poll_next(cx).map(|opt| opt.map(Ok))
+    }
+}
+
+impl Drop for McpStream {
+    fn drop(&mut self) {
+        let session_id = self.session_id.clone();
+        let sessions = self.sessions.clone();
+        tokio::spawn(async move {
+            let mut lock = sessions.write().await;
+            lock.remove(&session_id);
+            tracing::info!("Cleared MCP session context: {}", session_id);
+        });
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct McpMessageParams {
+    session_id: String,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+struct JsonRpcRequest {
+    jsonrpc: String,
+    method: String,
+    params: Option<serde_json::Value>,
+    id: Option<serde_json::Value>,
+}
+
+#[derive(serde::Serialize, Debug)]
+struct JsonRpcResponse {
+    jsonrpc: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<serde_json::Value>,
+    id: serde_json::Value,
+}
+
+#[derive(serde::Serialize)]
+struct McpToolListResponse {
+    tools: Vec<McpTool>,
+}
+
+#[derive(serde::Serialize)]
+#[allow(non_snake_case)]
+struct McpTool {
+    name: String,
+    description: String,
+    inputSchema: serde_json::Value,
+}
+
+async fn mcp_sse_handler(
+    State(state): State<ServerState>,
+) -> impl IntoResponse {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
+
+    // Send initial endpoint event
+    let initial_endpoint_url = format!("/api/mcp/message?session_id={}", session_id);
+    let _ = tx.send(Event::default().event("endpoint").data(initial_endpoint_url));
+
+    {
+        let mut sessions = state.mcp_sessions.write().await;
+        sessions.insert(session_id.clone(), tx);
+    }
+
+    let stream = McpStream {
+        session_id,
+        sessions: state.mcp_sessions.clone(),
+        rx: tokio_stream::wrappers::UnboundedReceiverStream::new(rx),
+    };
+
+    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
+}
+
+async fn mcp_message_handler(
+    State(state): State<ServerState>,
+    Query(params): Query<McpMessageParams>,
+    Json(request): Json<JsonRpcRequest>,
+) -> impl IntoResponse {
+    let tx = {
+        let sessions = state.mcp_sessions.read().await;
+        match sessions.get(&params.session_id).cloned() {
+            Some(t) => t,
+            None => return (StatusCode::BAD_REQUEST, "Invalid or expired MCP session").into_response(),
+        }
+    };
+
+    let jsonrpc_response = handle_jsonrpc_request(request, &state).await;
+
+    if let Ok(res_str) = serde_json::to_string(&jsonrpc_response) {
+        let _ = tx.send(Event::default().event("message").data(res_str));
+    }
+
+    StatusCode::OK.into_response()
+}
+
+async fn mcp_post_handler(
+    State(state): State<ServerState>,
+    Json(request): Json<JsonRpcRequest>,
+) -> impl IntoResponse {
+    let jsonrpc_response = handle_jsonrpc_request(request, &state).await;
+    Json(jsonrpc_response).into_response()
+}
+
+async fn handle_jsonrpc_request(
+    request: JsonRpcRequest,
+    state: &ServerState,
+) -> JsonRpcResponse {
+    let req_id = request.id.clone().unwrap_or(serde_json::Value::Null);
+
+    match request.method.as_str() {
+        "initialize" => {
+            let result = serde_json::json!({
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {}
+                },
+                "serverInfo": {
+                    "name": "NodaNotes-MCP",
+                    "version": "1.0.0"
+                }
+            });
+            JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                result: Some(result),
+                error: None,
+                id: req_id,
+            }
+        }
+        "tools/list" => {
+            let tools = vec![
+                McpTool {
+                    name: "search_notes".to_string(),
+                    description: "This tool searches notes in the vault matching the query against relative path, title, and heading outlines. It returns relative_path, last_modified, and outline metadata for matching notes. You are STRICTLY FORBIDDEN from guessing or inventing search results that are not returned by the database view.".to_string(),
+                    inputSchema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The search term to query against titles, paths, and outlines."
+                            }
+                        },
+                        "required": ["query"]
+                    }),
+                },
+                McpTool {
+                    name: "read_note".to_string(),
+                    description: "This tool reads note data by ID. If the requested note ID is missing or returns null from the database view, throw a NOT_FOUND error instantly. You are STRICTLY FORBIDDEN from guessing file content strings, generating phantom text parameters, or assuming structure.".to_string(),
+                    inputSchema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "note_id": {
+                                "type": "string",
+                                "description": "The unique ULID of the note."
+                            }
+                        },
+                        "required": ["note_id"]
+                    }),
+                },
+                McpTool {
+                    name: "write_note".to_string(),
+                    description: "This tool writes a new markdown note onto disk. You are STRICTLY FORBIDDEN from creating a file outside the sandbox boundaries, or guessing parameters. Ensure all arguments are explicitly provided.".to_string(),
+                    inputSchema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "title": {
+                                "type": "string",
+                                "description": "The title of the new note."
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "The raw markdown content of the new note."
+                            },
+                            "category": {
+                                "type": "string",
+                                "description": "Optional category/folder prefix path (e.g. 'Projects' or 'Work/Sub')."
+                            }
+                        },
+                        "required": ["title", "content"]
+                    }),
+                },
+                McpTool {
+                    name: "edit_note".to_string(),
+                    description: "This tool appends text or overwrites note content. You are STRICTLY FORBIDDEN from assuming previous note content if the note does not exist, or inventing note text not provided by the client.".to_string(),
+                    inputSchema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "note_id": {
+                                "type": "string",
+                                "description": "The unique ULID of the note to edit."
+                            },
+                            "append_text": {
+                                "type": "string",
+                                "description": "Optional text to append to the end of the note."
+                            },
+                            "overwrite_content": {
+                                "type": "string",
+                                "description": "Optional content to overwrite the entire note with."
+                            }
+                        },
+                        "required": ["note_id"]
+                    }),
+                },
+                McpTool {
+                    name: "delete_note".to_string(),
+                    description: "This tool soft-deletes a note by its note_id, archiving it to trash. You are STRICTLY FORBIDDEN from trying to delete arbitrary files outside the vault boundaries.".to_string(),
+                    inputSchema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "note_id": {
+                                "type": "string",
+                                "description": "The unique ULID of the note to delete."
+                            }
+                        },
+                        "required": ["note_id"]
+                    }),
+                },
+            ];
+
+            JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                result: Some(serde_json::to_value(McpToolListResponse { tools }).unwrap()),
+                error: None,
+                id: req_id,
+            }
+        }
+        "tools/call" => {
+            let params = request.params.unwrap_or(serde_json::Value::Null);
+            let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let arguments = params.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
+
+            match handle_mcp_tool_call(name, arguments, state).await {
+                Ok(res) => JsonRpcResponse {
+                    jsonrpc: "2.0".to_string(),
+                    result: Some(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&res).unwrap() }] })),
+                    error: None,
+                    id: req_id,
+                },
+                Err(e) => JsonRpcResponse {
+                    jsonrpc: "2.0".to_string(),
+                    result: None,
+                    error: Some(serde_json::json!({
+                        "code": -32603,
+                        "message": e,
+                    })),
+                    id: req_id,
+                },
+            }
+        }
+        _ => JsonRpcResponse {
+            jsonrpc: "2.0".to_string(),
+            result: None,
+            error: Some(serde_json::json!({
+                "code": -32601,
+                "message": format!("Method not found: {}", request.method)
+            })),
+            id: req_id,
+        }
+    }
+}
+
+async fn handle_mcp_tool_call(
+    name: &str,
+    args: serde_json::Value,
+    state: &ServerState,
+) -> Result<serde_json::Value, String> {
+    let app_state = state.app_handle.state::<AppState>();
+    
+    // Get vault root
+    let vault_path = {
+        let guard = app_state.vault_path.read();
+        guard.clone().ok_or("No vault open")?
+    };
+    let canonical_vault = vault_path.canonicalize().map_err(|e| format!("Failed to canonicalize vault root: {}", e))?;
+
+    // Get database
+    let db = {
+        let guard = app_state.database.read();
+        guard.clone().ok_or("No database connection")?
+    };
+
+    match name {
+        "search_notes" => {
+            let query = args.get("query")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing required query argument")?;
+
+            let conn = db.conn.lock();
+            let mut stmt = conn.prepare(
+                "SELECT note_id, relative_path, title, last_modified, char_size, outline \
+                  FROM mcp_vault_view \
+                  WHERE title LIKE ?1 OR outline LIKE ?2 OR relative_path LIKE ?3"
+             ).map_err(|e| e.to_string())?;
+
+            let query_param = format!("%{}%", query);
+            let rows = stmt.query_map([&query_param, &query_param, &query_param], |row| {
+                let last_modified_str: Option<String> = row.get("last_modified")?;
+                let last_modified = last_modified_str.and_then(|s| {
+                    chrono::DateTime::parse_from_rfc3339(&s)
+                        .map(|dt| dt.timestamp())
+                        .ok()
+                });
+                
+                Ok(McpNoteRow {
+                    note_id: row.get("note_id")?,
+                    relative_path: row.get("relative_path")?,
+                    title: row.get("title")?,
+                    last_modified,
+                    char_size: row.get("char_size")?,
+                    outline: row.get("outline")?,
+                })
+            }).map_err(|e| e.to_string())?;
+
+            let mut results = Vec::new();
+            for r in rows {
+                if let Ok(item) = r {
+                    results.push(item);
+                }
+            }
+
+            Ok(serde_json::to_value(results).unwrap())
+        }
+        "read_note" => {
+            let note_id = args.get("note_id")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing required note_id argument")?;
+
+            let note_id_parsed = NoteId(ulid::Ulid::from_string(note_id).map_err(|e| e.to_string())?);
+            let relative_path = {
+                let conn = db.conn.lock();
+                queries::get_note(&conn, note_id_parsed)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "NOT_FOUND".to_string())?
+                    .file_path
+            };
+
+            let target_path = vault_path.join(&relative_path);
+            let canonical_target = target_path.canonicalize().map_err(|e| format!("NOT_FOUND: {}", e))?;
+            if !canonical_target.starts_with(&canonical_vault) {
+                return Err("ACCESS_DENIED: Path traversal detected".to_string());
+            }
+
+            let content = tokio::fs::read_to_string(&canonical_target)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            Ok(serde_json::json!({ "content": content }))
+        }
+        "write_note" => {
+            let title = args.get("title")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing required title argument")?;
+            let content = args.get("content")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing required content argument")?;
+            let category = args.get("category")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            let clean_title = title.replace("/", "_").replace("..", "_");
+            let relative_path = if category.is_empty() {
+                format!("{}.md", clean_title)
+            } else {
+                let clean_cat = category.trim_start_matches('/').trim_end_matches('/');
+                format!("{}/{}.md", clean_cat, clean_title)
+            };
+
+            let target_path = vault_path.join(&relative_path);
+            let parent_dir = target_path.parent().ok_or("Invalid path: no parent directory")?;
+            tokio::fs::create_dir_all(parent_dir).await.map_err(|e| e.to_string())?;
+            let canonical_parent = parent_dir.canonicalize().map_err(|e| e.to_string())?;
+            let resolved_target = canonical_parent.join(target_path.file_name().ok_or("Invalid filename")?);
+            
+            if !resolved_target.starts_with(&canonical_vault) {
+                return Err("ACCESS_DENIED: Path traversal detected".to_string());
+            }
+
+            let id = NoteId::new();
+            let now = Utc::now();
+            let outline = Note::parse_outline(content);
+
+            let note = Note {
+                id,
+                parent_id: None,
+                title: title.to_string(),
+                body: content.to_string(),
+                color: None,
+                pinned: false,
+                tags: Vec::new(),
+                inline_tags: Note::parse_inline_tags(content),
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+                file_path: relative_path.clone(),
+                is_encrypted: false,
+                dek_encrypted: None,
+                dek_nonce: None,
+                outline: Some(outline),
+            };
+
+            let service = {
+                let guard = app_state.vault_service.read();
+                guard.clone().ok_or("No vault service open")?
+            };
+            service.write_note(&note).await.map_err(|e| e.to_string())?;
+
+            {
+                let conn = db.conn.lock();
+                queries::upsert_note(&conn, &note, &note.file_path, true).map_err(|e| e.to_string())?;
+            }
+
+            // Instantly snapshot Version 0
+            noda_core::history::snapshot(&vault_path, &note, "Version 0").await.map_err(|e| e.to_string())?;
+
+            Ok(serde_json::json!({ "id": id.0.to_string(), "file_path": relative_path }))
+        }
+        "edit_note" => {
+            let note_id = args.get("note_id")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing required note_id argument")?;
+            let append_text = args.get("append_text").and_then(|v| v.as_str());
+            let overwrite_content = args.get("overwrite_content").and_then(|v| v.as_str());
+
+            let note_id_parsed = NoteId(ulid::Ulid::from_string(note_id).map_err(|e| e.to_string())?);
+            let existing_note = {
+                let conn = db.conn.lock();
+                queries::get_note(&conn, note_id_parsed)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "NOT_FOUND: Note not found in DB".to_string())?
+            };
+
+            let target_path = vault_path.join(&existing_note.file_path);
+            let canonical_target = target_path.canonicalize().map_err(|e| e.to_string())?;
+            if !canonical_target.starts_with(&canonical_vault) {
+                return Err("ACCESS_DENIED: Path traversal detected".to_string());
+            }
+
+            let mut new_body = existing_note.body.clone();
+            if let Some(overwrite) = overwrite_content {
+                new_body = overwrite.to_string();
+            } else if let Some(append) = append_text {
+                new_body.push_str(append);
+            }
+
+            let outline = Note::parse_outline(&new_body);
+            let mut updated_note = existing_note.clone();
+            updated_note.body = new_body;
+            updated_note.outline = Some(outline);
+            updated_note.updated_at = Utc::now();
+
+            // Native snapshot BEFORE writing markdown buffer to physical storage drive
+            if !existing_note.is_encrypted {
+                noda_core::history::snapshot(&vault_path, &existing_note, "Backup").await.map_err(|e| e.to_string())?;
+            }
+
+            let service = {
+                let guard = app_state.vault_service.read();
+                guard.clone().ok_or("No vault service open")?
+            };
+            service.write_note(&updated_note).await.map_err(|e| e.to_string())?;
+
+            {
+                let conn = db.conn.lock();
+                queries::upsert_note(&conn, &updated_note, &updated_note.file_path, true).map_err(|e| e.to_string())?;
+            }
+
+            Ok(serde_json::json!({ "id": note_id, "status": "edited" }))
+        }
+        "delete_note" => {
+            let note_id = args.get("note_id")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing required note_id argument")?;
+
+            let note_id_parsed = NoteId(ulid::Ulid::from_string(note_id).map_err(|e| e.to_string())?);
+            let relative_path = {
+                let conn = db.conn.lock();
+                queries::get_note(&conn, note_id_parsed)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "NOT_FOUND: Note not found in DB".to_string())?
+                    .file_path
+            };
+
+            let target_path = vault_path.join(&relative_path);
+            let canonical_target = target_path.canonicalize().map_err(|e| e.to_string())?;
+            if !canonical_target.starts_with(&canonical_vault) {
+                return Err("ACCESS_DENIED: Path traversal detected".to_string());
+            }
+
+            noda_core::trash::soft_delete(&vault_path, &relative_path).await.map_err(|e| e.to_string())?;
+
+            {
+                let conn = db.conn.lock();
+                queries::delete_note(&conn, note_id_parsed, true).map_err(|e| e.to_string())?;
+            }
+
+            Ok(serde_json::json!({ "id": note_id, "status": "deleted" }))
+        }
+        _ => Err(format!("Unknown tool: {}", name)),
     }
 }

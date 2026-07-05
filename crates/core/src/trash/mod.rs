@@ -41,6 +41,7 @@ pub async fn soft_delete<P: AsRef<Path>, P2: AsRef<Path>>(
         .deserialize()
         .map_err(|e| NodaError::Frontmatter(format!("Failed to parse YAML: {}", e)))?;
         
+    let outline = Some(Note::parse_outline(&parsed.content));
     let note = Note {
         id: frontmatter.id,
         parent_id: frontmatter.parent_id,
@@ -57,6 +58,7 @@ pub async fn soft_delete<P: AsRef<Path>, P2: AsRef<Path>>(
         is_encrypted: frontmatter.is_encrypted,
         dek_encrypted: frontmatter.dek_encrypted.clone(),
         dek_nonce: frontmatter.dek_nonce.clone(),
+        outline,
     };
     
     // 1. Take a snapshot

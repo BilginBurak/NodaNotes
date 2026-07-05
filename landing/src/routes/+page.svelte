@@ -23,6 +23,13 @@ tags: ["rust", "architecture"]
 
 	const historyCode = `.noda/history/[NoteID]_[YYYYMMDD-HHMMSS]_[reason].md`;
 
+	const mcpCode = `// crates/tauri-shell/src/server.rs
+// Axum SSE & HTTP-POST JSON-RPC processing
+let jsonrpc_response = handle_jsonrpc_request(request, &state).await;
+if let Ok(res_str) = serde_json::to_string(&jsonrpc_response) \x7b
+    let _ = tx.send(Event::default().event("message").data(res_str));
+\x7d`;
+
 	const technicalSpecs = [
 		{
 			id: 'sync',
@@ -47,6 +54,12 @@ tags: ["rust", "architecture"]
 			title: 'Flat History Snapshots',
 			description: 'Version control operates directly in the history directory without database overhead. Snapshots are written as flat files and mapped directly to visualize inline code diffs.',
 			code: historyCode
+		},
+		{
+			id: 'mcp',
+			title: 'Model Context Protocol (MCP)',
+			description: 'Embeds a secure local HTTP-POST & SSE server in the daemon (:4040). Exposes 5 core tools (search, read, write, edit, delete) to let AI assistants securely access and modify notes with strict parent-level sandboxing.',
+			code: mcpCode
 		}
 	];
 
@@ -353,7 +366,7 @@ tags: ["rust", "architecture"]
 </section>
 
 <!-- Performance Benchmarks & Metrics (Editorial Technical Table) -->
-<section class="section-container border-top">
+<section class="section-container bg-dark border-top">
 	<div class="editorial-row">
 		<div class="col-title">
 			<span class="section-label">04 / PERFORMANCE METRICS</span>
@@ -406,11 +419,71 @@ tags: ["rust", "architecture"]
 	</div>
 </section>
 
+<!-- Model Context Protocol Section -->
+<section id="mcp" class="section-container border-top">
+	<div class="editorial-row">
+		<div class="col-title">
+			<span class="section-label">05 / MODEL CONTEXT PROTOCOL</span>
+			<h2>AI-Assisted Knowledge Engineering.</h2>
+		</div>
+		<div class="col-content">
+			<p>
+				NodaNotes features native integration for the Model Context Protocol (MCP). Your AI coding assistants, compilers, and LLM interfaces (like Claude Desktop or Antigravity) can connect securely to query, modify, and manage your notes in real time.
+			</p>
+		</div>
+	</div>
+
+	<div class="mcp-grid">
+		<div class="mcp-card">
+			<h3>Direct HTTP-POST & SSE Daemon</h3>
+			<p>Runs directly inside the daemon port (<code>:4040</code>). Fully compatible with standard Server-Sent Events (SSE) connections and direct JSON-RPC HTTP-POST clients.</p>
+		</div>
+		<div class="mcp-card">
+			<h3>Token-Gated Security</h3>
+			<p>Connection requests are validated using the primary Clipper token or your approved trusted device lists to prevent unauthorized access.</p>
+		</div>
+		<div class="mcp-card">
+			<h3>Strict Vault Sandboxing</h3>
+			<p>Enforces parent-directory path validation checks to prevent directory traversal and protect files outside the vault boundary.</p>
+		</div>
+		<div class="mcp-card">
+			<h3>Compile-Before-Commit Backups</h3>
+			<p>Editing notes via MCP automatically compiles outline trees, schedules SQLite caches, and runs database history snapshots before physical disk writes.</p>
+		</div>
+	</div>
+
+	<div class="mcp-tools-list">
+		<h3>Available MCP Tools</h3>
+		<div class="tools-grid">
+			<div class="tool-item">
+				<span class="tool-badge">search_notes</span>
+				<p>Search notes using SQLite FTS5 matching on title, path, and header outlines.</p>
+			</div>
+			<div class="tool-item">
+				<span class="tool-badge">read_note</span>
+				<p>Reads note body contents securely within the sandbox boundary.</p>
+			</div>
+			<div class="tool-item">
+				<span class="tool-badge">write_note</span>
+				<p>Writes new markdown notes and registers a Version 0 recovery point.</p>
+			</div>
+			<div class="tool-item">
+				<span class="tool-badge">edit_note</span>
+				<p>Appends text or overwrites note body after compiling version snapshots.</p>
+			</div>
+			<div class="tool-item">
+				<span class="tool-badge">delete_note</span>
+				<p>Soft-deletes notes to the trash directory and updates relational indexes.</p>
+			</div>
+		</div>
+	</div>
+</section>
+
 <!-- Sync Lifecycle & Self Healing Sequence Flow -->
 <section class="section-container border-top bg-dark">
 	<div class="editorial-row">
 		<div class="col-title">
-			<span class="section-label">05 / SELF-HEALING PROTOCOLS</span>
+			<span class="section-label">06 / SELF-HEALING PROTOCOLS</span>
 			<h2>WebDAV Sync Lifecycle and Conflict Resolution</h2>
 		</div>
 		<div class="col-content">
@@ -506,7 +579,7 @@ tags: ["rust", "architecture"]
 </section>
 
 <!-- Download Section -->
-<section id="download" class="section-container border-top bg-dark download-block">
+<section id="download" class="section-container border-top download-block">
 	<h2>Build from source or download binaries.</h2>
 	<p>Open-source, local-first note environment.</p>
 	
@@ -1186,6 +1259,93 @@ tags: ["rust", "architecture"]
 		}
 		.flow-step, .spec-item {
 			padding: 20px;
+		}
+	}
+
+	/* MCP Integration Section */
+	.mcp-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 30px;
+		margin-top: 40px;
+	}
+	.mcp-card {
+		background: #0f0f0f;
+		border: 1px solid var(--border-color);
+		padding: 30px;
+		border-radius: 4px;
+		transition: var(--transition-minimal);
+	}
+	.mcp-card:hover {
+		border-color: var(--accent-orange);
+	}
+	.mcp-card h3 {
+		font-size: 1.15rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 12px;
+		letter-spacing: -0.01em;
+	}
+	.mcp-card p {
+		font-size: 0.9rem;
+		line-height: 1.6;
+		color: var(--text-secondary);
+	}
+	.mcp-card code {
+		background: #1a1a1a;
+		padding: 2px 6px;
+		border-radius: 3px;
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		color: var(--accent-orange);
+	}
+	.mcp-tools-list {
+		margin-top: 60px;
+		border-top: 1px dashed var(--border-color);
+		padding-top: 40px;
+	}
+	.mcp-tools-list h3 {
+		font-size: 1.3rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 30px;
+		letter-spacing: -0.02em;
+	}
+	.tools-grid {
+		display: grid;
+		grid-template-columns: repeat(5, 1fr);
+		gap: 20px;
+	}
+	.tool-item {
+		background: #0d0d0d;
+		border: 1px solid var(--border-color);
+		padding: 20px;
+		border-radius: 4px;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.tool-badge {
+		background: rgba(235, 94, 40, 0.1);
+		color: var(--accent-orange);
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		padding: 4px 8px;
+		border-radius: 4px;
+		width: fit-content;
+		font-weight: 600;
+	}
+	.tool-item p {
+		font-size: 0.8rem;
+		line-height: 1.5;
+		color: var(--text-secondary);
+	}
+	@media (max-width: 968px) {
+		.mcp-grid {
+			grid-template-columns: 1fr;
+		}
+		.tools-grid {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

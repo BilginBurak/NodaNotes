@@ -99,6 +99,10 @@ graph TD
 - Shares the same Rust core on mobile via a high-performance JNI bridge.
 - Employs runtime CPU architecture detection (`Build.SUPPORTED_ABIS`) and a 4-tier asset matcher to download, verify, and execute the correct architecture-specific update package seamlessly.
 
+### 5. Model Context Protocol (MCP) Integration
+- Embeds a local MCP HTTP-POST & SSE server directly into the daemon (`:4040`) for secure, token-gated AI context integrations.
+- Exposes 5 core tools to let AI coding assistants (like Antigravity) safely search, read, write, edit, and trash notes with strict sandboxing and automatic snapshot backups.
+
 ---
 
 ## 🛠️ Developer Setup & Compilation

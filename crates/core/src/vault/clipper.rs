@@ -196,6 +196,7 @@ pub async fn clip_url(
         let body = format!("{}\n\n{}", content_markdown, footer);
         let inline_tags = Note::parse_inline_tags(&body);
 
+        let outline = Some(Note::parse_outline(&body));
         let note = Note {
             id,
             parent_id: None,
@@ -212,6 +213,7 @@ pub async fn clip_url(
             is_encrypted: false,
             dek_encrypted: None,
             dek_nonce: None,
+            outline,
         };
 
         service.write_note(&note).await?;

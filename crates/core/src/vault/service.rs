@@ -105,6 +105,7 @@ impl VaultService {
             is_encrypted: frontmatter.is_encrypted,
             dek_encrypted: frontmatter.dek_encrypted.clone(),
             dek_nonce: frontmatter.dek_nonce.clone(),
+            outline: Some(Note::parse_outline(&parsed.content)),
         })
     }
 
@@ -144,6 +145,7 @@ impl VaultService {
             is_encrypted: frontmatter.is_encrypted,
             dek_encrypted: frontmatter.dek_encrypted.clone(),
             dek_nonce: frontmatter.dek_nonce.clone(),
+            outline: Some(Note::parse_outline(&parsed.content)),
         })
     }
 
