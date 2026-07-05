@@ -259,6 +259,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
         info!("Applying database migration v11: adding outline column to notes and creating mcp_vault_view");
         let _ = conn.execute("ALTER TABLE notes ADD COLUMN outline TEXT", []);
         conn.execute_batch(r#"
+            DROP VIEW IF EXISTS mcp_vault_view;
             CREATE VIEW IF NOT EXISTS mcp_vault_view AS
             SELECT 
                 n.id AS note_id,
@@ -266,10 +267,11 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
                 n.title AS title,
                 s.last_modified AS last_modified,
                 s.size AS char_size,
-                n.outline AS outline
+                n.outline AS outline,
+                n.is_encrypted AS is_encrypted
             FROM notes n
             LEFT JOIN sync_file_states s ON n.file_path = s.path
-            WHERE n.status = 'active' AND n.is_encrypted = 0;
+            WHERE n.status = 'active';
         "#).map_err(|e| NodaError::Database(format!("Failed to apply migration v11: {}", e)))?;
 
         conn.execute(
@@ -287,6 +289,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN dek_nonce TEXT", []);
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN outline TEXT", []);
     let _ = conn.execute_batch(r#"
+        DROP VIEW IF EXISTS mcp_vault_view;
         CREATE VIEW IF NOT EXISTS mcp_vault_view AS
         SELECT 
             n.id AS note_id,
@@ -294,10 +297,11 @@ pub fn run_migrations(conn: &Connection) -> Result<(), NodaError> {
             n.title AS title,
             s.last_modified AS last_modified,
             s.size AS char_size,
-            n.outline AS outline
+            n.outline AS outline,
+            n.is_encrypted AS is_encrypted
         FROM notes n
         LEFT JOIN sync_file_states s ON n.file_path = s.path
-        WHERE n.status = 'active' AND n.is_encrypted = 0;
+        WHERE n.status = 'active';
     "#);
 
     info!("Database is up to date (version {})", current_version);

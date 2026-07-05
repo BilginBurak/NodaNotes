@@ -195,5 +195,18 @@ pub mod dtos {
         pub device_token: Option<String>,
         pub created_at: String,
     }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct GraphNodeDto {
+        pub id: String,
+        pub name: String,
+        pub file_path: String,
+        pub is_folder: bool,
+        pub is_encrypted: bool,
+        pub char_size: u64,
+        pub last_modified: Option<i64>,
+        pub outline: Option<String>,
+        pub children: Vec<GraphNodeDto>,
+    }
 }
 

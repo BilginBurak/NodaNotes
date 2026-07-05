@@ -103,6 +103,10 @@ fn main() {
             commands::crypto_commands::get_vault_timeout_setting,
             commands::crypto_commands::set_vault_timeout_setting,
             commands::crypto_commands::change_master_password,
+            commands::graph_commands::get_graph_nodes,
+            commands::graph_commands::graft_node,
+            commands::graph_commands::sprout_node,
+            commands::graph_commands::prune_node,
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

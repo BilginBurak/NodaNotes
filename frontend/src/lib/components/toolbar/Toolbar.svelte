@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createNewNote, activeNote, selectedFolder, selectNote, activeNoteLocked } from '../../stores/notes';
+  import { createNewNote, activeNote, selectedFolder, selectNote, activeNoteLocked, salixActive } from '../../stores/notes';
   import { editorViewMode, showAttachments, loadAttachments } from '../../stores/editor';
   import { vaultInfo, vaultUnlocked } from '../../stores/vault';
   import { get } from 'svelte/store';
@@ -14,6 +14,7 @@
   const hasActiveNote = $derived($activeNote !== null);
 
   const isVaultUnlocked = $derived($vaultUnlocked);
+  const isSalixActive = $derived($salixActive);
   let isConfigured = $state(false);
 
   async function checkLockStatus() {
@@ -173,6 +174,17 @@
 
       {/if}
 
+      <button
+        class="btn-salix"
+        class:active={isSalixActive}
+        onclick={() => salixActive.update(v => !v)}
+        title="Salix"
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 14c2-4 6-6 10-6M5 11c1-2 3-3 5-3M8 9c1-1 2-2 3-2M12 8c2 0 3-1 3-2M10 8c1-1 2-1 2-2M11 6c1 0 2-1 2-1"/>
+        </svg>
+      </button>
+
       {#if isConfigured}
         <button 
           class="btn-quick-lock"
@@ -201,6 +213,32 @@
 </header>
 
 <style>
+  .btn-salix {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+    margin-right: 2px;
+  }
+  .btn-salix:hover {
+    color: var(--text-secondary);
+    background-color: var(--bg-control-hover);
+  }
+  .btn-salix.active {
+    color: var(--accent);
+    background-color: var(--bg-selected);
+  }
+  .btn-salix svg {
+    width: 14px;
+    height: 14px;
+  }
+
   .btn-quick-lock {
     background: transparent;
     border: none;

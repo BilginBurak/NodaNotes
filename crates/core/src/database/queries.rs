@@ -876,6 +876,44 @@ pub fn clear_sync_tables(conn: &Connection) -> Result<(), NodaError> {
     Ok(())
 }
 
+pub fn list_active_graph_nodes(conn: &Connection) -> Result<Vec<crate::models::note::GraphNodeDb>, NodaError> {
+    let mut stmt = conn.prepare(r#"
+        SELECT 
+            note_id,
+            relative_path,
+            title,
+            last_modified,
+            char_size,
+            outline,
+            is_encrypted
+        FROM mcp_vault_view
+    "#).map_err(|e| NodaError::Database(format!("Prepare list_active_graph_nodes failed: {}", e)))?;
+
+    let rows = stmt.query_map([], |row| {
+        let last_modified_str: Option<String> = row.get("last_modified")?;
+        let last_modified = last_modified_str.and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .map(|dt| dt.timestamp())
+                .ok()
+        });
+        Ok(crate::models::note::GraphNodeDb {
+            note_id: row.get("note_id")?,
+            relative_path: row.get("relative_path")?,
+            title: row.get("title")?,
+            last_modified,
+            char_size: row.get::<_, Option<u64>>("char_size")?.unwrap_or(0),
+            outline: row.get("outline")?,
+            is_encrypted: row.get("is_encrypted")?,
+        })
+    }).map_err(|e| NodaError::Database(format!("Query map list_active_graph_nodes failed: {}", e)))?;
+
+    let mut nodes = Vec::new();
+    for r in rows {
+        nodes.push(r.map_err(|e| NodaError::Database(format!("Row parsing failed: {}", e)))?);
+    }
+    Ok(nodes)
+}
+
 #[cfg(test)]
 
 

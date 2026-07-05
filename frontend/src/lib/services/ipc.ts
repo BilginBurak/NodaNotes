@@ -280,6 +280,12 @@ export const isVaultConfigured = () => call<boolean>('is_vault_configured');
 export const getVaultTimeoutSetting = () => call<string>('get_vault_timeout_setting');
 export const setVaultTimeoutSetting = (timeout: string) => call<void>('set_vault_timeout_setting', { timeout });
 
+// ── Salix Graph Commands ─────────────────────────────────────
+export const getGraphNodes = () => call<any>('get_graph_nodes');
+export const graftNode = (oldPath: string, newPath: string) => call<void>('graft_node', { oldPath, newPath });
+export const sproutNode = (parentPath: string, name: string, nodeType: string) => call<void>('sprout_node', { parentPath, name, nodeType });
+export const pruneNode = (targetPath: string) => call<void>('prune_node', { targetPath });
+
 
 
 

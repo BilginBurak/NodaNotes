@@ -122,9 +122,10 @@ SELECT
     n.title AS title,
     s.last_modified AS last_modified,
     s.size AS char_size,
-    n.outline AS outline
+    n.outline AS outline,
+    n.is_encrypted AS is_encrypted
 FROM notes n
 LEFT JOIN sync_file_states s ON n.file_path = s.path
-WHERE n.status = 'active' AND n.is_encrypted = 0;
+WHERE n.status = 'active';
 "#;
 

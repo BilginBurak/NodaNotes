@@ -241,6 +241,17 @@ pub struct SearchResult {
     pub score: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphNodeDb {
+    pub note_id: String,
+    pub relative_path: String,
+    pub title: String,
+    pub last_modified: Option<i64>,
+    pub char_size: u64,
+    pub outline: Option<String>,
+    pub is_encrypted: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

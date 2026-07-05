@@ -22,6 +22,7 @@ export const activeViewMode = writable<'normal' | 'trash' | 'conflicts' | 'attac
 export const viewingTrashNote = writable<boolean>(false);
 /** Çakışma notu olarak görüntüleniyor mu (archivedPath bilgisi ile) */
 export const viewingConflictNote = writable<{ noteId: string; archivedPath: string } | null>(null);
+export const salixActive = writable<boolean>(false);
 
 export async function loadNotes() {
   notesError.set(null);

@@ -890,6 +890,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_createNote(
             is_encrypted: false,
             dek_encrypted: None,
             dek_nonce: None,
+            outline: Some(Note::parse_outline("")),
         };
 
         // 1. Write to local disk
@@ -982,6 +983,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_updateNote(
             is_encrypted: existing_note.is_encrypted,
             dek_encrypted: existing_note.dek_encrypted.clone(),
             dek_nonce: existing_note.dek_nonce.clone(),
+            outline: Some(Note::parse_outline(&existing_note.body)),
         };
 
         let trigger_snap = params.trigger_snapshot.unwrap_or(false);
@@ -1672,9 +1674,9 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreSnapshot(
             Some(current) => Note {
                 id: current.id,
                 parent_id: current.parent_id.clone(),
-                title: restored_note_from_snap.title,
+                title: restored_note_from_snap.title.clone(),
                 inline_tags: restored_note_from_snap.inline_tags.clone(),
-                body: restored_note_from_snap.body,
+                body: restored_note_from_snap.body.clone(),
                 color: current.color.clone(),
                 pinned: current.pinned,
                 tags: current.tags.clone(),
@@ -1685,6 +1687,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_restoreSnapshot(
                 is_encrypted: current.is_encrypted,
                 dek_encrypted: current.dek_encrypted.clone(),
                 dek_nonce: current.dek_nonce.clone(),
+                outline: Some(Note::parse_outline(&restored_note_from_snap.body)),
             },
             None => {
                 let mut note = restored_note_from_snap;
@@ -3420,6 +3423,7 @@ pub extern "system" fn Java_com_bubi_nodanotes_RustCore_triggerDailyNote(
                 is_encrypted: false,
                 dek_encrypted: None,
                 dek_nonce: None,
+                outline: Some(Note::parse_outline(&body)),
             };
 
             if let Err(e) = service.write_note(&note).await {

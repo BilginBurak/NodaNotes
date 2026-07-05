@@ -9,10 +9,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
     response::sse::{Event, Sse},
+    Extension,
 };
 use rust_embed::RustEmbed;
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Emitter};
 use shared::AppError;
 use serde_json::Value;
 use crate::commands;
@@ -52,6 +53,12 @@ struct AuthStatusResponse {
 #[derive(serde::Deserialize)]
 struct AuthStatusParams {
     id: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct McpTracePayload {
+    note_id: String,
+    action: String,
 }
 
 async fn auth_request_handler(
@@ -152,6 +159,7 @@ pub async fn run_server(app_handle: AppHandle, _app_state: AppState, token: Arc<
         .route("/validate", get(validate_token_handler))
         .route("/mcp/sse", get(mcp_sse_handler).post(mcp_post_handler))
         .route("/mcp/message", post(mcp_message_handler))
+        .layer(Extension(state.app_handle.clone()))
         .route_layer(middleware::from_fn(move |req, next| {
             let state = state_for_middleware.clone();
             async move {
@@ -1166,6 +1174,7 @@ async fn mcp_sse_handler(
 
 async fn mcp_message_handler(
     State(state): State<ServerState>,
+    Extension(app_handle): Extension<AppHandle>,
     Query(params): Query<McpMessageParams>,
     Json(request): Json<JsonRpcRequest>,
 ) -> impl IntoResponse {
@@ -1177,7 +1186,7 @@ async fn mcp_message_handler(
         }
     };
 
-    let jsonrpc_response = handle_jsonrpc_request(request, &state).await;
+    let jsonrpc_response = handle_jsonrpc_request(request, &state, &app_handle).await;
 
     if let Ok(res_str) = serde_json::to_string(&jsonrpc_response) {
         let _ = tx.send(Event::default().event("message").data(res_str));
@@ -1188,15 +1197,17 @@ async fn mcp_message_handler(
 
 async fn mcp_post_handler(
     State(state): State<ServerState>,
+    Extension(app_handle): Extension<AppHandle>,
     Json(request): Json<JsonRpcRequest>,
 ) -> impl IntoResponse {
-    let jsonrpc_response = handle_jsonrpc_request(request, &state).await;
+    let jsonrpc_response = handle_jsonrpc_request(request, &state, &app_handle).await;
     Json(jsonrpc_response).into_response()
 }
 
 async fn handle_jsonrpc_request(
     request: JsonRpcRequest,
     state: &ServerState,
+    _app_handle: &AppHandle,
 ) -> JsonRpcResponse {
     let req_id = request.id.clone().unwrap_or(serde_json::Value::Null);
 
@@ -1381,7 +1392,7 @@ async fn handle_mcp_tool_call(
             let mut stmt = conn.prepare(
                 "SELECT note_id, relative_path, title, last_modified, char_size, outline \
                   FROM mcp_vault_view \
-                  WHERE title LIKE ?1 OR outline LIKE ?2 OR relative_path LIKE ?3"
+                  WHERE is_encrypted = 0 AND (title LIKE ?1 OR outline LIKE ?2 OR relative_path LIKE ?3)"
              ).map_err(|e| e.to_string())?;
 
             let query_param = format!("%{}%", query);
@@ -1435,6 +1446,8 @@ async fn handle_mcp_tool_call(
             let content = tokio::fs::read_to_string(&canonical_target)
                 .await
                 .map_err(|e| e.to_string())?;
+
+            let _ = state.app_handle.emit("mcp_trace", McpTracePayload { note_id: note_id.to_string(), action: "read".to_string() });
 
             Ok(serde_json::json!({ "content": content }))
         }
@@ -1555,6 +1568,8 @@ async fn handle_mcp_tool_call(
                 let conn = db.conn.lock();
                 queries::upsert_note(&conn, &updated_note, &updated_note.file_path, true).map_err(|e| e.to_string())?;
             }
+
+            let _ = state.app_handle.emit("mcp_trace", McpTracePayload { note_id: note_id.to_string(), action: "edit".to_string() });
 
             Ok(serde_json::json!({ "id": note_id, "status": "edited" }))
         }

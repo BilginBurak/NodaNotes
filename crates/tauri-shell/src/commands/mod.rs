@@ -10,6 +10,7 @@ pub mod folder_commands;
 pub mod maintenance_commands;
 pub mod device_commands;
 pub mod crypto_commands;
+pub mod graph_commands;
 
 pub use vault_commands::*;
 pub use note_commands::*;
@@ -23,4 +24,5 @@ pub use folder_commands::*;
 pub use maintenance_commands::*;
 pub use device_commands::*;
 pub use crypto_commands::*;
+pub use graph_commands::*;
 

@@ -13,7 +13,8 @@
   import SearchModal from '../lib/components/search/SearchModal.svelte';
   import { quickLookOpen, quickLookAttachment, triggerQuickLook, removeAttachment } from '../lib/stores/editor';
   import QuickLookModal from '../lib/components/common/QuickLookModal.svelte';
-  import { triggerDailyNote } from '../lib/stores/notes';
+  import { triggerDailyNote, salixActive } from '../lib/stores/notes';
+  import SalixView from '../lib/components/editor/SalixView.svelte';
 
   $: info = $vaultInfo;
   $: error = $vaultError;
@@ -233,11 +234,15 @@
   <!-- ─── Uygulama Workspace ───────────────────────── -->
   <div class="app-container">
     <Toolbar />
-    <div class="app-workspace">
+    <div class="app-workspace" class:zen-mode={$salixActive}>
       <Sidebar onOpenSettings={(tab: 'appearance' | 'editor' | 'sync' | 'history' | 'vault' | 'maintenance' | 'templates') => { showSettingsModal = true; settingsTab = tab; }} />
       <NoteList />
       <div class="main-content">
-        <Editor />
+        {#if $salixActive}
+          <SalixView />
+        {:else}
+          <Editor />
+        {/if}
       </div>
     </div>
     <!-- Global sync rapor bildirimi + detay modal -->
@@ -542,6 +547,26 @@
     flex: 1;
     height: calc(100vh - 48px);
     overflow: hidden;
+    position: relative;
+  }
+
+  /* Zen Mode Transitions & Reflows */
+  .app-workspace :global(.sidebar),
+  .app-workspace :global(.note-list-panel) {
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.3s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .app-workspace.zen-mode :global(.sidebar) {
+    transform: translateX(-100%);
+    width: 0px !important;
+    min-width: 0px !important;
+  }
+
+  .app-workspace.zen-mode :global(.note-list-panel) {
+    transform: translateX(-100%);
+    width: 0px !important;
+    min-width: 0px !important;
+    margin-left: -220px; /* Collapse note list width transition concurrently */
   }
 
   .main-content {
@@ -550,5 +575,6 @@
     height: 100%;
     overflow: hidden;
     position: relative;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 </style>
