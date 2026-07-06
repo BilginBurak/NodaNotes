@@ -18,81 +18,115 @@
 [data-theme="dark"] {
 
   /* Backgrounds — macOS dark window hiyerarşisi */
-  --bg-window:        #1c1c1e;   /* Ana pencere (NSWindow dark) */
-  --bg-sidebar:       #161618;   /* Sidebar panel */
-  --bg-notelist:      #1c1c1e;   /* Not listesi */
-  --bg-editor:        #1c1c1e;   /* Editor alanı */
-  --bg-elevated:      #2c2c2e;   /* Modal, popover, yükseltilmiş */
-  --bg-elevated-2:    #3a3a3c;   /* İkinci seviye (hover kartlar) */
-  --bg-control:       rgba(255, 255, 255, 0.07);   /* Buton, input */
-  --bg-control-hover: rgba(255, 255, 255, 0.11);   /* Hover durumu */
-  --bg-selected:      rgba(10, 132, 255, 0.18);    /* Seçili öğe */
-  --bg-hover:         rgba(255, 255, 255, 0.06);   /* Genel hover */
+  --bg-window: #1c1c1e;
+  /* Ana pencere (NSWindow dark) */
+  --bg-sidebar: #161618;
+  /* Sidebar panel */
+  --bg-notelist: #1c1c1e;
+  /* Not listesi */
+  --bg-editor: #1c1c1e;
+  /* Editor alanı */
+  --bg-elevated: #2c2c2e;
+  /* Modal, popover, yükseltilmiş */
+  --bg-elevated-2: #3a3a3c;
+  /* İkinci seviye (hover kartlar) */
+  --bg-control: rgba(255, 255, 255, 0.07);
+  /* Buton, input */
+  --bg-control-hover: rgba(255, 255, 255, 0.11);
+  /* Hover durumu */
+  --bg-selected: rgba(10, 132, 255, 0.18);
+  /* Seçili öğe */
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  /* Genel hover */
 
   /* Borders — çok ince, Apple HIG uyumlu */
-  --border-subtle:    rgba(255, 255, 255, 0.07);
-  --border-normal:    rgba(255, 255, 255, 0.12);
-  --border-strong:    rgba(255, 255, 255, 0.20);
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-normal: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.20);
 
   /* Text — macOS dark metin hiyerarşisi */
-  --text-primary:     rgba(255, 255, 255, 0.88);   /* Birincil metin */
-  --text-secondary:   rgba(255, 255, 255, 0.55);   /* İkincil / açıklama */
-  --text-tertiary:    rgba(255, 255, 255, 0.30);   /* Yardımcı metin */
-  --text-disabled:    rgba(255, 255, 255, 0.18);   /* Devre dışı */
-  --text-placeholder: rgba(255, 255, 255, 0.25);   /* Placeholder */
+  --text-primary: rgba(255, 255, 255, 0.88);
+  /* Birincil metin */
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  /* İkincil / açıklama */
+  --text-tertiary: rgba(255, 255, 255, 0.30);
+  /* Yardımcı metin */
+  --text-disabled: rgba(255, 255, 255, 0.18);
+  /* Devre dışı */
+  --text-placeholder: rgba(255, 255, 255, 0.25);
+  /* Placeholder */
 
   /* Accent — macOS sistem mavisi (Apple Blue) */
-  --accent:           #0a84ff;
-  --accent-hover:     #409cff;
-  --accent-muted:     rgba(10, 132, 255, 0.18);
-  --accent-border:    rgba(10, 132, 255, 0.40);
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --accent-muted: rgba(10, 132, 255, 0.18);
+  --accent-border: rgba(10, 132, 255, 0.40);
 
   /* Semantic colors — Apple HIG sistem renkleri */
-  --color-green:      #30d158;
-  --color-red:        #ff453a;
-  --color-orange:     #ff9f0a;
-  --color-yellow:     #ffd60a;
-  --color-purple:     #bf5af2;
+  --color-green: #30d158;
+  --color-red: #ff453a;
+  --color-orange: #ff9f0a;
+  --color-yellow: #ffd60a;
+  --color-purple: #bf5af2;
 
-  --color-green-muted:   rgba(48, 209, 88, 0.15);
-  --color-red-muted:     rgba(255, 69, 58, 0.15);
-  --color-orange-muted:  rgba(255, 159, 10, 0.15);
+  --color-green-muted: rgba(48, 209, 88, 0.15);
+  --color-red-muted: rgba(255, 69, 58, 0.15);
+  --color-orange-muted: rgba(255, 159, 10, 0.15);
 
   /* Toolbar vibrancy efekti */
-  --toolbar-bg:       rgba(28, 28, 30, 0.85);
+  --toolbar-bg: rgba(28, 28, 30, 0.85);
 
   /* Sidebar vibrancy efekti */
   --sidebar-vibrancy: rgba(22, 22, 24, 0.92);
 
   /* Modal / overlay */
-  --modal-bg:         rgba(28, 28, 30, 0.96);
-  --overlay-bg:       rgba(0, 0, 0, 0.55);
+  --modal-bg: rgba(28, 28, 30, 0.96);
+  --overlay-bg: rgba(0, 0, 0, 0.55);
+
+  /* Telemetry - Cybernetic AI Agent Colors */
+  --telemetry-glow: #64d2ff;
+  --telemetry-read: #bf5af2;
+  --telemetry-write: #ff9f0a;
+  --telemetry-delete: #ff375f;
+
+  /* Salix Graph Theme Tokens */
+  --graph-grid: rgba(255, 255, 255, 0.02);
+  --graph-link-hover: #00ffff;
+  --graph-node-accent: #0a84ffa8;
+  --graph-node-border: #ffffff41;
+  --graph-folder-collapsed: #ff9d0ad6;
+  --graph-node-encrypted: #ff443ad6;
+  --graph-node-active: #30d15864;
+  --graph-snap-highlight: #00ffff;
+  --graph-bg: #1c1c1e;
 
   /* Spacing tokens */
-  --radius-sm:        5px;
-  --radius-md:        8px;
-  --radius-lg:        12px;
-  --radius-xl:        16px;
-  --radius-pill:      9999px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 9999px;
 
   /* Typography — Apple sistem fontu */
-  --font-sans:   -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-  --font-mono:   "SF Mono", "Fira Code", "JetBrains Mono", Menlo, monospace;
-  --font-title:  -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", Menlo, monospace;
+  --font-title: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
 
   /* Scrollbar */
-  --scrollbar-thumb:       rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
 
   /* Shadows */
-  --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg:  0 16px 40px rgba(0, 0, 0, 0.65);
-  --shadow-xl:  0 24px 56px rgba(0, 0, 0, 0.75);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
+  --shadow-xl: 0 24px 56px rgba(0, 0, 0, 0.75);
 }
 
 /* ── Global Reset ──────────────────────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -118,7 +152,10 @@ body {
 }
 
 /* Metin seçimine izin verilen alanlar */
-input, textarea, [contenteditable], .cm-content {
+input,
+textarea,
+[contenteditable],
+.cm-content {
   user-select: text;
 }
 
@@ -173,25 +210,51 @@ input, textarea, [contenteditable], .cm-content {
 
 /* ── Utility — Mikro animasyonlar ──────────────────────────── */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes zoomIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1);    }
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes spinCCW {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(-360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(-360deg);
+  }
 }

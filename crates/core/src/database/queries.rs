@@ -881,7 +881,10 @@ pub fn list_active_graph_nodes(conn: &Connection) -> Result<Vec<crate::models::n
         SELECT 
             note_id,
             relative_path,
-            title,
+            CASE 
+                WHEN LENGTH(title) > 15 THEN SUBSTR(title, 1, 12) || '...'
+                ELSE title 
+            END AS title,
             last_modified,
             char_size,
             outline,
